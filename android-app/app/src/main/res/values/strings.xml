@@ -1,0 +1,12 @@
+<resources>
+    <string name="app_name">ISAI</string>
+    <string name="search_hint">Songs, artists, albums, playlists…</string>
+    <string name="now_playing">Now Playing</string>
+    <string name="trending">Trending Now</string>
+    <string name="top_charts">Top Charts</string>
+    <string name="lyrics">Lyrics</string>
+    <string name="audio_quality">Audio Quality</string>
+    <string name="quality_320">320 kbps (Very High)</string>
+    <string name="quality_160">160 kbps (Standard)</string>
+    <string name="quality_96">96 kbps (Data Saver)</string>
+</resources>

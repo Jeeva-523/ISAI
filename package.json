@@ -27,20 +27,24 @@
     }
   },
   "scripts": {
-    "dev": "bun run --hot src/server.ts",
-    "start": "bun dist/server.js",
+    "dev:web": "npm --prefix web run dev",
+    "build:web": "npm --prefix web run build",
+    "dev:backend": "tsx backend/server.ts",
+    "start:backend": "tsx backend/server.ts",
+    "build:app": "cd android-app && gradlew.bat assembleDebug",
+    "dev": "tsx backend/server.ts",
+    "start": "tsx backend/server.ts",
     "prebuild": "rm -rf dist",
     "build": "tsc && tsc-alias",
     "format": "prettier --write \"./**/*.{js,ts,json}\"",
     "lint": "eslint .",
-    "lint:fix": "bun run lint --fix",
+    "lint:fix": "npm run lint --fix",
     "test": "vitest run",
     "test:ui": "vitest --ui",
     "deploy": "wrangler deploy",
-    "prerelease": "bun run test",
-    "release": "bun run changelogen --release --push",
-    "spell-check": "cspell .",
-    "postinstall": "npx simple-git-hooks"
+    "prerelease": "npm run test",
+    "release": "changelogen --release --push",
+    "spell-check": "cspell ."
   },
   "simple-git-hooks": {
     "pre-commit": "bun run lint && bun run format",
@@ -71,6 +75,7 @@
     "prettier": "^3.5.3",
     "simple-git-hooks": "^2.12.1",
     "tsc-alias": "^1.8.13",
+    "tsx": "^4.23.13",
     "typescript": "^5.8.2",
     "vitest": "^3.0.9",
     "wrangler": "^4.6.0"
