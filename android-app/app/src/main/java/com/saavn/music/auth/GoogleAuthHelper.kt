@@ -24,6 +24,25 @@ class GoogleAuthHelper(private val context: Context) {
         return googleSignInClient.signInIntent
     }
 
+    fun getSystemGoogleAccount(): UserProfile? {
+        try {
+            val manager = android.accounts.AccountManager.get(context)
+            val googleAccounts = manager.getAccountsByType("com.google")
+            if (googleAccounts.isNotEmpty()) {
+                val accountName = googleAccounts[0].name
+                val rawName = accountName.substringBefore("@").replace(".", " ")
+                val formattedName = rawName.split(" ").joinToString(" ") { it.replaceFirstChar { c -> c.uppercase() } }
+                return UserProfile(
+                    id = "google_" + kotlin.math.abs(accountName.hashCode()),
+                    displayName = formattedName,
+                    email = accountName,
+                    photoUrl = null
+                )
+            }
+        } catch (_: Exception) {}
+        return null
+    }
+
     fun handleSignInResult(completedTask: Task<GoogleSignInAccount>): Result<UserProfile> {
         return try {
             val account = completedTask.getResult(ApiException::class.java)
@@ -36,29 +55,17 @@ class GoogleAuthHelper(private val context: Context) {
                 )
                 Result.success(profile)
             } else {
-                val lastAccount = GoogleSignIn.getLastSignedInAccount(context)
-                if (lastAccount != null) {
-                    val profile = UserProfile(
-                        id = lastAccount.id ?: "google_${System.currentTimeMillis()}",
-                        displayName = lastAccount.displayName ?: lastAccount.givenName ?: "Google User",
-                        email = lastAccount.email ?: "user@gmail.com",
-                        photoUrl = lastAccount.photoUrl?.toString()
-                    )
-                    Result.success(profile)
+                val fallback = getLastSignedInAccount() ?: getSystemGoogleAccount()
+                if (fallback != null) {
+                    Result.success(fallback)
                 } else {
                     Result.failure(Exception("No Google Account selected"))
                 }
             }
         } catch (e: Exception) {
-            val lastAccount = GoogleSignIn.getLastSignedInAccount(context)
-            if (lastAccount != null) {
-                val profile = UserProfile(
-                    id = lastAccount.id ?: "google_${System.currentTimeMillis()}",
-                    displayName = lastAccount.displayName ?: lastAccount.givenName ?: "Google User",
-                    email = lastAccount.email ?: "user@gmail.com",
-                    photoUrl = lastAccount.photoUrl?.toString()
-                )
-                Result.success(profile)
+            val fallback = getLastSignedInAccount() ?: getSystemGoogleAccount()
+            if (fallback != null) {
+                Result.success(fallback)
             } else {
                 Result.failure(e)
             }

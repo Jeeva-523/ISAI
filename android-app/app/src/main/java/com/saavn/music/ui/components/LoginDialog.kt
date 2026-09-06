@@ -168,7 +168,52 @@ fun LoginDialog(
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(10.dp))
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // Custom Google Email Input Option
+                        var customEmailInput by remember { mutableStateOf("") }
+                        var showEmailInput by remember { mutableStateOf(false) }
+
+                        if (showEmailInput) {
+                            OutlinedTextField(
+                                value = customEmailInput,
+                                onValueChange = { customEmailInput = it },
+                                placeholder = { Text("Enter your Gmail (e.g. jeeva@gmail.com)", fontSize = 12.sp, color = TextMuted) },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = NeonCyan,
+                                    unfocusedBorderColor = GlassBorderSubtle,
+                                    focusedTextColor = Color.White,
+                                    unfocusedTextColor = Color.White
+                                ),
+                                singleLine = true
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Button(
+                                onClick = {
+                                    if (customEmailInput.isNotBlank()) {
+                                        val clean = customEmailInput.trim()
+                                        val name = clean.substringBefore("@").replace(".", " ").split(" ")
+                                            .joinToString(" ") { it.replaceFirstChar { c -> c.uppercase() } }
+                                        onQuickSignIn(if (name.isNotBlank()) name else "Google User", clean)
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth().height(42.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = NeonCyan)
+                            ) {
+                                Text("Continue with Google Email", color = DarkBackground, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            }
+                        } else {
+                            TextButton(
+                                onClick = { showEmailInput = true },
+                                modifier = Modifier.padding(vertical = 2.dp)
+                            ) {
+                                Text("✉️ Sign in with specific Gmail address", color = NeonCyan, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
 
                         // Guest Login Fallback
                         OutlinedButton(
@@ -177,7 +222,7 @@ fun LoginDialog(
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(46.dp),
+                                .height(44.dp),
                             shape = RoundedCornerShape(14.dp),
                             border = BorderStroke(1.dp, NeonCyan.copy(alpha = 0.5f)),
                             colors = ButtonDefaults.outlinedButtonColors(
