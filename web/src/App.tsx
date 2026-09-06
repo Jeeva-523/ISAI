@@ -15,40 +15,76 @@ import { LoginPage } from './pages/LoginPage'
 // Curated fallback songs for instant offline-first display
 const INITIAL_CURATED_SONGS: Song[] = [
   {
-    videoId: 'W6L3wM0WnQ8',
-    title: 'Hukum - Thalaivar Alappara | Jailer | Rajinikanth | Anirudh',
-    channelTitle: 'Anirudh Ravichander',
-    thumbnailUrl: 'https://img.youtube.com/vi/W6L3wM0WnQ8/hqdefault.jpg',
-    durationFormatted: '3:27',
-    durationMs: 207000,
-    viewCountFormatted: '120M views'
-  },
-  {
-    videoId: 'Y4u0F6VpY6k',
-    title: 'Naa Ready | Leo | Thalapathy Vijay | Anirudh Ravichander',
-    channelTitle: 'Anirudh Ravichander',
-    thumbnailUrl: 'https://img.youtube.com/vi/Y4u0F6VpY6k/hqdefault.jpg',
-    durationFormatted: '4:08',
-    durationMs: 248000,
-    viewCountFormatted: '180M views'
-  },
-  {
-    videoId: 'mNP7V2sSg-4',
+    videoId: 'KUN5Uf9mObQ',
     title: 'Arabic Kuthu - Halamithi Habibo | Beast | Vijay | Anirudh',
-    channelTitle: 'Anirudh Ravichander',
-    thumbnailUrl: 'https://img.youtube.com/vi/mNP7V2sSg-4/hqdefault.jpg',
+    channelTitle: 'Sun TV • Anirudh Ravichander',
+    thumbnailUrl: 'https://img.youtube.com/vi/KUN5Uf9mObQ/hqdefault.jpg',
     durationFormatted: '4:39',
     durationMs: 279000,
-    viewCountFormatted: '340M views'
+    viewCountFormatted: '480M views'
+  },
+  {
+    videoId: '1F3hm6MfR1k',
+    title: 'Hukum - Thalaivar Alappara | Jailer | Rajinikanth | Anirudh',
+    channelTitle: 'Sun TV • Anirudh Ravichander',
+    thumbnailUrl: 'https://img.youtube.com/vi/1F3hm6MfR1k/hqdefault.jpg',
+    durationFormatted: '3:26',
+    durationMs: 206000,
+    viewCountFormatted: '185M views'
+  },
+  {
+    videoId: 'szvt1vD0Uug',
+    title: 'Naa Ready | Leo | Thalapathy Vijay | Anirudh Ravichander',
+    channelTitle: 'Sony Music South • Anirudh',
+    thumbnailUrl: 'https://img.youtube.com/vi/szvt1vD0Uug/hqdefault.jpg',
+    durationFormatted: '4:08',
+    durationMs: 248000,
+    viewCountFormatted: '240M views'
   },
   {
     videoId: '3tmd-ClpJxA',
     title: 'Marakkuma Nenjam | Vendhu Thanindhathu Kaadu | A.R. Rahman',
-    channelTitle: 'A.R. Rahman',
+    channelTitle: 'Think Music India • A.R. Rahman',
     thumbnailUrl: 'https://img.youtube.com/vi/3tmd-ClpJxA/hqdefault.jpg',
     durationFormatted: '4:16',
     durationMs: 256000,
     viewCountFormatted: '65M views'
+  },
+  {
+    videoId: 'mqqft2x_Aa4',
+    title: 'Kaavaalaa - Jailer | Rajinikanth | Tamannaah | Anirudh',
+    channelTitle: 'Sun TV • Anirudh Ravichander',
+    thumbnailUrl: 'https://img.youtube.com/vi/mqqft2x_Aa4/hqdefault.jpg',
+    durationFormatted: '3:10',
+    durationMs: 190000,
+    viewCountFormatted: '290M views'
+  },
+  {
+    videoId: 'eN6AnYGYdVE',
+    title: 'Vaseegara - Minnale | Bombay Jayashri | Harris Jayaraj',
+    channelTitle: 'Harris Jayaraj Melodies',
+    thumbnailUrl: 'https://img.youtube.com/vi/eN6AnYGYdVE/hqdefault.jpg',
+    durationFormatted: '5:00',
+    durationMs: 300000,
+    viewCountFormatted: '85M views'
+  },
+  {
+    videoId: 'jHNNMj5bNQw',
+    title: 'Rowdy Baby - Maari 2 | Dhanush | Sai Pallavi | Yuvan',
+    channelTitle: 'Wunderbar Films • Yuvan Shankar Raja',
+    thumbnailUrl: 'https://img.youtube.com/vi/jHNNMj5bNQw/hqdefault.jpg',
+    durationFormatted: '4:44',
+    durationMs: 284000,
+    viewCountFormatted: '1.5B views'
+  },
+  {
+    videoId: 'x6Q7c9Ry3tk',
+    title: 'Why This Kolaveri Di - 3 | Dhanush | Anirudh',
+    channelTitle: 'Sony Music South • Anirudh',
+    thumbnailUrl: 'https://img.youtube.com/vi/x6Q7c9Ry3tk/hqdefault.jpg',
+    durationFormatted: '4:05',
+    durationMs: 245000,
+    viewCountFormatted: '400M views'
   }
 ]
 
@@ -127,16 +163,18 @@ export function App() {
   }
 
   const loadTrending = async () => {
-    setIsTrendingLoading(true)
     setTrendingError(null)
     try {
-      const songs = await musicApi.getTrending()
-      if (songs.length > 0) {
+      const fetchPromise = musicApi.getTrending()
+      const timeoutPromise = new Promise<Song[]>((_, reject) =>
+        setTimeout(() => reject(new Error('Timeout')), 3000)
+      )
+      const songs = await Promise.race([fetchPromise, timeoutPromise])
+      if (songs && songs.length > 0) {
         setTrendingSongs(songs)
       }
     } catch {
-      // Keep curated fallback if backend is starting
-      setTrendingSongs(INITIAL_CURATED_SONGS)
+      // Retain instant curated songs without error
     } finally {
       setIsTrendingLoading(false)
     }

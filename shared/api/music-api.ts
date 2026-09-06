@@ -108,7 +108,7 @@ export class MusicApiClient {
     const jioSaavnUrl = `${this.baseUrl}/api/search/songs?query=${encodeURIComponent(cleanQuery)}&limit=${maxResults}`
 
     try {
-      const response = await fetch(jioSaavnUrl)
+      const response = await fetch(jioSaavnUrl, { signal: AbortSignal.timeout(3500) })
       if (response.ok) {
         const data = await response.json()
         const rawResults = data.data?.results || data.results || []
@@ -123,7 +123,7 @@ export class MusicApiClient {
     // Fallback to unified search endpoint if direct audio search is empty
     try {
       const fallbackUrl = `${this.baseUrl}${API_CONFIG.SEARCH_ENDPOINT}?q=${encodeURIComponent(cleanQuery)}&maxResults=${maxResults}`
-      const response = await fetch(fallbackUrl)
+      const response = await fetch(fallbackUrl, { signal: AbortSignal.timeout(3500) })
       if (response.ok) {
         const data = await response.json()
         const raw = data.data?.results || data.items || data.results || []
