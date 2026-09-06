@@ -16,8 +16,13 @@ val IsaiLime = Color(0xFFC6FF00) // ISAI Aurora Lime
 val IsaiViolet = Color(0xFF8B5CF6) // ISAI Electric Violet
 val NeonCyan = Color(0xFFC6FF00)
 val NeonPurple = Color(0xFF8B5CF6)
+val NeonPink = Color(0xFFF472B6)
 val NeonBlue = Color(0xFF38BDF8)
 val NeonAmber = Color(0xFFF59E0B)
+
+val GoldRank = Color(0xFFFFD700)
+val SilverRank = Color(0xFFE0E0E0)
+val BronzeRank = Color(0xFFCD7F32)
 
 // Typography
 val TextPrimary = Color(0xFFF5F7FA)
