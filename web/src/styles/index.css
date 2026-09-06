@@ -1,28 +1,47 @@
 :root {
-  --bg-dark: #08090D;
-  --bg-darker: #08090D;
-  --surface-dark: #101219;
-  --surface-card: #171A22;
-  --surface-card-hover: #1E222C;
-  --surface-glass: rgba(23, 26, 34, 0.92);
-  --border-glass: rgba(200, 255, 0, 0.35);
-  --border-glass-bright: rgba(200, 255, 0, 0.6);
-  --border-subtle: #272B35;
+  /* Main Backgrounds */
+  --bg-dark: #07080C;
+  --bg-darker: #07080C;
+  --surface-dark: #0D0F15;
+  --surface-card: #141720;
+  --surface-card-hover: #1C202A;
+  --surface-elevated: #1C202A;
+  --surface-glass: rgba(20, 23, 32, 0.92);
+  --border-glass: rgba(198, 255, 0, 0.35);
+  --border-glass-bright: rgba(198, 255, 0, 0.6);
+  --border-subtle: #252A35;
 
-  --isai-lime: #C8FF00;
+  /* Brand Accents */
+  --isai-lime: #C6FF00;
   --isai-violet: #8B5CF6;
-  --neon-cyan: #C8FF00;
+  --neon-cyan: #C6FF00;
   --neon-blue: #38BDF8;
   --neon-purple: #8B5CF6;
-  --neon-magenta: #FF007A;
-  --neon-pink: #FF2E93;
+  --neon-pink: #F472B6;
   --neon-emerald: #22C55E;
   --neon-amber: #F59E0B;
 
-  --text-primary: #FFFFFF;
-  --text-secondary: #A7ACB8;
+  /* Mood Accents */
+  --mood-calm: #60A5FA;
+  --mood-sad: #818CF8;
+  --mood-love: #F472B6;
+  --mood-energy: #FB923C;
+  --mood-chill: #2DD4BF;
+  --mood-night: #6366F1;
+  --mood-party: #FACC15;
+
+  /* Status Colors */
+  --status-success: #22C55E;
+  --status-warning: #F59E0B;
+  --status-error: #EF4444;
+  --status-info: #38BDF8;
+
+  /* Text Colors */
+  --text-primary: #F5F7FA;
+  --text-secondary: #9CA3AF;
   --text-muted: #6B7280;
-  --divider: #272B35;
+  --text-disabled: #4B5563;
+  --divider: #252A35;
 
   --font-heading: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
   --font-body: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
