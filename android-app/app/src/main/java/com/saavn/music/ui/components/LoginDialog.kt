@@ -170,10 +170,10 @@ fun LoginDialog(
 
                         Spacer(modifier = Modifier.height(10.dp))
 
-                        // 1-Click Instant Google Account Login Fallback
+                        // Guest Login Fallback
                         OutlinedButton(
                             onClick = {
-                                onQuickSignIn("JEEVA ⚡", "jeeva.google@gmail.com")
+                                onQuickSignIn("Guest Listener", "listener@isai.com")
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -185,7 +185,7 @@ fun LoginDialog(
                             )
                         ) {
                             Text(
-                                text = "⚡ 1-Click Instant Login (Google)",
+                                text = "👤 Quick Guest Login",
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold
                             )

@@ -118,16 +118,27 @@ fun IsaiApp(viewModel: MainViewModel = viewModel()) {
             val authResult = viewModel.googleAuthHelper.handleSignInResult(task)
             authResult.onSuccess { profile ->
                 viewModel.saveUserProfile(profile)
-                android.widget.Toast.makeText(context, "Logged in as ${profile.displayName}", android.widget.Toast.LENGTH_SHORT).show()
+                android.widget.Toast.makeText(context, "Welcome, ${profile.displayName}!", android.widget.Toast.LENGTH_SHORT).show()
             }
-            authResult.onFailure {
-                // Fallback login if Google Play Services fails on device/emulator
-                viewModel.quickSignInGoogleAccount("JEEVA ⚡", "jeeva.google@gmail.com")
-                android.widget.Toast.makeText(context, "Logged in as JEEVA ⚡", android.widget.Toast.LENGTH_SHORT).show()
+            authResult.onFailure { err ->
+                android.util.Log.w("ISAI_AUTH", "Google sign-in result warning: ${err.message}")
+                val lastAcc = viewModel.googleAuthHelper.getLastSignedInAccount()
+                if (lastAcc != null && lastAcc.email.isNotBlank()) {
+                    viewModel.saveUserProfile(lastAcc)
+                    android.widget.Toast.makeText(context, "Logged in as ${lastAcc.displayName}", android.widget.Toast.LENGTH_SHORT).show()
+                } else {
+                    android.widget.Toast.makeText(context, "Sign-in cancelled", android.widget.Toast.LENGTH_SHORT).show()
+                }
             }
         } catch (e: Exception) {
-            viewModel.quickSignInGoogleAccount("JEEVA ⚡", "jeeva.google@gmail.com")
-            android.widget.Toast.makeText(context, "Logged in as JEEVA ⚡", android.widget.Toast.LENGTH_SHORT).show()
+            android.util.Log.e("ISAI_AUTH", "Google sign-in exception: ${e.message}", e)
+            val lastAcc = viewModel.googleAuthHelper.getLastSignedInAccount()
+            if (lastAcc != null && lastAcc.email.isNotBlank()) {
+                viewModel.saveUserProfile(lastAcc)
+                android.widget.Toast.makeText(context, "Logged in as ${lastAcc.displayName}", android.widget.Toast.LENGTH_SHORT).show()
+            } else {
+                android.widget.Toast.makeText(context, "Sign-in error. Please select a Google account.", android.widget.Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
