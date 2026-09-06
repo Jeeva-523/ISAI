@@ -21,22 +21,35 @@ class MusicRepository(
         }
     }
 
-    suspend fun getTrending(category: String = "Tamil"): Result<List<SongItem>> = withContext(Dispatchers.IO) {
+    suspend fun getTrending(category: String = "Tamil", limit: Int = 60): Result<List<SongItem>> = withContext(Dispatchers.IO) {
         try {
-            val query = when (category.lowercase()) {
-                "tamil" -> "Latest Tamil Movie Songs 2025 2026"
-                "hindi" -> "Latest Hindi Movie Songs 2025 2026"
-                "telugu" -> "Latest Telugu Movie Songs 2025 2026"
-                "english" -> "Latest Global Pop Hits 2025 2026"
-                else -> "Latest Hit Songs 2025 2026"
+            val queries = if (category.equals("tamil", ignoreCase = true)) {
+                listOf(
+                    "Latest Tamil Movie Songs 2025 2026",
+                    "Anirudh Ravichander Tamil Hits",
+                    "A R Rahman Tamil Super Hits",
+                    "Yuvan Shankar Raja Tamil Hits",
+                    "Harris Jayaraj Tamil Melodies",
+                    "Santhosh Narayanan Tamil Hits"
+                )
+            } else {
+                listOf("Latest $category Hit Songs 2025 2026")
             }
-            val response = api.searchSongs(query = query, limit = 30)
-            val songs = response.results?.mapNotNull { it.toSongItem() } ?: emptyList()
-            val filtered = songs.filterNot { song ->
+
+            val allSongs = mutableListOf<SongItem>()
+            for (q in queries) {
+                try {
+                    val response = api.searchSongs(query = q, limit = 20)
+                    val songs = response.results?.mapNotNull { it.toSongItem() } ?: emptyList()
+                    allSongs.addAll(songs)
+                } catch (_: Exception) {}
+            }
+
+            val filtered = allSongs.filterNot { song ->
                 val title = song.title.lowercase()
                 title.contains("trending") || title.contains("jukebox") || title.contains("full album") || title.contains("non stop") || title.contains("compilation")
             }
-            Result.success(if (filtered.isNotEmpty()) filtered else songs)
+            Result.success(if (filtered.isNotEmpty()) filtered else allSongs)
         } catch (e: Exception) {
             Result.failure(e)
         }

@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -81,7 +82,7 @@ fun HomeScreen(
     val recommendedReason by viewModel.recommendedReason.collectAsState()
 
     val categories = listOf(
-        "Trending", "Tamil Songs", "Melody", "Love Songs",
+        "Most Played", "Tamil Songs", "Melody", "Love Songs",
         "Folk", "Devotional", "Gaana", "Classical", "New Releases"
     )
 
@@ -250,7 +251,7 @@ fun HomeScreen(
             item {
                 Spacer(modifier = Modifier.height(14.dp))
                 Text(
-                    text = "🔥 Trending Tamil Spotlight",
+                    text = "🔥 Most Played Spotlight",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary,
@@ -499,6 +500,49 @@ fun HomeScreen(
                     onAddToQueue = { viewModel.addToQueue(song) },
                     onPlayNext = { viewModel.playNextInQueue(song) }
                 )
+            }
+
+            // 7. Interactive Refresh Feed & Load More Songs Button
+            if (categorySongs.isNotEmpty()) {
+                item {
+                    Spacer(modifier = Modifier.height(20.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(24.dp))
+                                .background(
+                                    Brush.horizontalGradient(
+                                        listOf(DarkSurfaceVariant, DarkSurface)
+                                    )
+                                )
+                                .border(1.dp, GlassBorderSubtle, RoundedCornerShape(24.dp))
+                                .clickable { viewModel.refreshCategorySongs() }
+                                .padding(horizontal = 24.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "Refresh Feed",
+                                tint = NeonCyan,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Refresh Feed & Load More Songs ⚡",
+                                color = TextPrimary,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(20.dp))
+                }
             }
         }
     }

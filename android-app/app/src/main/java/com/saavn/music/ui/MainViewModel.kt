@@ -74,7 +74,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val currentScreen: StateFlow<AppScreen> = _currentScreen.asStateFlow()
 
     // Active Tamil Music Category
-    private val _selectedCategory = MutableStateFlow("Trending")
+    private val _selectedCategory = MutableStateFlow("Most Played")
     val selectedCategory: StateFlow<String> = _selectedCategory.asStateFlow()
 
     // Home Categorized Songs
@@ -285,6 +285,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _isLoadingHome.value = true
             try {
+                if (category == "Most Played" || category == "Trending") {
+                    _categorySongs.value = _trendingSongs.value
+                    _isLoadingHome.value = false
+                    return@launch
+                }
                 val query = when (category) {
                     "Tamil Songs" -> "Tamil all time hit songs"
                     "Melody" -> "Tamil melody hits"
@@ -305,7 +310,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 if (cleanSaavn.isNotEmpty()) {
                     _categorySongs.value = ytRepo.deduplicateSongs(cleanSaavn)
                 } else {
-                    val fallback = ytRepo.searchTamilSongs(query).getOrDefault(emptyList()).filterNot { s ->
+                    val fallback = ytRepo.searchTamilSongs(query, maxResults = 50).getOrDefault(emptyList()).filterNot { s ->
                         val t = s.title.lowercase()
                         t.contains("trending") || t.contains("jukebox") || t.contains("full album") || t.contains("non stop")
                     }
@@ -313,6 +318,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             } catch (e: Exception) {
                 // Handled
+            } finally {
+                _isLoadingHome.value = false
+            }
+        }
+    }
+
+    fun refreshCategorySongs() {
+        viewModelScope.launch {
+            _isLoadingHome.value = true
+            try {
+                if (_selectedCategory.value == "Most Played" || _selectedCategory.value == "Trending") {
+                    loadHomeData()
+                } else {
+                    selectCategory(_selectedCategory.value)
+                }
+            } catch (_: Exception) {
             } finally {
                 _isLoadingHome.value = false
             }

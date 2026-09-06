@@ -128,16 +128,16 @@ export const HomePage: React.FC<HomePageProps> = ({
             </div>
           </div>
 
-          {/* 2. 🔥 Dynamic Trending Now Section */}
+          {/* 2. 🔥 Dynamic Most Played Hits Section */}
           {heroTrending.length > 0 && (
             <section className="ytm-section" style={{ marginBottom: '36px' }}>
               <div className="ytm-section-header" style={{ marginBottom: '16px' }}>
                 <div>
                   <h2 className="ytm-section-title" style={{ fontSize: '22px', fontWeight: 800 }}>
-                    🔥 Trending Now ({timeWindow === 'today' ? 'Today' : timeWindow === 'week' ? 'This Week' : 'This Month'})
+                    🔥 Most Played Hits ({timeWindow === 'today' ? 'Today' : timeWindow === 'week' ? 'This Week' : 'This Month'})
                   </h2>
                   <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
-                    Dynamic rankings based on plays, listener growth & likes
+                    Most played chartbuster Tamil songs across all users
                   </p>
                 </div>
 
@@ -189,7 +189,7 @@ export const HomePage: React.FC<HomePageProps> = ({
               <div className="ytm-section-header" style={{ marginBottom: '16px' }}>
                 <div>
                   <h2 className="ytm-section-title" style={{ fontSize: '22px', fontWeight: 800 }}>
-                    ✨ Trending For You
+                    ✨ Recommended For You
                   </h2>
                   <p style={{ fontSize: '13px', color: 'var(--isai-lime)' }}>
                     Personalized based on your Tamil listening history
@@ -232,6 +232,29 @@ export const HomePage: React.FC<HomePageProps> = ({
                   onPlay={() => handlePlay(song)}
                 />
               ))}
+            </div>
+
+            {/* Refresh Feed & Load More Button */}
+            <div style={{ display: 'flex', justifyContent: 'center', marginTop: '36px' }}>
+              <button
+                onClick={onRetry}
+                className="ytm-mood-chip"
+                style={{
+                  padding: '12px 28px',
+                  fontSize: '14px',
+                  fontWeight: 800,
+                  background: 'var(--surface-elevated)',
+                  border: '1px solid var(--isai-lime)',
+                  color: 'var(--isai-lime)',
+                  borderRadius: '24px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+              >
+                🔄 Refresh Feed & Load More Songs ⚡
+              </button>
             </div>
           </section>
         </div>

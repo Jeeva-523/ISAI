@@ -141,13 +141,24 @@ class YouTubeMusicRepository {
         }
 
     // Category fetchers with fallback to curated songs
-    suspend fun getTrendingTamil(): List<YouTubeSong> {
-        val songs = searchTamilSongs("Latest Tamil Movie Songs 2025 2026").getOrElse { getCuratedTamilSongs("Trending") }
-        val filtered = songs.filterNot { song ->
+    suspend fun getTrendingTamil(maxResults: Int = 60): List<YouTubeSong> {
+        val queries = listOf(
+            "Latest Tamil Movie Songs 2025 2026",
+            "Anirudh Ravichander Tamil Hits",
+            "A R Rahman Tamil Super Hits",
+            "Yuvan Shankar Raja Tamil Hits",
+            "Harris Jayaraj Tamil Melodies"
+        )
+        val combined = mutableListOf<YouTubeSong>()
+        for (q in queries) {
+            val songs = searchTamilSongs(q, 15).getOrDefault(emptyList())
+            combined.addAll(songs)
+        }
+        val filtered = combined.filterNot { song ->
             val title = song.title.lowercase()
             title.contains("trending") || title.contains("jukebox") || title.contains("full album") || title.contains("non stop") || title.contains("compilation")
         }
-        return if (filtered.isNotEmpty()) filtered else songs
+        return deduplicateSongs(if (filtered.isNotEmpty()) filtered else combined)
     }
 
     suspend fun getTamilMelody(): List<YouTubeSong> =
