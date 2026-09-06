@@ -80,6 +80,7 @@ fun HomeScreen(
     val isPlaying by viewModel.ytPlayerController.isPlaying.collectAsState()
     val personalizedRecs by viewModel.personalizedRecommendations.collectAsState()
     val recommendedReason by viewModel.recommendedReason.collectAsState()
+    val latestReleases by viewModel.latestReleases.collectAsState()
 
     val categories = listOf(
         "Most Played", "Tamil Songs", "Melody", "Love Songs",
@@ -398,9 +399,9 @@ fun HomeScreen(
             }
         }
 
-        // 4. Quick Hits Horizontal Cards
-        if (trendingSongs.size > 4) {
-            val quickPicks = trendingSongs.drop(4).take(8)
+        // 4. Last 30 Days Popular New Releases
+        val displayNewReleases = if (latestReleases.isNotEmpty()) latestReleases else trendingSongs.drop(4).take(10)
+        if (displayNewReleases.isNotEmpty()) {
             item {
                 Spacer(modifier = Modifier.height(24.dp))
                 Row(
@@ -410,17 +411,25 @@ fun HomeScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    Column {
+                        Text(
+                            text = "⚡ Popular New Releases",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary
+                        )
+                        Text(
+                            text = "Released in the last 30 days",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = NeonCyan
+                        )
+                    }
                     Text(
-                        text = "⚡ Popular Tamil Songs",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = TextPrimary
-                    )
-                    Text(
-                        text = "ISAI MUSIC HD",
+                        text = "LAST 30 DAYS",
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
-                        color = NeonCyan
+                        color = NeonPurple
                     )
                 }
                 Spacer(modifier = Modifier.height(10.dp))
@@ -429,11 +438,11 @@ fun HomeScreen(
                     contentPadding = PaddingValues(horizontal = 20.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    items(quickPicks.size) { index ->
-                        val song = quickPicks[index]
+                    items(displayNewReleases.size) { index ->
+                        val song = displayNewReleases[index]
                         YouTubeQuickHitCard(
                             song = song,
-                            onClick = { viewModel.playSong(song, trendingSongs) }
+                            onClick = { viewModel.playSong(song, displayNewReleases) }
                         )
                     }
                 }

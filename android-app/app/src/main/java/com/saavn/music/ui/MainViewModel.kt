@@ -87,6 +87,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _categorySongs = MutableStateFlow<List<YouTubeSong>>(emptyList())
     val categorySongs: StateFlow<List<YouTubeSong>> = _categorySongs.asStateFlow()
 
+    private val _latestReleases = MutableStateFlow<List<YouTubeSong>>(emptyList())
+    val latestReleases: StateFlow<List<YouTubeSong>> = _latestReleases.asStateFlow()
+
     private val _isLoadingHome = MutableStateFlow(false)
     val isLoadingHome: StateFlow<Boolean> = _isLoadingHome.asStateFlow()
 
@@ -264,6 +267,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 if (artists.isNotEmpty()) {
                     _popularArtists.value = artists
                 }
+
+                // Load Popular New Releases (Released in last 30 days)
+                try {
+                    val newSaavn = musicRepo.search("Latest Tamil Movie Songs 2025 2026 official single").getOrNull()?.map { it.toYouTubeSong() } ?: emptyList()
+                    val cleanNew = newSaavn.filterNot { s ->
+                        val t = s.title.lowercase()
+                        t.contains("jukebox") || t.contains("full album") || t.contains("non stop") || t.contains("all time hits")
+                    }
+                    if (cleanNew.isNotEmpty()) {
+                        _latestReleases.value = ytRepo.deduplicateSongs(cleanNew).take(12)
+                    } else {
+                        val fallbackNew = ytRepo.getNewReleases()
+                        _latestReleases.value = ytRepo.deduplicateSongs(fallbackNew).take(12)
+                    }
+                } catch (_: Exception) {}
             } catch (e: Exception) {
                 try {
                     val trending = ytRepo.getTrendingTamil().filterNot { s ->
