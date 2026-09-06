@@ -245,15 +245,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     t.contains("trending") || t.contains("jukebox") || t.contains("full album") || t.contains("non stop")
                 }
                 if (cleanSaavn.isNotEmpty()) {
-                    _trendingSongs.value = cleanSaavn
-                    _categorySongs.value = cleanSaavn
+                    val deduped = ytRepo.deduplicateSongs(cleanSaavn)
+                    _trendingSongs.value = deduped
+                    _categorySongs.value = deduped
                 } else {
                     val trending = ytRepo.getTrendingTamil().filterNot { s ->
                         val t = s.title.lowercase()
                         t.contains("trending") || t.contains("jukebox") || t.contains("full album") || t.contains("non stop")
                     }
-                    _trendingSongs.value = trending
-                    _categorySongs.value = trending
+                    val deduped = ytRepo.deduplicateSongs(trending)
+                    _trendingSongs.value = deduped
+                    _categorySongs.value = deduped
                 }
 
                 // Compute / Populate Popular Singers & Artists
@@ -268,8 +270,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         val t = s.title.lowercase()
                         t.contains("trending") || t.contains("jukebox") || t.contains("full album") || t.contains("non stop")
                     }
-                    _trendingSongs.value = trending
-                    _categorySongs.value = trending
+                    val deduped = ytRepo.deduplicateSongs(trending)
+                    _trendingSongs.value = deduped
+                    _categorySongs.value = deduped
                 } catch (_: Exception) {}
             } finally {
                 _isLoadingHome.value = false
@@ -300,13 +303,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     t.contains("trending") || t.contains("jukebox") || t.contains("full album") || t.contains("non stop")
                 }
                 if (cleanSaavn.isNotEmpty()) {
-                    _categorySongs.value = cleanSaavn
+                    _categorySongs.value = ytRepo.deduplicateSongs(cleanSaavn)
                 } else {
                     val fallback = ytRepo.searchTamilSongs(query).getOrDefault(emptyList()).filterNot { s ->
                         val t = s.title.lowercase()
                         t.contains("trending") || t.contains("jukebox") || t.contains("full album") || t.contains("non stop")
                     }
-                    _categorySongs.value = fallback
+                    _categorySongs.value = ytRepo.deduplicateSongs(fallback)
                 }
             } catch (e: Exception) {
                 // Handled
@@ -360,13 +363,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
                 if (saavnSongs.isNotEmpty()) {
                     android.util.Log.i("ISAI_PLAYER", "[MainViewModel] Direct Audio search success: ${saavnSongs.size} songs found")
-                    _searchResults.value = saavnSongs
+                    _searchResults.value = ytRepo.deduplicateSongs(saavnSongs)
                     _searchError.value = null
                 } else {
                     // Fallback to YouTube
                     val result = ytRepo.searchTamilSongs(queryOverride)
                     if (result.isSuccess) {
-                        _searchResults.value = result.getOrDefault(emptyList())
+                        _searchResults.value = ytRepo.deduplicateSongs(result.getOrDefault(emptyList()))
                         _searchError.value = null
                     } else {
                         _searchResults.value = emptyList()

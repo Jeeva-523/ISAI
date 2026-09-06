@@ -303,32 +303,61 @@ class YouTubeMusicRepository {
     fun deduplicateSongs(songs: List<YouTubeSong>): List<YouTubeSong> {
         if (songs.isEmpty()) return emptyList()
         val seenIds = mutableSetOf<String>()
-        val seenKeys = mutableSetOf<String>()
+        val seenThumbKeys = mutableSetOf<String>()
+        val seenPrimaryKeys = mutableSetOf<String>()
+        val seenFullKeys = mutableSetOf<String>()
         val result = mutableListOf<YouTubeSong>()
 
-        for (song in songs) {
-            if (song.videoId.isBlank() || song.title.isBlank()) continue
-            if (seenIds.contains(song.videoId)) continue
+        val noiseRegex = Regex("\\b(official|video|lyric|lyrics|full|audio|hd|4k|song|songs|trending|version|remix|bgm|theme|track|singles|teaser|trailer|lyrical|visualizer|jukebox|compilation|all time hits|tamil|telugu|hindi)\\b", RegexOption.IGNORE_CASE)
 
-            val normTitle = song.title
-                .lowercase()
+        for (song in songs) {
+            val vid = song.videoId.trim()
+            if (vid.isBlank() || song.title.isBlank()) continue
+            if (vid.isNotEmpty() && seenIds.contains(vid)) continue
+
+            val thumbKey = getThumbnailKey(song.thumbnailUrl, vid)
+            if (thumbKey.isNotEmpty() && seenThumbKeys.contains(thumbKey)) continue
+
+            val rawTitle = cleanHtmlTitle(song.title)
+            val firstSegment = rawTitle.split(Regex("[|\\-:~–—]")).firstOrNull() ?: rawTitle
+
+            val primaryTitle = firstSegment
                 .replace(Regex("\\(.*?\\)|\\[.*?\\]"), "")
-                .replace(Regex("official video|lyric video|full video|trending version|hd song|audio|lyric|video"), "")
-                .replace(Regex("[^a-z0-9]"), "")
+                .replace(noiseRegex, "")
+                .replace(Regex("[^a-zA-Z0-9]"), "")
+                .lowercase()
                 .trim()
 
-            val artistKey = song.channelTitle.lowercase().replace(Regex("[^a-z0-9]"), "").take(12)
-            val normKey = "${normTitle}_$artistKey"
+            val fullTitle = rawTitle
+                .replace(Regex("\\(.*?\\)|\\[.*?\\]"), "")
+                .replace(noiseRegex, "")
+                .replace(Regex("[^a-zA-Z0-9]"), "")
+                .lowercase()
+                .trim()
 
-            if (normTitle.length > 2 && seenKeys.contains(normKey)) {
+            if (primaryTitle.length >= 3 && seenPrimaryKeys.contains(primaryTitle)) {
                 continue
             }
 
-            seenIds.add(song.videoId)
-            if (normTitle.length > 2) seenKeys.add(normKey)
+            if (fullTitle.length >= 4 && seenFullKeys.contains(fullTitle)) {
+                continue
+            }
+
+            if (vid.isNotEmpty()) seenIds.add(vid)
+            if (thumbKey.isNotEmpty()) seenThumbKeys.add(thumbKey)
+            if (primaryTitle.length >= 3) seenPrimaryKeys.add(primaryTitle)
+            if (fullTitle.length >= 4) seenFullKeys.add(fullTitle)
+
             result.add(song)
         }
         return result
+    }
+
+    private fun getThumbnailKey(url: String, videoId: String): String {
+        if (videoId.length == 11) return videoId
+        if (url.isBlank()) return ""
+        val match = Regex("/vi/([a-zA-Z0-9_-]{11})/").find(url)
+        return match?.groupValues?.get(1) ?: url.trim()
     }
 
     private fun cleanHtmlTitle(raw: String): String {

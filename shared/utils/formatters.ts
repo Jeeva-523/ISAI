@@ -70,36 +70,70 @@ export function formatViewCount(rawCount?: string | number): string {
 }
 
 /**
- * Deduplicate songs by videoId and normalized title + artist
+ * Extract YouTube video ID from thumbnail URL if present
+ */
+function getThumbnailKey(url?: string, videoId?: string): string {
+  if (videoId && videoId.length === 11) return videoId
+  if (!url) return ''
+  const match = url.match(/\/vi\/([a-zA-Z0-9_-]{11})\//)
+  if (match && match[1]) return match[1]
+  return url.trim()
+}
+
+/**
+ * Deduplicate songs by videoId, thumbnail URL key, primary title key, and cleaned full title key
  */
 export function deduplicateSongs(songs: Song[]): Song[] {
   if (!Array.isArray(songs) || songs.length === 0) return []
   const seenIds = new Set<string>()
-  const seenKeys = new Set<string>()
+  const seenThumbKeys = new Set<string>()
+  const seenPrimaryKeys = new Set<string>()
+  const seenFullKeys = new Set<string>()
   const result: Song[] = []
+
+  const noiseRegex = /\b(official|video|lyric|lyrics|full|audio|hd|4k|song|songs|trending|version|remix|bgm|theme|track|singles|teaser|trailer|lyrical|visualizer|jukebox|compilation|all time hits|tamil|telugu|hindi)\b/gi
 
   for (const song of songs) {
     if (!song || !song.title) continue
-    if (song.videoId && seenIds.has(song.videoId)) continue
 
-    const normTitle = song.title
-      .toLowerCase()
+    const vid = song.videoId ? song.videoId.trim() : ''
+    if (vid && seenIds.has(vid)) continue
+
+    const thumbKey = getThumbnailKey(song.thumbnailUrl, vid)
+    if (thumbKey && seenThumbKeys.has(thumbKey)) continue
+
+    const rawTitle = cleanHtmlTitle(song.title)
+
+    // Primary Title Key (first segment before separators like |, -, :, ~, /)
+    const firstSegment = rawTitle.split(/[|\-:~–—]/)[0] || rawTitle
+    const primaryTitle = firstSegment
       .replace(/\(.*?\)|\[.*?\]/g, '')
-      .replace(/official video|lyric video|full video|trending version|hd song|audio|lyric|video/gi, '')
-      .replace(/[^a-z0-9]/g, '')
+      .replace(noiseRegex, '')
+      .replace(/[^a-zA-Z0-9]/g, '')
+      .toLowerCase()
       .trim()
 
-    const artistKey = song.channelTitle
-      ? song.channelTitle.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 12)
-      : ''
-    const normKey = `${normTitle}_${artistKey}`
+    // Full Title Key
+    const fullTitle = rawTitle
+      .replace(/\(.*?\)|\[.*?\]/g, '')
+      .replace(noiseRegex, '')
+      .replace(/[^a-zA-Z0-9]/g, '')
+      .toLowerCase()
+      .trim()
 
-    if (normTitle.length > 2 && seenKeys.has(normKey)) {
+    if (primaryTitle.length >= 3 && seenPrimaryKeys.has(primaryTitle)) {
       continue
     }
 
-    if (song.videoId) seenIds.add(song.videoId)
-    if (normTitle.length > 2) seenKeys.add(normKey)
+    if (fullTitle.length >= 4 && seenFullKeys.has(fullTitle)) {
+      continue
+    }
+
+    if (vid) seenIds.add(vid)
+    if (thumbKey) seenThumbKeys.add(thumbKey)
+    if (primaryTitle.length >= 3) seenPrimaryKeys.add(primaryTitle)
+    if (fullTitle.length >= 4) seenFullKeys.add(fullTitle)
+
     result.push(song)
   }
 
