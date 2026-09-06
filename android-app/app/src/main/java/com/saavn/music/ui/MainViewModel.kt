@@ -322,8 +322,30 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _searchError.value = null
             delay(350)
             try {
+                val clean = newQuery.trim().lowercase()
+
+                // Smart Category / Keyword Router
+                if (clean.contains("trending") || clean.startsWith("trend") || clean.contains("charts")) {
+                    _searchResults.value = _trendingSongs.value
+                    _searchError.value = null
+                    return@launch
+                }
+
+                val queryOverride = when {
+                    clean.contains("melody") || clean.contains("melodies") -> "Tamil feel good melody hit songs"
+                    clean.contains("romantic") || clean.contains("romance") || clean.contains("kadhal") -> "Tamil love romantic songs"
+                    clean.contains("sad") || clean.contains("emotional") -> "Tamil sad emotional songs"
+                    clean.contains("party") || clean.contains("kuthu") -> "Tamil party kuthu mass songs"
+                    clean.contains("workout") || clean.contains("energize") -> "Tamil gym workout bgm beats"
+                    clean.contains("relax") || clean.contains("calm") -> "Tamil relaxing acoustic melody songs"
+                    clean.contains("folk") -> "Tamil folk village songs"
+                    clean.contains("devotional") -> "Tamil god devotional songs"
+                    clean.contains("gaana") -> "Tamil gaana hit songs"
+                    else -> newQuery
+                }
+
                 // 1. Direct Audio Search (JioSaavn / NepoTune)
-                val saavnResult = musicRepo.search(newQuery)
+                val saavnResult = musicRepo.search(queryOverride)
                 val saavnSongs = saavnResult.getOrNull()?.map { it.toYouTubeSong() } ?: emptyList()
 
                 if (saavnSongs.isNotEmpty()) {
@@ -332,7 +354,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     _searchError.value = null
                 } else {
                     // Fallback to YouTube
-                    val result = ytRepo.searchTamilSongs(newQuery)
+                    val result = ytRepo.searchTamilSongs(queryOverride)
                     if (result.isSuccess) {
                         _searchResults.value = result.getOrDefault(emptyList())
                         _searchError.value = null

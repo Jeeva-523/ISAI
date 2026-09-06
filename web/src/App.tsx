@@ -200,6 +200,42 @@ export function App() {
     }
   }
 
+  const SPECIAL_KEYWORDS: Record<string, { queryOverride?: string; useTrending?: boolean }> = {
+    'trending': { useTrending: true },
+    'trend': { useTrending: true },
+    'trendin': { useTrending: true },
+    'top trending': { useTrending: true },
+    'charts': { useTrending: true },
+    'top charts': { useTrending: true },
+    'melody': { queryOverride: 'Tamil feel good melody hit songs' },
+    'melodies': { queryOverride: 'Tamil feel good melody hit songs' },
+    'romantic': { queryOverride: 'Tamil love romantic hit songs' },
+    'romance': { queryOverride: 'Tamil love romantic hit songs' },
+    'kadhal': { queryOverride: 'Tamil love romantic hit songs' },
+    'sad': { queryOverride: 'Tamil sad emotional songs' },
+    'kuthu': { queryOverride: 'Tamil party kuthu mass songs' },
+    'party': { queryOverride: 'Tamil party kuthu mass songs' },
+    'workout': { queryOverride: 'Tamil energetic gym workout bgm beats' },
+    'energize': { queryOverride: 'Tamil energetic gym workout bgm beats' },
+    'relax': { queryOverride: 'Tamil relaxing acoustic melody songs' },
+    'commute': { queryOverride: 'Tamil travel songs' },
+    'folk': { queryOverride: 'Tamil folk village songs' },
+    'devotional': { queryOverride: 'Tamil god devotional songs' },
+    'gaana': { queryOverride: 'Tamil gaana hit songs' }
+  }
+
+  const getSpecialKeywordMatch = (q: string) => {
+    const clean = q.trim().toLowerCase()
+    if (!clean) return null
+
+    for (const [key, config] of Object.entries(SPECIAL_KEYWORDS)) {
+      if (clean === key || key.startsWith(clean) || clean.startsWith(key)) {
+        return config
+      }
+    }
+    return null
+  }
+
   const handleSearchChange = (query: string) => {
     setSearchQuery(query)
     if (searchTimerRef.current) {
@@ -216,11 +252,18 @@ export function App() {
     setIsSearching(true)
     setSearchError(null)
 
-    // Debounce 400ms to preserve quota
+    // Debounce 350ms to preserve quota & responsiveness
     searchTimerRef.current = window.setTimeout(async () => {
       try {
-        const results = await musicApi.searchSongs(query)
-        setSearchResults(results)
+        const specialMatch = getSpecialKeywordMatch(query)
+
+        if (specialMatch?.useTrending) {
+          setSearchResults(trendingSongs)
+        } else {
+          const apiQuery = specialMatch?.queryOverride || query
+          const results = await musicApi.searchSongs(apiQuery)
+          setSearchResults(results)
+        }
         setSearchError(null)
       } catch (error: any) {
         console.error('Search failed', error)
@@ -229,7 +272,7 @@ export function App() {
       } finally {
         setIsSearching(false)
       }
-    }, 400)
+    }, 350)
   }
 
   const handleCategorySelect = (query: string) => {
