@@ -8,7 +8,7 @@ import kotlinx.coroutines.tasks.await
 
 class FirestoreMusicService private constructor(context: Context) {
     private val db: FirebaseFirestore = FirebaseFirestore.getInstance()
-    private val ytRepo = YouTubeMusicRepository.getInstance(context)
+    private val ytRepo = YouTubeMusicRepository()
 
     companion object {
         @Volatile
