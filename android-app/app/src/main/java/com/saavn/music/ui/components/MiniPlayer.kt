@@ -49,6 +49,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.saavn.music.ui.theme.*
 import coil.compose.AsyncImage
 import com.saavn.music.ui.MainViewModel
 import com.saavn.music.ui.theme.DarkBackground
@@ -107,7 +108,7 @@ fun MiniPlayer(
                     Brush.verticalGradient(
                         colors = listOf(
                             DarkSurfaceGlass,
-                            Color(0xFF0F1322)
+                            DarkSecondary
                         )
                     )
                 )
@@ -283,7 +284,7 @@ fun MiniPlayer(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(2.5.dp)
-                        .background(Color(0xFF181C2E))
+                        .background(DarkSurfaceElevated)
                 ) {
                     Box(
                         modifier = Modifier

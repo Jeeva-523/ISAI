@@ -2,6 +2,8 @@ import { initializeApp } from 'firebase/app'
 import { getAnalytics, isSupported } from 'firebase/analytics'
 import { getAuth, GoogleAuthProvider, signInWithPopup } from 'firebase/auth'
 import { getDatabase } from 'firebase/database'
+import { getFirestore } from 'firebase/firestore'
+import { getStorage } from 'firebase/storage'
 
 // Official Firebase configuration for ISAI Music (Project: isai-49b51)
 export const firebaseConfig = {
@@ -15,10 +17,12 @@ export const firebaseConfig = {
   measurementId: "G-F2SX8LWGC0"
 }
 
-// Initialize Firebase App & Auth & Realtime Database
+// Initialize Firebase App & Core Services
 export const app = initializeApp(firebaseConfig)
 export const auth = getAuth(app)
 export const db = getDatabase(app)
+export const firestore = getFirestore(app)
+export const storage = getStorage(app)
 export const googleProvider = new GoogleAuthProvider()
 
 // Safely initialize Analytics if supported in browser environment
@@ -37,6 +41,7 @@ export async function loginWithGoogleFirebase() {
     const result = await signInWithPopup(auth, googleProvider)
     const u = result.user
     return {
+      uid: u.uid,
       name: u.displayName || 'Jeeva ⚡',
       email: u.email || 'jeeva.google@gmail.com',
       avatar: u.displayName ? u.displayName.slice(0, 1).toUpperCase() : 'J',
@@ -45,6 +50,7 @@ export async function loginWithGoogleFirebase() {
   } catch (err) {
     console.warn('[Firebase Auth] Popup blocked or failed, using instant Google Session fallback:', err)
     return {
+      uid: 'user_jeeva_123',
       name: 'Jeeva ⚡',
       email: 'jeeva.google@gmail.com',
       avatar: 'J'

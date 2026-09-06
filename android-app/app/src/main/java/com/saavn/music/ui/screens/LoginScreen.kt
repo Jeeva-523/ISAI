@@ -19,6 +19,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.saavn.music.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -35,13 +36,13 @@ fun LoginScreen(
 
     val bgGradient = Brush.verticalGradient(
         colors = listOf(
-            Color(0xFF0F0F1A),
-            Color(0xFF030303)
+            DarkSecondary,
+            DarkBackground
         )
     )
 
-    val neonCyan = Color(0xFF00F0FF)
-    val neonPurple = Color(0xFF7000FF)
+    val neonCyan = IsaiLime
+    val neonPurple = IsaiViolet
 
     Scaffold(
         topBar = {
@@ -50,13 +51,13 @@ fun LoginScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             text = "▶ ",
-                            color = Color.Red,
+                            color = IsaiLime,
                             fontSize = 20.sp,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
                             text = "ISAI Music",
-                            color = Color.White,
+                            color = TextPrimary,
                             fontSize = 20.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -67,16 +68,16 @@ fun LoginScreen(
                         Icon(
                             imageVector = Icons.Default.ArrowBack,
                             contentDescription = "Back",
-                            tint = Color.White
+                            tint = TextPrimary
                         )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color(0xFF030303)
+                    containerColor = DarkBackground
                 )
             )
         },
-        containerColor = Color(0xFF030303)
+        containerColor = DarkBackground
     ) { paddingValues ->
         Box(
             modifier = Modifier
@@ -92,9 +93,9 @@ fun LoginScreen(
                     .wrapContentHeight(),
                 shape = RoundedCornerShape(24.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = Color(0xFF16161F)
+                    containerColor = DarkSurface
                 ),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF2A2A3A))
+                border = androidx.compose.foundation.BorderStroke(1.dp, DarkBorder)
             ) {
                 Column(
                     modifier = Modifier
@@ -109,7 +110,7 @@ fun LoginScreen(
                                 .size(80.dp)
                                 .clip(CircleShape)
                                 .background(
-                                    Brush.linearGradient(listOf(neonCyan, neonPurple))
+                                    Brush.linearGradient(colors = listOf(neonCyan, neonPurple))
                                 ),
                             contentAlignment = Alignment.Center
                         ) {

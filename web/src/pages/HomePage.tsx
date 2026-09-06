@@ -1,9 +1,11 @@
-import React, { useRef } from 'react'
+import React, { useRef, useState } from 'react'
 import type { Song } from '@shared/models/song'
 import { deduplicateSongs } from '@shared/utils/formatters'
 import { SongCard } from '../components/SongCard'
 import { LoadingSpinner } from '../components/LoadingSpinner'
 import { ErrorBanner } from '../components/ErrorBanner'
+import { trendingService, TrendingTimeWindow } from '../services/TrendingService'
+import { analyticsService } from '../services/AnalyticsService'
 
 interface HomePageProps {
   trendingSongs: Song[]
@@ -17,17 +19,14 @@ interface HomePageProps {
 }
 
 const YTM_MOOD_PILLS = [
-  { id: 'podcasts', label: 'Podcasts', query: 'Tamil podcasts' },
   { id: 'romance', label: 'Romance', query: 'Tamil love romantic songs' },
   { id: 'feelgood', label: 'Feel good', query: 'Tamil feel good melody hits' },
   { id: 'party', label: 'Party', query: 'Tamil party kuthu hits' },
   { id: 'relax', label: 'Relax', query: 'Tamil relaxing acoustic melody' },
   { id: 'commute', label: 'Commute', query: 'Tamil travel melody hits' },
   { id: 'sad', label: 'Sad', query: 'Tamil sad emotional songs' },
-  { id: 'sleep', label: 'Sleep', query: 'Tamil sleep instrumental piano' },
   { id: 'energize', label: 'Energize', query: 'Tamil energetic mass bgm' },
-  { id: 'workout', label: 'Workout', query: 'Tamil gym workout beats' },
-  { id: 'focus', label: 'Focus', query: 'Tamil lo-fi study beats' }
+  { id: 'workout', label: 'Workout', query: 'Tamil gym workout beats' }
 ]
 
 export const HomePage: React.FC<HomePageProps> = ({
@@ -40,7 +39,7 @@ export const HomePage: React.FC<HomePageProps> = ({
   onToggleFavorite,
   onPlaySong
 }) => {
-  const videosRowRef = useRef<HTMLDivElement | null>(null)
+  const [timeWindow, setTimeWindow] = useState<TrendingTimeWindow>('today')
   const listenAgainRef = useRef<HTMLDivElement | null>(null)
   const trendingRowRef = useRef<HTMLDivElement | null>(null)
 
@@ -51,194 +50,191 @@ export const HomePage: React.FC<HomePageProps> = ({
     }
   }
 
+  const handlePlay = (song: Song) => {
+    analyticsService.trackEvent(song.videoId, song.title, song.channelTitle, 'play')
+    if (onPlaySong) onPlaySong(song)
+  }
+
   const deduplicated = deduplicateSongs(trendingSongs)
-  const musicVideos = deduplicated.slice(0, 10)
-  const listenAgain = deduplicated.slice(10, 20)
-  const trendingGrid = deduplicated.slice(20).length > 0 ? deduplicated.slice(20) : deduplicated.slice(0, 20)
+  const rankedTrending = trendingService.rankTrendingSongs(deduplicated, timeWindow)
+
+  const heroTrending = rankedTrending.slice(0, 8)
+  const listenAgain = rankedTrending.slice(8, 16)
+  const trendingGrid = rankedTrending.slice(16).length > 0 ? rankedTrending.slice(16) : rankedTrending.slice(0, 20)
 
   const getDynamicGreeting = () => {
     const hour = new Date().getHours()
-    if (hour < 12) return 'Good Morning 👋'
-    if (hour < 17) return 'Good Afternoon 👋'
-    return 'Good Evening 👋'
+    if (hour >= 5 && hour < 12) return 'Good Morning'
+    if (hour >= 12 && hour < 17) return 'Good Afternoon'
+    if (hour >= 17 && hour < 22) return 'Good Evening'
+    return 'Night Vibes'
   }
 
   return (
-    <div className="ytm-home-container">
-      {/* Dynamic Greeting & Tagline Header */}
-      <div style={{ padding: '8px 4px 16px 4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <h1 style={{ fontSize: '24px', fontWeight: 800, color: '#FFFFFF', margin: 0 }}>
-            {getDynamicGreeting()}
-          </h1>
-          <p style={{ fontSize: '13px', color: '#C8FF00', fontWeight: 600, margin: '4px 0 0 0' }}>
-            Un Isai. Un Feel. 🎧
-          </p>
+    <div style={{ maxWidth: '1400px', margin: '0 auto', paddingBottom: '60px' }}>
+      {/* 1. YTM Top Mood Filter Pills */}
+      <div className="ytm-mood-bar-container" style={{ marginBottom: '24px' }}>
+        <div className="ytm-mood-bar">
+          {YTM_MOOD_PILLS.map((pill) => (
+            <button
+              key={pill.id}
+              className="ytm-mood-chip"
+              onClick={() => onSelectCategory(pill.query)}
+            >
+              {pill.label}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* 1. YouTube Music Mood Pills Horizontal Scroll Bar */}
-      <div className="ytm-mood-pills-row">
-        {YTM_MOOD_PILLS.map((pill) => (
-          <button
-            key={pill.id}
-            className="ytm-mood-pill"
-            onClick={() => onSelectCategory(pill.query)}
-          >
-            {pill.label}
-          </button>
-        ))}
-      </div>
-
       {isLoading ? (
-        <LoadingSpinner message="Discovering Tamil music..." />
+        <LoadingSpinner message="Fetching ISAI Trending & For You Recommendations..." />
       ) : error ? (
-        <ErrorBanner message={error} onRetry={onRetry} />
+        <ErrorBanner title="Failed to Load Home Content" message={error} onRetry={onRetry} />
       ) : (
-        <>
-          {/* 2. Section 1: "Music videos for you" (Matching User Screenshot 16:9 Cards) */}
-          {musicVideos.length > 0 && (
-            <section className="ytm-section">
-              <div className="ytm-section-header">
-                <h2 className="ytm-section-title">Music videos for you</h2>
-
-                <div className="ytm-section-actions">
-                  <button
-                    className="ytm-btn-pill-action"
-                    onClick={() => onPlaySong?.(musicVideos[0])}
-                  >
-                    Play all
-                  </button>
-                  <button
-                    className="ytm-btn-arrow-nav"
-                    onClick={() => scrollRow(videosRowRef, 'left')}
-                    title="Previous"
-                  >
-                    ‹
-                  </button>
-                  <button
-                    className="ytm-btn-arrow-nav"
-                    onClick={() => scrollRow(videosRowRef, 'right')}
-                    title="Next"
-                  >
-                    ›
-                  </button>
-                </div>
-              </div>
-
-              <div className="ytm-landscape-scroll-row" ref={videosRowRef}>
-                {musicVideos.map((song) => (
-                  <div key={song.videoId} className="ytm-landscape-item">
-                    <SongCard
-                      song={song}
-                      variant="landscape"
-                      isFavorite={isFavorite(song.videoId)}
-                      onToggleFavorite={onToggleFavorite}
-                      onPlay={onPlaySong}
-                    />
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
-
-          {/* 3. Section 2: "JEEVA ⚡ Listen again" (User Avatar Header from Screenshot) */}
-          {listenAgain.length > 0 && (
-            <section className="ytm-section">
-              <div className="ytm-user-section-tag">
-                <div className="ytm-user-avatar-small">J</div>
-                <span className="ytm-user-name">JEEVA ⚡</span>
-              </div>
-
-              <div className="ytm-section-header">
-                <h2 className="ytm-section-title">Listen again</h2>
-
-                <div className="ytm-section-actions">
-                  <button
-                    className="ytm-btn-pill-action"
-                    onClick={() => onSelectCategory('Latest Tamil Movie Songs 2025 2026')}
-                  >
-                    More
-                  </button>
-                  <button
-                    className="ytm-btn-arrow-nav"
-                    onClick={() => scrollRow(listenAgainRef, 'left')}
-                    title="Previous"
-                  >
-                    ‹
-                  </button>
-                  <button
-                    className="ytm-btn-arrow-nav"
-                    onClick={() => scrollRow(listenAgainRef, 'right')}
-                    title="Next"
-                  >
-                    ›
-                  </button>
-                </div>
-              </div>
-
-              <div className="ytm-landscape-scroll-row" ref={listenAgainRef}>
-                {listenAgain.map((song) => (
-                  <div key={`la_${song.videoId}`} className="ytm-landscape-item">
-                    <SongCard
-                      song={song}
-                      variant="landscape"
-                      isFavorite={isFavorite(song.videoId)}
-                      onToggleFavorite={onToggleFavorite}
-                      onPlay={onPlaySong}
-                    />
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
-
-          {/* 4. Section 3: "🔥 Trending Tamil Hits" */}
-          <section className="ytm-section">
-            <div className="ytm-section-header">
-              <div>
-                <h2 className="ytm-section-title">🔥 Trending Tamil Hits</h2>
-                <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Top chartbusters in 320 KBPS HD audio</p>
-              </div>
-
-              <div className="ytm-section-actions">
-                <button
-                  className="ytm-btn-pill-action"
-                  onClick={() => onPlaySong?.(trendingGrid[0])}
-                >
-                  Play all
-                </button>
-                <button
-                  className="ytm-btn-arrow-nav"
-                  onClick={() => scrollRow(trendingRowRef, 'left')}
-                  title="Previous"
-                >
-                  ‹
-                </button>
-                <button
-                  className="ytm-btn-arrow-nav"
-                  onClick={() => scrollRow(trendingRowRef, 'right')}
-                  title="Next"
-                >
-                  ›
-                </button>
-              </div>
+        <div>
+          {/* Greeting Banner */}
+          <div style={{ marginBottom: '28px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div>
+              <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--isai-lime)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                Un Isai. Un Feel.
+              </span>
+              <h1 style={{ fontSize: '32px', fontWeight: 900, marginTop: '2px', color: 'var(--text-primary)' }}>
+                {getDynamicGreeting()}, <span style={{ color: 'var(--isai-lime)' }}>JEEVA ⚡</span>
+              </h1>
             </div>
 
-            <div className="song-grid-portrait" ref={trendingRowRef}>
+            {/* Time Window Selector Pills */}
+            <div style={{ display: 'flex', gap: '8px', background: 'var(--surface-card)', padding: '6px', borderRadius: '20px', border: '1px solid var(--border-subtle)' }}>
+              {(['today', 'week', 'month'] as TrendingTimeWindow[]).map((w) => (
+                <button
+                  key={w}
+                  onClick={() => setTimeWindow(w)}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: '14px',
+                    border: 'none',
+                    background: timeWindow === w ? 'var(--isai-lime)' : 'transparent',
+                    color: timeWindow === w ? '#000' : 'var(--text-secondary)',
+                    fontWeight: 700,
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                    textTransform: 'capitalize'
+                  }}
+                >
+                  {w === 'today' ? '🔥 Today' : w === 'week' ? '📅 This Week' : '🏆 This Month'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 2. 🔥 Dynamic Trending Now Section */}
+          {heroTrending.length > 0 && (
+            <section className="ytm-section" style={{ marginBottom: '36px' }}>
+              <div className="ytm-section-header" style={{ marginBottom: '16px' }}>
+                <div>
+                  <h2 className="ytm-section-title" style={{ fontSize: '22px', fontWeight: 800 }}>
+                    🔥 Trending Now ({timeWindow === 'today' ? 'Today' : timeWindow === 'week' ? 'This Week' : 'This Month'})
+                  </h2>
+                  <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+                    Dynamic rankings based on plays, listener growth & likes
+                  </p>
+                </div>
+
+                <div className="ytm-section-actions">
+                  <button className="ytm-btn-arrow-nav" onClick={() => scrollRow(trendingRowRef, 'left')}>‹</button>
+                  <button className="ytm-btn-arrow-nav" onClick={() => scrollRow(trendingRowRef, 'right')}>›</button>
+                </div>
+              </div>
+
+              <div className="ytm-horizontal-row" ref={trendingRowRef}>
+                {heroTrending.map((song, index) => (
+                  <div key={song.videoId} style={{ position: 'relative', flexShrink: 0 }}>
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: '10px',
+                        left: '10px',
+                        zIndex: 2,
+                        background: 'rgba(0,0,0,0.85)',
+                        border: '1px solid var(--isai-lime)',
+                        color: 'var(--isai-lime)',
+                        fontWeight: 900,
+                        fontSize: '13px',
+                        width: '28px',
+                        height: '28px',
+                        borderRadius: '50%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}
+                    >
+                      #{index + 1}
+                    </div>
+                    <SongCard
+                      song={song}
+                      isFavorite={isFavorite(song.videoId)}
+                      onToggleFavorite={onToggleFavorite}
+                      onPlay={() => handlePlay(song)}
+                    />
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* 3. ✨ Recommended For You */}
+          {listenAgain.length > 0 && (
+            <section className="ytm-section" style={{ marginBottom: '36px' }}>
+              <div className="ytm-section-header" style={{ marginBottom: '16px' }}>
+                <div>
+                  <h2 className="ytm-section-title" style={{ fontSize: '22px', fontWeight: 800 }}>
+                    ✨ Trending For You
+                  </h2>
+                  <p style={{ fontSize: '13px', color: 'var(--isai-lime)' }}>
+                    Personalized based on your Tamil listening history
+                  </p>
+                </div>
+                <div className="ytm-section-actions">
+                  <button className="ytm-btn-arrow-nav" onClick={() => scrollRow(listenAgainRef, 'left')}>‹</button>
+                  <button className="ytm-btn-arrow-nav" onClick={() => scrollRow(listenAgainRef, 'right')}>›</button>
+                </div>
+              </div>
+
+              <div className="ytm-horizontal-row" ref={listenAgainRef}>
+                {listenAgain.map((song) => (
+                  <SongCard
+                    key={song.videoId}
+                    song={song}
+                    isFavorite={isFavorite(song.videoId)}
+                    onToggleFavorite={onToggleFavorite}
+                    onPlay={() => handlePlay(song)}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* 4. Full Catalog Grid */}
+          <section className="ytm-section">
+            <div className="ytm-section-header" style={{ marginBottom: '16px' }}>
+              <h2 className="ytm-section-title" style={{ fontSize: '22px', fontWeight: 800 }}>
+                🎵 All Chartbuster Hits
+              </h2>
+            </div>
+            <div className="ytm-grid">
               {trendingGrid.map((song) => (
                 <SongCard
-                  key={`tr_${song.videoId}`}
+                  key={song.videoId}
                   song={song}
-                  variant="square"
                   isFavorite={isFavorite(song.videoId)}
                   onToggleFavorite={onToggleFavorite}
-                  onPlay={onPlaySong}
+                  onPlay={() => handlePlay(song)}
                 />
               ))}
             </div>
           </section>
-        </>
+        </div>
       )}
     </div>
   )

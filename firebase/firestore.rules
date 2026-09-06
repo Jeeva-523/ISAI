@@ -1,0 +1,86 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // User Profiles
+    match /profiles/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isOwner(userId);
+    }
+
+    // Music Catalog (Public Read for Authenticated Users)
+    match /songs/{songId} {
+      allow read: if true;
+      allow write: if false; // Admin only
+    }
+
+    match /artists/{artistId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /albums/{albumId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /movies/{movieId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /genres/{genreId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /moods/{moodId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // User Library Collections
+    match /users/{userId} {
+      allow read, write: if isOwner(userId);
+
+      match /likedSongs/{songId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      match /playlists/{playlistId} {
+        allow read, write: if isOwner(userId);
+        
+        match /songs/{songId} {
+          allow read, write: if isOwner(userId);
+        }
+      }
+
+      match /listeningHistory/{historyId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      match /searchHistory/{searchId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      match /devices/{deviceId} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+
+    // Trending aggregations
+    match /trending/{period} {
+      allow read: if true;
+      allow write: if false;
+    }
+  }
+}

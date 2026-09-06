@@ -159,7 +159,7 @@ h1, h2, h3, h4, h5, h6 {
   font-size: 22px;
   font-weight: 900;
   letter-spacing: 0.05em;
-  background: linear-gradient(135deg, #00f0ff 0%, #7000ff 50%, #ff007a 100%);
+  background: linear-gradient(135deg, #C8FF00 0%, #8B5CF6 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -2471,7 +2471,7 @@ input:checked + .ytm-slider:before { transform: translateX(20px); }
 .ytm-saved-badge {
   display: block;
   font-size: 12px;
-  color: #00f0ff;
+  color: #C8FF00;
   font-weight: 700;
   margin-top: 8px;
 }

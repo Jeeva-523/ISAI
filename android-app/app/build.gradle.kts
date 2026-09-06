@@ -98,9 +98,11 @@ dependencies {
     // Official YouTube Player (IFrame Player wrapper)
     implementation("com.pierfrancescosoffritti.androidyoutubeplayer:core:12.1.1")
 
-    // Google Sign-In & Firebase Analytics & Realtime Database
+    // Google Sign-In & Firebase Auth, Firestore, Analytics & Realtime Database
     implementation("com.google.android.gms:play-services-auth:21.2.0")
     implementation(platform("com.google.firebase:firebase-bom:33.1.2"))
+    implementation("com.google.firebase:firebase-auth-ktx")
+    implementation("com.google.firebase:firebase-firestore-ktx")
     implementation("com.google.firebase:firebase-analytics")
     implementation("com.google.firebase:firebase-database-ktx")
 

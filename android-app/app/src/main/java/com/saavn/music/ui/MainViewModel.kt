@@ -19,7 +19,13 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 import com.saavn.music.auth.GoogleAuthHelper
+import com.saavn.music.data.analytics.AnalyticsService
+import com.saavn.music.data.auth.AuthService
 import com.saavn.music.data.model.UserProfile
+import com.saavn.music.data.repository.FirestoreMusicService
+import com.saavn.music.data.repository.PlaylistService
+import com.saavn.music.data.search.SearchService
+import com.saavn.music.data.trending.TrendingService
 
 enum class AppScreen {
     HOME,
@@ -35,6 +41,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val ytRepo = YouTubeMusicRepository()
     val ytPlayerController = YouTubePlayerController(application.applicationContext, localStorage)
     val isaiConnectManager = com.saavn.music.connect.IsaiConnectManager(application.applicationContext)
+
+    // Firebase & Discovery Services
+    val analyticsService = AnalyticsService.getInstance(application.applicationContext)
+    val trendingService = TrendingService.getInstance(application.applicationContext)
+    val searchService = SearchService.getInstance(application.applicationContext)
+    val authService = AuthService.getInstance(application.applicationContext)
+    val playlistService = PlaylistService.getInstance(application.applicationContext)
+    val firestoreMusicService = FirestoreMusicService.getInstance(application.applicationContext)
 
     // User Authentication Profile
     val userProfile: StateFlow<UserProfile?> = localStorage.userProfile
@@ -368,6 +382,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         android.util.Log.i("ISAI_PLAYER", "========================================")
 
         _showFullPlayer.value = true
+
+        // Log Analytics and Listening History
+        analyticsService.trackEvent(song.videoId, song.title, song.channelTitle, "play")
+        viewModelScope.launch {
+            playlistService.recordHistory(song)
+        }
 
         // Generate smart YouTube Radio auto-recommendation queue if single song passed
         val effectiveQueue = if (queue.isNullOrEmpty() || queue.size <= 1) {
