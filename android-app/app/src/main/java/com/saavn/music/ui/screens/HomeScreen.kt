@@ -150,6 +150,23 @@ fun HomeScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    // Full Refresh Button
+                    IconButton(
+                        onClick = { viewModel.refreshCategorySongs() },
+                        modifier = Modifier
+                            .size(42.dp)
+                            .clip(CircleShape)
+                            .background(DarkSurfaceGlass)
+                            .border(1.dp, GlassBorderSubtle, CircleShape)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "Full Refresh",
+                            tint = NeonCyan,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
                     // Profile / Login Button
                     val userProfile by viewModel.userProfile.collectAsState()
                     IconButton(

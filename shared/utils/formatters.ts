@@ -81,6 +81,28 @@ function getThumbnailKey(url?: string, videoId?: string): string {
 }
 
 /**
+ * Phonetic normalization for Tamil transliterated song titles
+ */
+function phoneticNormalize(text: string): string {
+  if (!text) return ''
+  return text
+    .toLowerCase()
+    .replace(/th/g, 't')
+    .replace(/zh/g, 'l')
+    .replace(/dh/g, 'd')
+    .replace(/sh/g, 's')
+    .replace(/ck/g, 'k')
+    .replace(/ch/g, 'c')
+    .replace(/aa/g, 'a')
+    .replace(/ee/g, 'i')
+    .replace(/oo/g, 'u')
+    .replace(/ii/g, 'i')
+    .replace(/uu/g, 'u')
+    .replace(/[^a-z0-9]/g, '')
+    .trim()
+}
+
+/**
  * Deduplicate songs by videoId, thumbnail URL key, primary title key, and cleaned full title key
  */
 export function deduplicateSongs(songs: Song[]): Song[] {
@@ -91,7 +113,7 @@ export function deduplicateSongs(songs: Song[]): Song[] {
   const seenFullKeys = new Set<string>()
   const result: Song[] = []
 
-  const noiseRegex = /\b(official|video|lyric|lyrics|full|audio|hd|4k|song|songs|trending|version|remix|bgm|theme|track|singles|teaser|trailer|lyrical|visualizer|jukebox|compilation|all time hits|tamil|telugu|hindi)\b/gi
+  const noiseRegex = /\b(official|video|lyric|lyrics|full|audio|hd|4k|song|songs|trending|version|remix|bgm|theme|track|singles|teaser|trailer|lyrical|visualizer|jukebox|compilation|all time hits|tamil|telugu|hindi|dj|mix|prod|feat|ft)\b/gi
 
   for (const song of songs) {
     if (!song || !song.title) continue
@@ -106,20 +128,16 @@ export function deduplicateSongs(songs: Song[]): Song[] {
 
     // Primary Title Key (first segment before separators like |, -, :, ~, /)
     const firstSegment = rawTitle.split(/[|\-:~–—]/)[0] || rawTitle
-    const primaryTitle = firstSegment
+    const primaryCleaned = firstSegment
       .replace(/\(.*?\)|\[.*?\]/g, '')
       .replace(noiseRegex, '')
-      .replace(/[^a-zA-Z0-9]/g, '')
-      .toLowerCase()
-      .trim()
+    const primaryTitle = phoneticNormalize(primaryCleaned)
 
     // Full Title Key
-    const fullTitle = rawTitle
+    const fullCleaned = rawTitle
       .replace(/\(.*?\)|\[.*?\]/g, '')
       .replace(noiseRegex, '')
-      .replace(/[^a-zA-Z0-9]/g, '')
-      .toLowerCase()
-      .trim()
+    const fullTitle = phoneticNormalize(fullCleaned)
 
     if (primaryTitle.length >= 3 && seenPrimaryKeys.has(primaryTitle)) {
       continue

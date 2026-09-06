@@ -319,7 +319,7 @@ class YouTubeMusicRepository {
         val seenFullKeys = mutableSetOf<String>()
         val result = mutableListOf<YouTubeSong>()
 
-        val noiseRegex = Regex("\\b(official|video|lyric|lyrics|full|audio|hd|4k|song|songs|trending|version|remix|bgm|theme|track|singles|teaser|trailer|lyrical|visualizer|jukebox|compilation|all time hits|tamil|telugu|hindi)\\b", RegexOption.IGNORE_CASE)
+        val noiseRegex = Regex("\\b(official|video|lyric|lyrics|full|audio|hd|4k|song|songs|trending|version|remix|bgm|theme|track|singles|teaser|trailer|lyrical|visualizer|jukebox|compilation|all time hits|tamil|telugu|hindi|dj|mix|prod|feat|ft)\\b", RegexOption.IGNORE_CASE)
 
         for (song in songs) {
             val vid = song.videoId.trim()
@@ -332,19 +332,15 @@ class YouTubeMusicRepository {
             val rawTitle = cleanHtmlTitle(song.title)
             val firstSegment = rawTitle.split(Regex("[|\\-:~–—]")).firstOrNull() ?: rawTitle
 
-            val primaryTitle = firstSegment
+            val primaryCleaned = firstSegment
                 .replace(Regex("\\(.*?\\)|\\[.*?\\]"), "")
                 .replace(noiseRegex, "")
-                .replace(Regex("[^a-zA-Z0-9]"), "")
-                .lowercase()
-                .trim()
+            val primaryTitle = phoneticNormalize(primaryCleaned)
 
-            val fullTitle = rawTitle
+            val fullCleaned = rawTitle
                 .replace(Regex("\\(.*?\\)|\\[.*?\\]"), "")
                 .replace(noiseRegex, "")
-                .replace(Regex("[^a-zA-Z0-9]"), "")
-                .lowercase()
-                .trim()
+            val fullTitle = phoneticNormalize(fullCleaned)
 
             if (primaryTitle.length >= 3 && seenPrimaryKeys.contains(primaryTitle)) {
                 continue
@@ -362,6 +358,25 @@ class YouTubeMusicRepository {
             result.add(song)
         }
         return result
+    }
+
+    private fun phoneticNormalize(raw: String): String {
+        if (raw.isBlank()) return ""
+        return raw
+            .lowercase()
+            .replace("th", "t")
+            .replace("zh", "l")
+            .replace("dh", "d")
+            .replace("sh", "s")
+            .replace("ck", "k")
+            .replace("ch", "c")
+            .replace("aa", "a")
+            .replace("ee", "i")
+            .replace("oo", "u")
+            .replace("ii", "i")
+            .replace("uu", "u")
+            .replace(Regex("[^a-z0-9]"), "")
+            .trim()
     }
 
     private fun getThumbnailKey(url: String, videoId: String): String {

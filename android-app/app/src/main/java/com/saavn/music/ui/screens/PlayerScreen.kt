@@ -183,6 +183,12 @@ fun PlayerScreen(
         modifier = modifier
             .fillMaxSize()
             .background(DarkBackground)
+            .clickable(
+                indication = null,
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+            ) {
+                // Consume clicks on full player background so items on the page behind it are never selected
+            }
     ) {
         // 1. Ambient Blurred Backdrop
         AsyncImage(

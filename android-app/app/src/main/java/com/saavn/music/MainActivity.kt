@@ -33,6 +33,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -188,7 +189,15 @@ fun IsaiApp(viewModel: MainViewModel = viewModel()) {
         AnimatedVisibility(
             visible = showFullPlayer,
             enter = slideInVertically(initialOffsetY = { it }),
-            exit = slideOutVertically(targetOffsetY = { it })
+            exit = slideOutVertically(targetOffsetY = { it }),
+            modifier = Modifier
+                .fillMaxSize()
+                .clickable(
+                    indication = null,
+                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+                ) {
+                    // Consume clicks on full player container so items on background screen are never selected
+                }
         ) {
             PlayerScreen(viewModel = viewModel)
         }
@@ -256,6 +265,12 @@ fun GlassBottomNavigationBar(
                 ),
                 RoundedCornerShape(28.dp)
             )
+            .clickable(
+                indication = null,
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+            ) {
+                // Consume taps on bottom bar background space
+            }
             .padding(vertical = 6.dp, horizontal = 8.dp)
     ) {
         Row(
