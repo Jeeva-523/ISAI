@@ -223,17 +223,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 // 1. Try fetching direct audio songs via MusicRepository (JioSaavn / NepoTune)
                 val saavnResult = musicRepo.getTrending("Tamil")
                 val saavnSongs = saavnResult.getOrNull()?.map { it.toYouTubeSong() } ?: emptyList()
-                if (saavnSongs.isNotEmpty()) {
-                    _trendingSongs.value = saavnSongs
-                    _categorySongs.value = saavnSongs
+                val cleanSaavn = saavnSongs.filterNot { s ->
+                    val t = s.title.lowercase()
+                    t.contains("trending") || t.contains("jukebox") || t.contains("full album") || t.contains("non stop")
+                }
+                if (cleanSaavn.isNotEmpty()) {
+                    _trendingSongs.value = cleanSaavn
+                    _categorySongs.value = cleanSaavn
                 } else {
-                    val trending = ytRepo.getTrendingTamil()
+                    val trending = ytRepo.getTrendingTamil().filterNot { s ->
+                        val t = s.title.lowercase()
+                        t.contains("trending") || t.contains("jukebox") || t.contains("full album") || t.contains("non stop")
+                    }
                     _trendingSongs.value = trending
                     _categorySongs.value = trending
                 }
             } catch (e: Exception) {
                 try {
-                    val trending = ytRepo.getTrendingTamil()
+                    val trending = ytRepo.getTrendingTamil().filterNot { s ->
+                        val t = s.title.lowercase()
+                        t.contains("trending") || t.contains("jukebox") || t.contains("full album") || t.contains("non stop")
+                    }
                     _trendingSongs.value = trending
                     _categorySongs.value = trending
                 } catch (_: Exception) {}
@@ -253,18 +263,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     "Melody" -> "Tamil melody hits"
                     "Love Songs" -> "Tamil love romantic songs"
                     "Folk" -> "Tamil folk village hits"
-                    "Devotional" -> "Tamil devotional devotional songs"
+                    "Devotional" -> "Tamil devotional songs"
                     "Gaana" -> "Tamil gaana hits"
                     "Classical" -> "Tamil classical hits"
-                    "New Releases" -> "Tamil latest 2024 hits"
-                    else -> "Tamil top trending hits"
+                    "New Releases" -> "Latest Tamil Movie Songs 2025 2026"
+                    else -> "Latest Tamil Movie Songs 2025 2026"
                 }
                 val saavnResult = musicRepo.search(query)
                 val saavnSongs = saavnResult.getOrNull()?.map { it.toYouTubeSong() } ?: emptyList()
-                if (saavnSongs.isNotEmpty()) {
-                    _categorySongs.value = saavnSongs
+                val cleanSaavn = saavnSongs.filterNot { s ->
+                    val t = s.title.lowercase()
+                    t.contains("trending") || t.contains("jukebox") || t.contains("full album") || t.contains("non stop")
+                }
+                if (cleanSaavn.isNotEmpty()) {
+                    _categorySongs.value = cleanSaavn
                 } else {
-                    val fallback = ytRepo.searchTamilSongs(query).getOrDefault(emptyList())
+                    val fallback = ytRepo.searchTamilSongs(query).getOrDefault(emptyList()).filterNot { s ->
+                        val t = s.title.lowercase()
+                        t.contains("trending") || t.contains("jukebox") || t.contains("full album") || t.contains("non stop")
+                    }
                     _categorySongs.value = fallback
                 }
             } catch (e: Exception) {

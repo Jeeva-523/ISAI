@@ -157,15 +157,23 @@ export class MusicApiClient {
       const combined = resultsArray.flat()
       const deduplicated = deduplicateSongs(combined)
       const distinct = ensureDistinctThumbnails(deduplicated)
+      const filtered = distinct.filter((song) => {
+        const title = song.title.toLowerCase()
+        return !title.includes('trending') && !title.includes('jukebox') && !title.includes('full album') && !title.includes('non stop')
+      })
 
-      if (distinct.length > 0) {
-        return distinct.slice(0, maxResults)
+      if (filtered.length > 0) {
+        return filtered.slice(0, maxResults)
       }
     } catch (err) {
       console.warn('[MusicApiClient] Fetching combined trending songs failed:', err)
     }
 
-    return await this.searchSongs('Tamil Top Hits', maxResults)
+    const fallback = await this.searchSongs('Latest Tamil Movie Songs 2025 2026', maxResults)
+    return fallback.filter((song) => {
+      const title = song.title.toLowerCase()
+      return !title.includes('trending') && !title.includes('jukebox')
+    })
   }
 
   /**

@@ -24,15 +24,19 @@ class MusicRepository(
     suspend fun getTrending(category: String = "Tamil"): Result<List<SongItem>> = withContext(Dispatchers.IO) {
         try {
             val query = when (category.lowercase()) {
-                "tamil" -> "Tamil Top Trending Hits"
-                "hindi" -> "Hindi Top Trending Hits"
-                "telugu" -> "Telugu Top Trending Hits"
-                "english" -> "Global Pop Trending Hits"
-                else -> "Top Trending Songs"
+                "tamil" -> "Latest Tamil Movie Songs 2025 2026"
+                "hindi" -> "Latest Hindi Movie Songs 2025 2026"
+                "telugu" -> "Latest Telugu Movie Songs 2025 2026"
+                "english" -> "Latest Global Pop Hits 2025 2026"
+                else -> "Latest Hit Songs 2025 2026"
             }
-            val response = api.searchSongs(query = query, limit = 25)
+            val response = api.searchSongs(query = query, limit = 30)
             val songs = response.results?.mapNotNull { it.toSongItem() } ?: emptyList()
-            Result.success(songs)
+            val filtered = songs.filterNot { song ->
+                val title = song.title.lowercase()
+                title.contains("trending") || title.contains("jukebox") || title.contains("full album") || title.contains("non stop") || title.contains("compilation")
+            }
+            Result.success(if (filtered.isNotEmpty()) filtered else songs)
         } catch (e: Exception) {
             Result.failure(e)
         }

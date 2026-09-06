@@ -5,7 +5,7 @@ export const TAMIL_CATEGORIES: TamilCategory[] = [
     id: 'trending',
     title: 'Trending',
     subtitle: 'Top Chartbusters',
-    query: 'Trending Tamil songs 2024',
+    query: 'Latest Tamil Movie Songs 2025 2026',
     gradient: ['#00F0FF', '#8B5CF6'],
     icon: '🔥'
   },

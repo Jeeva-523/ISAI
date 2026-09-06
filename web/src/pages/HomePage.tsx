@@ -156,7 +156,7 @@ export const HomePage: React.FC<HomePageProps> = ({
                 <div className="ytm-section-actions">
                   <button
                     className="ytm-btn-pill-action"
-                    onClick={() => onSelectCategory('Tamil top trending hits')}
+                    onClick={() => onSelectCategory('Latest Tamil Movie Songs 2025 2026')}
                   >
                     More
                   </button>

@@ -182,7 +182,11 @@ export class YouTubeService {
   }
 
   async getTrending(maxResults = 20): Promise<Song[]> {
-    return this.searchTamilSongs('Trending Tamil songs 2024', maxResults)
+    const songs = await this.searchTamilSongs('Latest Tamil Movie Songs 2025 2026', maxResults)
+    return songs.filter(s => {
+      const title = s.title.toLowerCase()
+      return !title.includes('trending') && !title.includes('jukebox') && !title.includes('full album') && !title.includes('non stop')
+    })
   }
 }
 
