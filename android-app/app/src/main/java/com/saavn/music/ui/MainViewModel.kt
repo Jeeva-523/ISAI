@@ -81,6 +81,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _trendingSongs = MutableStateFlow<List<YouTubeSong>>(emptyList())
     val trendingSongs: StateFlow<List<YouTubeSong>> = _trendingSongs.asStateFlow()
 
+    private val _popularArtists = MutableStateFlow<List<com.saavn.music.data.trending.TopArtistData>>(emptyList())
+    val popularArtists: StateFlow<List<com.saavn.music.data.trending.TopArtistData>> = _popularArtists.asStateFlow()
+
     private val _categorySongs = MutableStateFlow<List<YouTubeSong>>(emptyList())
     val categorySongs: StateFlow<List<YouTubeSong>> = _categorySongs.asStateFlow()
 
@@ -251,6 +254,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     }
                     _trendingSongs.value = trending
                     _categorySongs.value = trending
+                }
+
+                // Compute / Populate Popular Singers & Artists
+                val trendingSvc = com.saavn.music.data.trending.TrendingService.getInstance(getApplication())
+                val artists = trendingSvc.getPopularArtists(_trendingSongs.value)
+                if (artists.isNotEmpty()) {
+                    _popularArtists.value = artists
                 }
             } catch (e: Exception) {
                 try {

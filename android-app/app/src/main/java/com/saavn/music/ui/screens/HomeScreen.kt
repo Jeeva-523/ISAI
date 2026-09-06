@@ -71,6 +71,7 @@ fun HomeScreen(
     modifier: Modifier = Modifier
 ) {
     val trendingSongs by viewModel.trendingSongs.collectAsState()
+    val popularArtists by viewModel.popularArtists.collectAsState()
     val categorySongs by viewModel.categorySongs.collectAsState()
     val isLoading by viewModel.isLoadingHome.collectAsState()
     val selectedCategory by viewModel.selectedCategory.collectAsState()
@@ -316,6 +317,81 @@ fun HomeScreen(
                             song = song,
                             onClick = { viewModel.playSong(song, personalizedRecs) }
                         )
+                    }
+                }
+            }
+        }
+
+        // 3.8 🎤 Popular Singers & Artists Section
+        if (popularArtists.isNotEmpty()) {
+            item {
+                Spacer(modifier = Modifier.height(24.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "🎤 Popular Singers & Artists",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary
+                    )
+                    Text(
+                        text = "TOP ARTISTS",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = NeonCyan
+                    )
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    items(popularArtists.size) { index ->
+                        val artistData = popularArtists[index]
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier
+                                .width(88.dp)
+                                .clickable { viewModel.onSearchQueryChanged(artistData.name) }
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(72.dp)
+                                    .clip(CircleShape)
+                                    .background(DarkSurfaceVariant)
+                                    .border(1.5.dp, GlassBorder, CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = artistData.name.take(1).uppercase(),
+                                    fontSize = 26.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = NeonCyan
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = artistData.name,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                            Text(
+                                text = "${artistData.playCount} plays",
+                                fontSize = 10.sp,
+                                color = TextSecondary,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                        }
                     }
                 }
             }
