@@ -59,7 +59,6 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
       setRemotePlaybackState(syncState)
       if (syncState) {
         if (syncState.currentDeviceId !== myDeviceId) {
-          // We are a Remote Controller -> Pause local audio
           if (audioRef.current) audioRef.current.pause()
           setIsPlaying(syncState.isPlaying)
           if (syncState.positionMs != null) {
@@ -132,14 +131,32 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
     }
   }
 
+  const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0
+
   return (
     <>
+      {/* Headless Audio element - No raw browser native controls */}
+      {hasDirectAudio && (
+        <audio
+          ref={audioRef}
+          key={song.audioUrl}
+          src={song.audioUrl}
+          autoPlay
+          onTimeUpdate={(e) => setCurrentTime((e.target as HTMLAudioElement).currentTime)}
+          onLoadedMetadata={(e) => setDuration((e.target as HTMLAudioElement).duration)}
+          onEnded={onNextSong}
+          onPlay={() => setIsPlaying(true)}
+          onPause={() => setIsPlaying(false)}
+          style={{ display: 'none' }}
+        />
+      )}
+
       {/* =========================================================================
-          FULL YOUTUBE MUSIC WATCH PAGE OVERLAY (music.youtube.com/watch?v=...)
+          FULL YOUTUBE MUSIC WATCH PAGE OVERLAY (Expanded view)
          ========================================================================= */}
       {isExpanded && (
         <div className="ytm-watch-page">
-          {/* 1. Top Bar */}
+          {/* Top Header Bar */}
           <div className="ytm-watch-topbar">
             <div className="ytm-watch-topbar-left">
               <button className="ytm-watch-btn-chevron" onClick={() => setIsExpanded(false)} title="Minimize Watch Page">
@@ -167,9 +184,9 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
             </div>
           </div>
 
-          {/* 2. Watch Page Main 2-Column Content */}
+          {/* Watch Page Main 2-Column Section */}
           <div className="ytm-watch-main">
-            {/* LEFT COLUMN: Stage (Video/Artwork + Info) */}
+            {/* LEFT COLUMN: Stage (Video / Artwork + Track Meta) */}
             <div className="ytm-watch-left-stage">
               <div className="ytm-watch-player-wrapper">
                 {!hasDirectAudio ? (
@@ -195,7 +212,7 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
                 )}
               </div>
 
-              {/* Track Title & Artist Meta Row */}
+              {/* Track Meta Information */}
               <div className="ytm-watch-track-meta">
                 <div className="ytm-watch-track-info">
                   <h1 className="ytm-watch-title">{song.title}</h1>
@@ -234,7 +251,6 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
 
             {/* RIGHT COLUMN: Sidebar (UP NEXT, LYRICS, COMMENTS, RELATED) */}
             <div className="ytm-watch-right-sidebar">
-              {/* Sidebar Tabs */}
               <div className="ytm-sidebar-tabs">
                 <button
                   className={`ytm-tab-btn ${activeTab === 'upnext' ? 'active' : ''}`}
@@ -265,7 +281,6 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
               {/* Tab 1: UP NEXT Queue */}
               {activeTab === 'upnext' && (
                 <div className="ytm-tab-content ytm-upnext-content">
-                  {/* Playing from Header */}
                   <div className="ytm-queue-header">
                     <div className="ytm-queue-title-wrap">
                       <span className="ytm-queue-subtitle">Playing from</span>
@@ -274,7 +289,6 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
                     <button className="ytm-btn-save-queue">≡ Save</button>
                   </div>
 
-                  {/* Autoplay Toggle */}
                   <div className="ytm-autoplay-row">
                     <div className="ytm-autoplay-info">
                       <span className="ytm-autoplay-label">Autoplay</span>
@@ -286,7 +300,6 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
                     </label>
                   </div>
 
-                  {/* Currently Playing Card */}
                   <div className="ytm-queue-now-playing">
                     <div className="ytm-now-playing-left">
                       <span className="ytm-play-indicator">▶</span>
@@ -298,7 +311,6 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
                     <span className="ytm-queue-duration">{formatTime(duration || 211)}</span>
                   </div>
 
-                  {/* Mood Filter Pills for Queue */}
                   <div className="ytm-queue-mood-pills">
                     {['All', 'Familiar', 'Deep cuts', 'Tamil', 'Discover'].map((pill) => (
                       <button
@@ -311,7 +323,6 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
                     ))}
                   </div>
 
-                  {/* Queue Items List */}
                   <div className="ytm-queue-list">
                     {queue.length > 0 ? (
                       queue.map((item, idx) => (
@@ -395,33 +406,30 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
             </div>
           </div>
 
-          {/* 3. Bottom Player Bar in Watch Page */}
+          {/* Bottom Controls Bar in Watch Page */}
           <div className="ytm-watch-bottom-bar">
             <div className="ytm-watch-bar-left">
               <button className="ytm-bar-btn" onClick={onPrevSong} title="Previous">⏮</button>
-              {hasDirectAudio ? (
-                <button className="ytm-bar-btn-play" onClick={togglePlayPause} title={isPlaying ? 'Pause' : 'Play'}>
-                  {isPlaying ? '⏸' : '▶'}
-                </button>
-              ) : (
-                <button className="ytm-bar-btn-play" onClick={onNextSong} title="Next">⏭</button>
-              )}
+              <button className="ytm-bar-btn-play" onClick={togglePlayPause} title={isPlaying ? 'Pause' : 'Play'}>
+                {isPlaying ? '⏸' : '▶'}
+              </button>
               <button className="ytm-bar-btn" onClick={onNextSong} title="Next">⏭</button>
               <span className="ytm-bar-time">{formatTime(currentTime)} / {formatTime(duration || 211)}</span>
             </div>
 
-            {hasDirectAudio && (
-              <div className="ytm-watch-bar-center-seekbar">
-                <input
-                  type="range"
-                  min="0"
-                  max={duration || 100}
-                  value={currentTime}
-                  onChange={handleSeek}
-                  className="ytm-watch-seekbar"
-                />
-              </div>
-            )}
+            <div className="ytm-watch-bar-center-seekbar">
+              <input
+                type="range"
+                min="0"
+                max={duration || 100}
+                value={currentTime}
+                onChange={handleSeek}
+                className="ytm-watch-seekbar"
+                style={{
+                  background: `linear-gradient(to right, #00F0FF ${progressPercent}%, rgba(255, 255, 255, 0.2) ${progressPercent}%)`
+                }}
+              />
+            </div>
 
             <div className="ytm-watch-bar-track-info">
               <img src={song.thumbnailUrl} alt={song.title} className="ytm-watch-bar-thumb" />
@@ -443,17 +451,16 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
       )}
 
       {/* =========================================================================
-          DOCKED BOTTOM PLAYER BAR (Default visible bar on main page)
+          DOCKED BOTTOM MINI PLAYER BAR (Sleek Custom Glassmorphic Bar)
          ========================================================================= */}
       <div className={`web-player-dock ${isExpanded ? 'hidden' : ''}`}>
         <div className="web-player-container">
           <div className="web-player-bar">
-            {/* Click anywhere on song info to expand Watch Page */}
+            {/* 1. LEFT: Track Thumbnail & Meta Info */}
             <div
               className="web-player-left"
               onClick={() => setIsExpanded(true)}
-              title="Click to open YouTube Music Watch Page"
-              style={{ cursor: 'pointer' }}
+              title="Click to open Full YouTube Music Watch Page"
             >
               <img
                 src={song.thumbnailUrl || `https://img.youtube.com/vi/${song.videoId}/hqdefault.jpg`}
@@ -467,37 +474,63 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
               </div>
             </div>
 
-            {/* Native HTML5 Audio */}
-            {hasDirectAudio && (
-              <div style={{ flex: 1, maxWidth: '420px', margin: '0 12px' }}>
-                <audio
-                  ref={audioRef}
-                  key={song.audioUrl}
-                  src={song.audioUrl}
-                  autoPlay
-                  controls
-                  onTimeUpdate={(e) => setCurrentTime((e.target as HTMLAudioElement).currentTime)}
-                  onLoadedMetadata={(e) => setDuration((e.target as HTMLAudioElement).duration)}
-                  onEnded={onNextSong}
-                  onPlay={() => setIsPlaying(true)}
-                  onPause={() => setIsPlaying(false)}
-                  style={{ width: '100%', height: '36px', outline: 'none' }}
+            {/* 2. CENTER: Sleek Playback Controls & Glowing Seek Progress Bar */}
+            <div className="web-player-center">
+              <div className="web-player-main-btns">
+                {onPrevSong && (
+                  <button className="player-btn ctrl-mini-btn" onClick={onPrevSong} title="Previous track">
+                    ⏮
+                  </button>
+                )}
+
+                <button className="player-btn ctrl-play-main" onClick={togglePlayPause} title={isPlaying ? 'Pause' : 'Play'}>
+                  {isPlaying ? '⏸' : '▶'}
+                </button>
+
+                {onNextSong && (
+                  <button className="player-btn ctrl-mini-btn" onClick={onNextSong} title="Next track">
+                    ⏭
+                  </button>
+                )}
+              </div>
+
+              {/* Glowing Seekbar Row */}
+              <div className="web-player-progress-row">
+                <span className="web-player-time">{formatTime(currentTime)}</span>
+                <div className="web-player-seekbar-wrap">
+                  <input
+                    type="range"
+                    min="0"
+                    max={duration || 100}
+                    value={currentTime}
+                    onChange={handleSeek}
+                    className="web-player-seekbar"
+                    style={{
+                      background: `linear-gradient(to right, #00F0FF ${progressPercent}%, rgba(255, 255, 255, 0.15) ${progressPercent}%)`
+                    }}
+                  />
+                </div>
+                <span className="web-player-time">{formatTime(duration || 211)}</span>
+              </div>
+            </div>
+
+            {/* 3. RIGHT: Volume, Actions & Controls */}
+            <div className="web-player-controls">
+              {/* Volume Slider */}
+              <div className="web-player-volume-wrap">
+                <span className="vol-icon" style={{ fontSize: '13px', color: '#aaa' }}>
+                  {volume === 0 ? '🔇' : volume < 0.5 ? '🔉' : '🔊'}
+                </span>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={volume}
+                  onChange={handleVolumeChange}
+                  className="web-player-vol-slider"
                 />
               </div>
-            )}
-
-            <div className="web-player-controls">
-              {onPrevSong && (
-                <button className="player-btn prev-btn" onClick={onPrevSong} title="Previous track">
-                  ⏮
-                </button>
-              )}
-
-              {onNextSong && (
-                <button className="player-btn next-btn" onClick={onNextSong} title="Next track">
-                  ⏭
-                </button>
-              )}
 
               {onToggleFavorite && (
                 <button
@@ -543,7 +576,7 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
               <button
                 className="player-btn expand-btn"
                 onClick={() => setIsExpanded(true)}
-                title="Expand YouTube Music Watch Page"
+                title="Expand Full Watch Page"
               >
                 🎬
               </button>
