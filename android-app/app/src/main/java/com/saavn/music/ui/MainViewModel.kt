@@ -249,16 +249,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 if (cleanSaavn.isNotEmpty()) {
                     val deduped = ytRepo.deduplicateSongs(cleanSaavn)
-                    _trendingSongs.value = deduped
-                    _categorySongs.value = deduped
+                    val mostPlayed = trendingService.getMostPlayedSongs(deduped)
+                    _trendingSongs.value = mostPlayed
+                    _categorySongs.value = mostPlayed
                 } else {
                     val trending = ytRepo.getTrendingTamil().filterNot { s ->
                         val t = s.title.lowercase()
                         t.contains("trending") || t.contains("jukebox") || t.contains("full album") || t.contains("non stop")
                     }
                     val deduped = ytRepo.deduplicateSongs(trending)
-                    _trendingSongs.value = deduped
-                    _categorySongs.value = deduped
+                    val mostPlayed = trendingService.getMostPlayedSongs(deduped)
+                    _trendingSongs.value = mostPlayed
+                    _categorySongs.value = mostPlayed
                 }
 
                 // Compute / Populate Popular Singers & Artists
@@ -304,7 +306,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _isLoadingHome.value = true
             try {
                 if (category == "Most Played" || category == "Trending") {
-                    _categorySongs.value = _trendingSongs.value
+                    _categorySongs.value = trendingService.getMostPlayedSongs(_trendingSongs.value)
                     _isLoadingHome.value = false
                     return@launch
                 }

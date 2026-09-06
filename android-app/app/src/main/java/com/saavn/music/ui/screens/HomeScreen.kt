@@ -35,6 +35,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -86,6 +87,16 @@ fun HomeScreen(
         "Most Played", "Tamil Songs", "Melody", "Love Songs",
         "Folk", "Devotional", "Gaana", "Classical", "New Releases"
     )
+
+    val heroIds = remember(trendingSongs) { trendingSongs.take(4).map { it.videoId }.toSet() }
+    val displayCategorySongs = remember(categorySongs, selectedCategory, heroIds) {
+        if ((selectedCategory == "Most Played" || selectedCategory == "Trending") && heroIds.isNotEmpty()) {
+            val filtered = categorySongs.filterNot { heroIds.contains(it.videoId) }
+            if (filtered.isNotEmpty()) filtered else categorySongs
+        } else {
+            categorySongs
+        }
+    }
 
     LazyColumn(
         modifier = modifier
@@ -504,7 +515,7 @@ fun HomeScreen(
                 }
             }
         } else {
-            itemsIndexed(categorySongs) { index, song ->
+            itemsIndexed(displayCategorySongs) { index, song ->
                 val isThisPlaying = (currentPlayingSong?.videoId == song.videoId)
                 val isFav = viewModel.isFavorite(song.videoId)
                 YouTubeSongRowItem(
@@ -512,12 +523,12 @@ fun HomeScreen(
                     song = song,
                     isCurrent = isThisPlaying,
                     isPlaying = isThisPlaying && isPlaying,
-                    onClick = { viewModel.playSong(song, categorySongs) },
+                    onClick = { viewModel.playSong(song, displayCategorySongs) },
                     onPlayPauseClick = {
                         if (isThisPlaying) {
                             viewModel.togglePlayPause()
                         } else {
-                            viewModel.playSong(song, categorySongs)
+                            viewModel.playSong(song, displayCategorySongs)
                         }
                     },
                     isFav = isFav,
@@ -529,7 +540,7 @@ fun HomeScreen(
             }
 
             // 7. Interactive Refresh Feed & Load More Songs Button
-            if (categorySongs.isNotEmpty()) {
+            if (displayCategorySongs.isNotEmpty()) {
                 item {
                     Spacer(modifier = Modifier.height(20.dp))
                     Box(
