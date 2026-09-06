@@ -349,29 +349,76 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 /* YTM Home Mood Pills Row */
-.ytm-mood-pills-row {
-  display: flex;
-  gap: 10px;
+.ytm-mood-pills-row,
+.ytm-mood-bar-container {
+  width: 100%;
   overflow-x: auto;
-  padding: 4px 0 20px;
-  margin-bottom: 12px;
+  scrollbar-width: none;
+  padding: 4px 0 16px;
 }
 
-.ytm-mood-pill {
-  padding: 8px 16px;
-  border-radius: 18px;
-  background: #212121;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #fff;
-  font-size: 14px;
+.ytm-mood-bar-container::-webkit-scrollbar,
+.ytm-mood-pills-row::-webkit-scrollbar {
+  display: none;
+}
+
+.ytm-mood-bar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.ytm-mood-pill,
+.ytm-mood-chip {
+  padding: 8px 18px;
+  border-radius: 20px;
+  background: var(--surface-card);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  font-size: 13.5px;
   font-weight: 600;
   white-space: nowrap;
   cursor: pointer;
   transition: all 0.2s ease;
+  font-family: var(--font-body);
 }
 
-.ytm-mood-pill:hover {
-  background: #383838;
+.ytm-mood-pill:hover,
+.ytm-mood-chip:hover {
+  background: var(--surface-card-hover);
+  border-color: var(--isai-lime);
+  color: var(--isai-lime);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(198, 255, 0, 0.15);
+}
+
+.ytm-horizontal-row {
+  display: flex;
+  gap: 20px;
+  overflow-x: auto;
+  scroll-behavior: smooth;
+  scrollbar-width: none;
+  padding: 10px 4px 24px 4px;
+}
+
+.ytm-horizontal-row::-webkit-scrollbar {
+  display: none;
+}
+
+.ytm-horizontal-row > div {
+  flex-shrink: 0;
+}
+
+.ytm-horizontal-row .song-card {
+  width: 210px;
+}
+
+.ytm-grid,
+.song-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 22px;
+  margin-top: 16px;
 }
 
 /* YTM Sections & Header Actions */
@@ -661,18 +708,19 @@ h1, h2, h3, h4, h5, h6 {
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
   overflow: hidden;
+  box-sizing: border-box;
 }
 
 .song-card:hover {
   transform: translateY(-4px);
-  border-color: rgba(0, 240, 255, 0.35);
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6), 0 0 20px rgba(0, 240, 255, 0.15);
+  border-color: rgba(198, 255, 0, 0.4);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.7), 0 0 20px rgba(198, 255, 0, 0.15);
 }
 
 .song-thumbnail-wrap {
   position: relative;
   width: 100%;
-  aspect-ratio: 16 / 10;
+  aspect-ratio: 1 / 1;
   border-radius: var(--radius-md);
   overflow: hidden;
   margin-bottom: 12px;
