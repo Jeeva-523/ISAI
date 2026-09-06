@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.sp
 import com.saavn.music.ui.theme.*
 import coil.compose.AsyncImage
 import com.saavn.music.ui.MainViewModel
+import com.saavn.music.data.model.YouTubeSong
 import com.saavn.music.ui.theme.DarkBackground
 import com.saavn.music.ui.theme.DarkSurfaceVariant
 import com.saavn.music.ui.theme.DarkSurfaceGlass
@@ -67,11 +68,31 @@ fun MiniPlayer(
     viewModel: MainViewModel,
     modifier: Modifier = Modifier
 ) {
-    val currentSong by viewModel.ytPlayerController.currentSong.collectAsState()
-    val isPlaying by viewModel.ytPlayerController.isPlaying.collectAsState()
+    val currentSongLocal by viewModel.ytPlayerController.currentSong.collectAsState()
+    val isPlayingLocal by viewModel.ytPlayerController.isPlaying.collectAsState()
     val isBuffering by viewModel.ytPlayerController.isBuffering.collectAsState()
-    val positionSec by viewModel.ytPlayerController.currentPositionSec.collectAsState()
-    val durationSec by viewModel.ytPlayerController.durationSec.collectAsState()
+    val positionSecLocal by viewModel.ytPlayerController.currentPositionSec.collectAsState()
+    val durationSecLocal by viewModel.ytPlayerController.durationSec.collectAsState()
+
+    val syncState by viewModel.isaiConnectManager.playbackState.collectAsState()
+    val isMyDeviceActive = viewModel.isaiConnectManager.isMyDeviceActive()
+    val isRemoteActive = !isMyDeviceActive && syncState != null && 
+        syncState!!.currentDeviceId.isNotBlank() && 
+        !syncState!!.currentTitle.isNullOrBlank() && 
+        (System.currentTimeMillis() - syncState!!.updatedAt < 90000L)
+
+    val activeSong = currentSongLocal ?: if (isRemoteActive) {
+        YouTubeSong(
+            videoId = syncState?.currentSongId ?: "",
+            title = syncState?.currentTitle ?: "Remote Track",
+            channelTitle = syncState?.currentArtist ?: "ISAI Connect",
+            thumbnailUrl = syncState?.currentArtwork ?: ""
+        )
+    } else null
+
+    val isPlaying = if (isRemoteActive) (syncState?.isPlaying == true) else isPlayingLocal
+    val positionSec = if (isRemoteActive) ((syncState?.positionMs ?: 0L) / 1000f) else positionSecLocal
+    val durationSec = if (isRemoteActive) ((syncState?.durationMs ?: 210000L) / 1000f) else durationSecLocal
 
     // Smooth vinyl rotation when playing
     val infiniteTransition = rememberInfiniteTransition(label = "MiniVinylSpin")
@@ -86,12 +107,12 @@ fun MiniPlayer(
     )
 
     AnimatedVisibility(
-        visible = currentSong != null,
+        visible = activeSong != null,
         enter = slideInVertically(initialOffsetY = { it }),
         exit = slideOutVertically(targetOffsetY = { it }),
         modifier = modifier
     ) {
-        val song = currentSong ?: return@AnimatedVisibility
+        val song = activeSong ?: return@AnimatedVisibility
 
         Box(
             modifier = Modifier

@@ -2,8 +2,56 @@ import type { Song, UserPlaylist } from '../models/song'
 
 const FAVORITES_KEY = 'isai_favorites'
 const PLAYLISTS_KEY = 'isai_playlists'
+const USER_KEY = 'isai_user_profile'
+
+export interface UserProfileData {
+  isLoggedIn: boolean
+  name: string
+  email: string
+  avatar: string
+  isPremium: boolean
+}
 
 export class LocalMusicStorageService {
+  getUserProfile(): UserProfileData {
+    if (typeof window === 'undefined' || !window.localStorage) {
+      return {
+        isLoggedIn: false,
+        name: 'JEEVA ⚡',
+        email: 'kongujeeva523@gmail.com',
+        avatar: 'J',
+        isPremium: true
+      }
+    }
+    try {
+      const data = localStorage.getItem(USER_KEY)
+      return data ? JSON.parse(data) : {
+        isLoggedIn: false,
+        name: 'JEEVA ⚡',
+        email: 'kongujeeva523@gmail.com',
+        avatar: 'J',
+        isPremium: true
+      }
+    } catch {
+      return {
+        isLoggedIn: false,
+        name: 'JEEVA ⚡',
+        email: 'kongujeeva523@gmail.com',
+        avatar: 'J',
+        isPremium: true
+      }
+    }
+  }
+
+  setUserProfile(user: UserProfileData) {
+    if (typeof window === 'undefined' || !window.localStorage) return
+    try {
+      localStorage.setItem(USER_KEY, JSON.stringify(user))
+    } catch (e) {
+      console.error('Failed to save user profile', e)
+    }
+  }
+
   getFavorites(): Song[] {
     if (typeof window === 'undefined' || !window.localStorage) return []
     try {

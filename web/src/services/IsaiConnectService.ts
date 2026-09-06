@@ -1,4 +1,4 @@
-import { db } from '../firebase'
+import { rtdb } from '../firebase'
 import { ref, set, update, onValue, onDisconnect, off } from 'firebase/database'
 
 export interface DeviceInfo {
@@ -23,6 +23,7 @@ export interface PlaybackStateSync {
   currentTitle: string
   currentArtist: string
   currentArtwork: string
+  currentAudioUrl?: string
   durationMs: number
   positionMs: number
   isPlaying: boolean
@@ -35,17 +36,34 @@ export interface PlaybackStateSync {
   updatedByDeviceId: string
 }
 
+export interface RemoteCommand {
+  action: 'PLAY' | 'PAUSE' | 'NEXT' | 'PREV' | 'SEEK' | 'PLAY_SONG'
+  targetDeviceId?: string
+  positionMs?: number
+  songId?: string
+  songTitle?: string
+  songArtist?: string
+  songArtwork?: string
+  songAudioUrl?: string
+  timestamp: number
+  issuedByDeviceId: string
+}
+
 class IsaiConnectServiceManager {
   private userId: string = ''
   private deviceId: string = ''
   private deviceName: string = ''
   private platform: 'web' | 'windows' | 'mac' = 'web'
   private heartbeatTimer: any = null
+  private livenessTimer: any = null
   private devicesListener: (() => void) | null = null
   private playbackStateListener: (() => void) | null = null
+  private commandListener: (() => void) | null = null
 
+  public rawDevices: DeviceInfo[] = []
   public currentDevices: DeviceInfo[] = []
   public currentPlaybackState: PlaybackStateSync | null = null
+  private commandCallbacks: ((cmd: RemoteCommand) => void)[] = []
 
   private stateChangeCallbacks: ((state: PlaybackStateSync | null) => void)[] = []
   private devicesChangeCallbacks: ((devices: DeviceInfo[]) => void)[] = []
@@ -54,6 +72,41 @@ class IsaiConnectServiceManager {
     this.deviceId = this.getOrCreateDeviceId()
     this.deviceName = this.detectDeviceName()
     this.platform = this.detectPlatform()
+    this.setupWindowListeners()
+  }
+
+  private setupWindowListeners() {
+    if (typeof window === 'undefined') return
+    const setInactive = () => {
+      if (!this.userId) return
+      const deviceRef = ref(rtdb, `connect/${this.userId}/devices/${this.deviceId}`)
+      update(deviceRef, {
+        isActive: false,
+        lastActiveAt: Date.now()
+      }).catch(() => {})
+    }
+    window.addEventListener('beforeunload', setInactive)
+    window.addEventListener('pagehide', setInactive)
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        this.sendHeartbeat()
+      }
+    })
+  }
+
+  public isDeviceOnline(device: DeviceInfo): boolean {
+    if (!device || !device.isActive) return false
+    const diffMs = Date.now() - (device.lastActiveAt || 0)
+    return diffMs < 35000
+  }
+
+  public sendHeartbeat() {
+    if (!this.userId) return
+    const deviceRef = ref(rtdb, `connect/${this.userId}/devices/${this.deviceId}`)
+    update(deviceRef, {
+      lastActiveAt: Date.now(),
+      isActive: true
+    }).catch(() => {})
   }
 
   private getOrCreateDeviceId(): string {
@@ -92,6 +145,8 @@ class IsaiConnectServiceManager {
     return 'web'
   }
 
+  private userEmail: string = ''
+
   public getMyDeviceId(): string {
     return this.deviceId
   }
@@ -100,9 +155,13 @@ class IsaiConnectServiceManager {
     return this.deviceName
   }
 
+  public getUserEmail(): string {
+    return this.userEmail
+  }
+
   public sanitizeUserId(rawId: string): string {
-    if (!rawId) return 'user_jeeva_default'
-    return rawId.replace(/[.#$\[\]]/g, '_').toLowerCase().trim()
+    if (!rawId) return ''
+    return rawId.toLowerCase().trim().replace(/[.#$\[\]]/g, '_')
   }
 
   public initialize(rawUserId: string) {
@@ -110,6 +169,7 @@ class IsaiConnectServiceManager {
     if (this.userId === sanitized) return
     this.disconnect()
 
+    this.userEmail = rawUserId
     this.userId = sanitized
     console.log(`[ISAI Connect] Initializing device ${this.deviceId} (${this.deviceName}) for user: ${this.userId}`)
 
@@ -117,11 +177,12 @@ class IsaiConnectServiceManager {
     this.startHeartbeat()
     this.listenToDevices()
     this.listenToPlaybackState()
+    this.listenToCommands()
   }
 
   private registerDevice() {
     if (!this.userId) return
-    const deviceRef = ref(db, `connect/${this.userId}/devices/${this.deviceId}`)
+    const deviceRef = ref(rtdb, `connect/${this.userId}/devices/${this.deviceId}`)
     const deviceInfo: DeviceInfo = {
       deviceId: this.deviceId,
       deviceName: this.deviceName,
@@ -143,35 +204,52 @@ class IsaiConnectServiceManager {
 
   private startHeartbeat() {
     if (this.heartbeatTimer) clearInterval(this.heartbeatTimer)
+    this.sendHeartbeat()
     this.heartbeatTimer = setInterval(() => {
-      if (!this.userId) return
-      const deviceRef = ref(db, `connect/${this.userId}/devices/${this.deviceId}`)
-      update(deviceRef, {
-        lastActiveAt: Date.now(),
-        isActive: true
-      }).catch(() => {})
-    }, 15000)
+      this.sendHeartbeat()
+    }, 10000)
   }
 
   private listenToDevices() {
     if (!this.userId) return
-    const devicesRef = ref(db, `connect/${this.userId}/devices`)
+    const devicesRef = ref(rtdb, `connect/${this.userId}/devices`)
     this.devicesListener = onValue(devicesRef, (snapshot) => {
       const val = snapshot.val()
       if (!val) {
+        this.rawDevices = []
         this.currentDevices = []
       } else {
         const list: DeviceInfo[] = Object.values(val)
-        // Sort active first, then most recently active
-        this.currentDevices = list.sort((a, b) => (b.lastActiveAt || 0) - (a.lastActiveAt || 0))
+        this.rawDevices = list
+        this.currentDevices = list
+          .filter(d => this.isDeviceOnline(d) || d.deviceId === this.deviceId)
+          .sort((a, b) => (b.lastActiveAt || 0) - (a.lastActiveAt || 0))
       }
       this.devicesChangeCallbacks.forEach(cb => cb(this.currentDevices))
     })
+
+    // Periodic liveness check: drops offline devices automatically
+    if (this.livenessTimer) clearInterval(this.livenessTimer)
+    this.livenessTimer = setInterval(() => {
+      if (this.rawDevices.length > 0) {
+        const activeList = this.rawDevices
+          .filter(d => this.isDeviceOnline(d) || d.deviceId === this.deviceId)
+          .sort((a, b) => (b.lastActiveAt || 0) - (a.lastActiveAt || 0))
+
+        const changed = activeList.length !== this.currentDevices.length ||
+          activeList.some((d, idx) => d.deviceId !== this.currentDevices[idx]?.deviceId)
+
+        if (changed) {
+          this.currentDevices = activeList
+          this.devicesChangeCallbacks.forEach(cb => cb(this.currentDevices))
+        }
+      }
+    }, 5000)
   }
 
   private listenToPlaybackState() {
     if (!this.userId) return
-    const stateRef = ref(db, `connect/${this.userId}/playbackState`)
+    const stateRef = ref(rtdb, `connect/${this.userId}/playbackState`)
     this.playbackStateListener = onValue(stateRef, (snapshot) => {
       const val = snapshot.val()
       if (val) {
@@ -179,6 +257,54 @@ class IsaiConnectServiceManager {
         this.stateChangeCallbacks.forEach(cb => cb(val))
       }
     })
+  }
+
+  private listenToCommands() {
+    if (!this.userId) return
+    const cmdRef = ref(rtdb, `connect/${this.userId}/command`)
+    this.commandListener = onValue(cmdRef, (snapshot) => {
+      const val = snapshot.val()
+      if (val && val.timestamp && val.issuedByDeviceId !== this.deviceId) {
+        // Only process fresh commands (less than 15 seconds old)
+        if (Date.now() - val.timestamp < 15000) {
+          this.commandCallbacks.forEach(cb => cb(val))
+        }
+      }
+    })
+  }
+
+  public subscribeCommands(callback: (cmd: RemoteCommand) => void) {
+    this.commandCallbacks.push(callback)
+    return () => {
+      this.commandCallbacks = this.commandCallbacks.filter(c => c !== callback)
+    }
+  }
+
+  public sendCommand(
+    action: 'PLAY' | 'PAUSE' | 'NEXT' | 'PREV' | 'SEEK' | 'PLAY_SONG',
+    data?: { positionMs?: number; song?: any; targetDeviceId?: string }
+  ) {
+    if (!this.userId) return
+    const cmdRef = ref(rtdb, `connect/${this.userId}/command`)
+    const cmd: RemoteCommand = {
+      action,
+      targetDeviceId: data?.targetDeviceId || '',
+      positionMs: data?.positionMs || 0,
+      songId: data?.song?.videoId || data?.song?.id || '',
+      songTitle: data?.song?.title || '',
+      songArtist: data?.song?.channelTitle || data?.song?.artist || '',
+      songArtwork: data?.song?.thumbnailUrl || data?.song?.artwork || '',
+      songAudioUrl: data?.song?.audioUrl || '',
+      timestamp: Date.now(),
+      issuedByDeviceId: this.deviceId
+    }
+    set(cmdRef, cmd).catch(err => {
+      console.warn('[ISAI Connect] Send command warning:', err)
+    })
+  }
+
+  public isMyDeviceActive(): boolean {
+    return Boolean(this.currentPlaybackState?.currentDeviceId === this.deviceId)
   }
 
   public subscribePlaybackState(callback: (state: PlaybackStateSync | null) => void) {
@@ -199,7 +325,7 @@ class IsaiConnectServiceManager {
 
   public updatePlaybackState(partial: Partial<PlaybackStateSync>) {
     if (!this.userId) return
-    const stateRef = ref(db, `connect/${this.userId}/playbackState`)
+    const stateRef = ref(rtdb, `connect/${this.userId}/playbackState`)
     const updated: Partial<PlaybackStateSync> = {
       ...partial,
       updatedAt: Date.now(),
@@ -227,6 +353,10 @@ class IsaiConnectServiceManager {
       clearInterval(this.heartbeatTimer)
       this.heartbeatTimer = null
     }
+    if (this.livenessTimer) {
+      clearInterval(this.livenessTimer)
+      this.livenessTimer = null
+    }
     if (this.devicesListener) {
       this.devicesListener()
       this.devicesListener = null
@@ -235,13 +365,19 @@ class IsaiConnectServiceManager {
       this.playbackStateListener()
       this.playbackStateListener = null
     }
+    if (this.commandListener) {
+      this.commandListener()
+      this.commandListener = null
+    }
     if (this.userId) {
-      const deviceRef = ref(db, `connect/${this.userId}/devices/${this.deviceId}`)
+      const deviceRef = ref(rtdb, `connect/${this.userId}/devices/${this.deviceId}`)
       update(deviceRef, { isActive: false, lastActiveAt: Date.now() }).catch(() => {})
-      const devicesRef = ref(db, `connect/${this.userId}/devices`)
-      const stateRef = ref(db, `connect/${this.userId}/playbackState`)
+      const devicesRef = ref(rtdb, `connect/${this.userId}/devices`)
+      const stateRef = ref(rtdb, `connect/${this.userId}/playbackState`)
+      const cmdRef = ref(rtdb, `connect/${this.userId}/command`)
       off(devicesRef)
       off(stateRef)
+      off(cmdRef)
     }
     this.userId = ''
   }

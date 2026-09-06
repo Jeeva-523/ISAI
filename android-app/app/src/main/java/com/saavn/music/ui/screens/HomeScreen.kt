@@ -158,35 +158,18 @@ fun HomeScreen(
                 }
 
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Full Refresh Button
-                    IconButton(
-                        onClick = { viewModel.refreshCategorySongs() },
-                        modifier = Modifier
-                            .size(42.dp)
-                            .clip(CircleShape)
-                            .background(DarkSurfaceGlass)
-                            .border(1.dp, GlassBorderSubtle, CircleShape)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = "Full Refresh",
-                            tint = NeonCyan,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-
                     // Profile / Login Button
                     val userProfile by viewModel.userProfile.collectAsState()
-                    IconButton(
-                        onClick = { viewModel.openLoginDialog() },
+                    Box(
                         modifier = Modifier
-                            .size(42.dp)
+                            .size(36.dp)
                             .clip(CircleShape)
                             .background(DarkSurfaceGlass)
                             .border(1.dp, GlassBorderSubtle, CircleShape)
+                            .clickable { viewModel.setScreen(AppScreen.PROFILE) },
+                        contentAlignment = Alignment.Center
                     ) {
                         if (userProfile?.photoUrl != null) {
                             AsyncImage(
@@ -202,25 +185,28 @@ fun HomeScreen(
                                 imageVector = androidx.compose.material.icons.Icons.Default.Person,
                                 contentDescription = "Account",
                                 tint = if (userProfile != null) NeonCyan else TextSecondary,
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(18.dp)
                             )
                         }
                     }
 
+                    Spacer(modifier = Modifier.width(12.dp))
+
                     // Search Action Button
-                    IconButton(
-                        onClick = { viewModel.setScreen(AppScreen.SEARCH) },
+                    Box(
                         modifier = Modifier
-                            .size(42.dp)
+                            .size(36.dp)
                             .clip(CircleShape)
                             .background(DarkSurfaceGlass)
                             .border(1.dp, GlassBorderSubtle, CircleShape)
+                            .clickable { viewModel.setScreen(AppScreen.SEARCH) },
+                        contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Default.Search,
                             contentDescription = "Search",
                             tint = NeonCyan,
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                 }
@@ -306,7 +292,7 @@ fun HomeScreen(
         // 3.5 ✨ Recommended For You (Personalized Suggestions Based on Listening History)
         if (personalizedRecs.isNotEmpty()) {
             item {
-                Spacer(modifier = Modifier.height(22.dp))
+                Spacer(modifier = Modifier.height(10.dp))
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -314,7 +300,7 @@ fun HomeScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = "✨ Recommended For You",
                             fontSize = 18.sp,
@@ -325,9 +311,12 @@ fun HomeScreen(
                             text = recommendedReason,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Medium,
-                            color = NeonCyan
+                            color = NeonCyan,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
+                    Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = "MADE FOR YOU",
                         fontSize = 10.sp,
@@ -335,7 +324,7 @@ fun HomeScreen(
                         color = NeonPurple
                     )
                 }
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
                 LazyRow(
                     contentPadding = PaddingValues(horizontal = 20.dp),
@@ -355,7 +344,7 @@ fun HomeScreen(
         // 3.8 🎤 Popular Singers & Artists Section
         if (popularArtists.isNotEmpty()) {
             item {
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(12.dp))
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -373,7 +362,11 @@ fun HomeScreen(
                         text = "TOP ARTISTS",
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
-                        color = NeonCyan
+                        color = NeonCyan,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { viewModel.setScreen(com.saavn.music.ui.AppScreen.SEARCH) }
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 }
                 Spacer(modifier = Modifier.height(12.dp))
@@ -388,7 +381,7 @@ fun HomeScreen(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier
                                 .width(88.dp)
-                                .clickable { viewModel.onSearchQueryChanged(artistData.name) }
+                                .clickable { viewModel.selectArtist(artistData.name) }
                         ) {
                             Box(
                                 modifier = Modifier
@@ -398,12 +391,23 @@ fun HomeScreen(
                                     .border(1.5.dp, GlassBorder, CircleShape),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text(
-                                    text = artistData.name.take(1).uppercase(),
-                                    fontSize = 26.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = NeonCyan
-                                )
+                                if (artistData.imageUrl.isNotBlank()) {
+                                    AsyncImage(
+                                        model = artistData.imageUrl,
+                                        contentDescription = artistData.name,
+                                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .clip(CircleShape)
+                                    )
+                                } else {
+                                    Text(
+                                        text = artistData.name.take(1).uppercase(),
+                                        fontSize = 26.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = NeonCyan
+                                    )
+                                }
                             }
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
@@ -416,9 +420,11 @@ fun HomeScreen(
                                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
                             )
                             Text(
-                                text = "${artistData.playCount} plays",
+                                text = artistData.role,
                                 fontSize = 10.sp,
                                 color = TextSecondary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
                                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
                             )
                         }

@@ -18,6 +18,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -27,13 +29,25 @@ import com.saavn.music.connect.DeviceInfo
 import com.saavn.music.connect.IsaiConnectManager
 import com.saavn.music.ui.theme.DarkBackground
 import com.saavn.music.ui.theme.DarkSurface
+import com.saavn.music.ui.theme.DarkSurfaceGlass
 import com.saavn.music.ui.theme.IsaiLime
+import com.saavn.music.ui.theme.NeonCyan
+import com.saavn.music.ui.theme.NeonPurple
 import com.saavn.music.ui.theme.TextSecondary
+
+private fun formatDeviceDisplayName(rawName: String): String {
+    val cleaned = rawName
+        .replace(Regex("(?i)[0-9A-Z]{7,}"), "")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+    return if (cleaned.isNotBlank()) cleaned else "Jeeva's Phone"
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun IsaiConnectBottomSheet(
     connectManager: IsaiConnectManager,
+    viewModel: com.saavn.music.ui.MainViewModel? = null,
     onDismissRequest: () -> Unit
 ) {
     val devices by connectManager.devices.collectAsState()
@@ -78,14 +92,14 @@ fun IsaiConnectBottomSheet(
                         modifier = Modifier
                             .size(42.dp)
                             .clip(CircleShape)
-                            .background(IsaiLime.copy(alpha = 0.15f)),
+                            .background(Brush.linearGradient(listOf(NeonCyan.copy(alpha = 0.2f), NeonPurple.copy(alpha = 0.2f)))),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Default.Devices,
                             contentDescription = null,
-                            tint = IsaiLime,
-                            modifier = Modifier.size(24.dp)
+                            tint = NeonCyan,
+                            modifier = Modifier.size(22.dp)
                         )
                     }
                     Column {
@@ -96,9 +110,10 @@ fun IsaiConnectBottomSheet(
                                 color = Color.White
                             )
                         )
+                        val activeEmail = connectManager.userEmail.ifBlank { "Guest Account" }
                         Text(
-                            text = "Seamless multi-device audio sync",
-                            style = MaterialTheme.typography.bodySmall.copy(color = TextSecondary)
+                            text = "⚡ Syncing account: $activeEmail",
+                            style = MaterialTheme.typography.bodySmall.copy(color = NeonCyan)
                         )
                     }
                 }
@@ -118,7 +133,7 @@ fun IsaiConnectBottomSheet(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(14.dp),
                 color = DarkBackground,
-                border = androidx.compose.foundation.BorderStroke(1.dp, IsaiLime.copy(alpha = 0.3f))
+                border = androidx.compose.foundation.BorderStroke(1.dp, NeonCyan.copy(alpha = 0.35f))
             ) {
                 Row(
                     modifier = Modifier.padding(14.dp),
@@ -128,21 +143,21 @@ fun IsaiConnectBottomSheet(
                     Icon(
                         imageVector = Icons.Default.GraphicEq,
                         contentDescription = null,
-                        tint = IsaiLime,
+                        tint = NeonCyan,
                         modifier = Modifier.size(24.dp)
                     )
                     Column {
                         Text(
                             text = "CURRENT AUDIO OUTPUT",
                             style = MaterialTheme.typography.labelSmall.copy(
-                                color = IsaiLime,
+                                color = NeonCyan,
                                 fontWeight = FontWeight.Bold,
                                 letterSpacing = 1.sp
                             )
                         )
                         Text(
                             text = if (currentActiveId == myDeviceId)
-                                "Playing on This Device (${connectManager.deviceName})"
+                                "Playing on ${formatDeviceDisplayName(connectManager.deviceName)}"
                             else
                                 "Playing on Remote Device",
                             style = MaterialTheme.typography.bodyMedium.copy(
@@ -170,18 +185,34 @@ fun IsaiConnectBottomSheet(
 
             DeviceItemRow(
                 deviceName = connectManager.deviceName,
-                subtitle = "This Android Phone",
+                subtitle = "This Phone",
                 platform = "android",
                 isActivePlayer = currentActiveId == myDeviceId,
-                presenceText = "🟢 Active now",
+                presenceText = "Active now",
                 presenceColor = IsaiLime,
-                onClick = { connectManager.transferPlaybackToDevice(myDeviceId) }
+                onClick = {
+                    connectManager.transferPlaybackToDevice(myDeviceId)
+                    if (viewModel != null) {
+                        val sync = connectManager.playbackState.value
+                        if (sync != null && sync.currentSongId.isNotBlank()) {
+                            val song = com.saavn.music.data.model.YouTubeSong(
+                                videoId = sync.currentSongId,
+                                title = sync.currentTitle,
+                                channelTitle = sync.currentArtist,
+                                thumbnailUrl = sync.currentArtwork,
+                                audioUrl = sync.currentAudioUrl.ifBlank { null }
+                            )
+                            val startSec = (sync.positionMs / 1000f).coerceAtLeast(0f)
+                            viewModel.playSong(song, startPositionSec = startSec)
+                        }
+                    }
+                }
             )
 
             Spacer(modifier = Modifier.height(20.dp))
 
             // Section: Available Devices
-            val otherDevices = devices.filter { it.deviceId != myDeviceId }
+            val otherDevices = devices.filter { it.deviceId != myDeviceId && connectManager.isDeviceOnline(it) }
             Text(
                 text = "AVAILABLE DEVICES (${otherDevices.size})",
                 style = MaterialTheme.typography.labelMedium.copy(
@@ -216,9 +247,9 @@ fun IsaiConnectBottomSheet(
                     items(otherDevices) { device ->
                         val diffMs = System.currentTimeMillis() - device.lastActiveAt
                         val (pText, pColor) = when {
-                            device.isActive && diffMs < 35000 -> "🟢 Active now" to IsaiLime
-                            diffMs < 300000 -> "🟡 Active ${(diffMs / 60000).coerceAtLeast(1)}m ago" to Color(0xFFFFC107)
-                            else -> "⚫ Offline" to TextSecondary
+                            device.isActive && diffMs < 35000 -> "Active now" to IsaiLime
+                            diffMs < 300000 -> "Active ${(diffMs / 60000).coerceAtLeast(1)}m ago" to Color(0xFFFFC107)
+                            else -> "Offline" to TextSecondary
                         }
 
                         DeviceItemRow(
@@ -228,7 +259,20 @@ fun IsaiConnectBottomSheet(
                             isActivePlayer = currentActiveId == device.deviceId,
                             presenceText = pText,
                             presenceColor = pColor,
-                            onClick = { connectManager.transferPlaybackToDevice(device.deviceId) }
+                            onClick = {
+                                val currentSong = viewModel?.ytPlayerController?.currentSong?.value
+                                val posMs = ((viewModel?.ytPlayerController?.currentPositionSec?.value ?: 0f) * 1000).toLong()
+                                if (currentSong != null) {
+                                    connectManager.sendCommand(
+                                        action = "PLAY_SONG",
+                                        positionMs = posMs,
+                                        song = currentSong,
+                                        targetDeviceId = device.deviceId
+                                    )
+                                    viewModel.ytPlayerController.pause()
+                                }
+                                connectManager.transferPlaybackToDevice(device.deviceId)
+                            }
                         )
                     }
                 }
@@ -249,77 +293,145 @@ fun DeviceItemRow(
     presenceColor: Color,
     onClick: () -> Unit
 ) {
+    val cleanName = formatDeviceDisplayName(deviceName)
     val icon = when (platform.lowercase()) {
-        "android", "ios", "tablet" -> Icons.Default.PhoneAndroid
+        "android", "ios", "tablet" -> Icons.Default.Smartphone
         "windows", "mac" -> Icons.Default.Laptop
         else -> Icons.Default.Computer
     }
 
-    Surface(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onClick() },
-        shape = RoundedCornerShape(14.dp),
-        color = if (isActivePlayer) IsaiLime.copy(alpha = 0.12f) else DarkBackground,
-        border = androidx.compose.foundation.BorderStroke(
-            1.dp,
-            if (isActivePlayer) IsaiLime else Color.White.copy(alpha = 0.08f)
-        )
+            .shadow(
+                elevation = if (isActivePlayer) 10.dp else 0.dp,
+                shape = RoundedCornerShape(18.dp),
+                spotColor = NeonCyan.copy(alpha = 0.35f)
+            )
+            .clip(RoundedCornerShape(18.dp))
+            .background(if (isActivePlayer) DarkSurfaceGlass else DarkBackground)
+            .border(
+                width = if (isActivePlayer) 1.5.dp else 1.dp,
+                brush = if (isActivePlayer) {
+                    Brush.horizontalGradient(listOf(NeonCyan, NeonPurple))
+                } else {
+                    Brush.horizontalGradient(listOf(Color.White.copy(alpha = 0.08f), Color.White.copy(alpha = 0.08f)))
+                },
+                shape = RoundedCornerShape(18.dp)
+            )
+            .clickable { onClick() }
+            .padding(horizontal = 16.dp, vertical = 14.dp)
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Row(
+                modifier = Modifier.weight(1f),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(14.dp)
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = if (isActivePlayer) IsaiLime else Color.White,
-                    modifier = Modifier.size(26.dp)
-                )
-                Column {
-                    Text(
-                        text = deviceName,
-                        style = MaterialTheme.typography.bodyLarge.copy(
-                            fontWeight = FontWeight.SemiBold,
-                            color = if (isActivePlayer) IsaiLime else Color.White
+                // Icon Container Box
+                Box(
+                    modifier = Modifier
+                        .size(42.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (isActivePlayer) {
+                                Brush.linearGradient(listOf(NeonCyan.copy(alpha = 0.25f), NeonPurple.copy(alpha = 0.25f)))
+                            } else {
+                                Brush.linearGradient(listOf(Color.White.copy(alpha = 0.06f), Color.White.copy(alpha = 0.06f)))
+                            }
                         )
+                        .border(
+                            1.dp,
+                            if (isActivePlayer) NeonCyan.copy(alpha = 0.4f) else Color.Transparent,
+                            CircleShape
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (isActivePlayer) Icons.Default.GraphicEq else icon,
+                        contentDescription = null,
+                        tint = if (isActivePlayer) NeonCyan else TextSecondary,
+                        modifier = Modifier.size(20.dp)
                     )
+                }
+
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = presenceText,
-                        style = MaterialTheme.typography.bodySmall.copy(color = presenceColor)
+                        text = cleanName,
+                        style = MaterialTheme.typography.bodyLarge.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = if (isActivePlayer) Color.White else TextSecondary
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .clip(CircleShape)
+                                .background(if (isActivePlayer) NeonCyan else presenceColor)
+                        )
+                        Text(
+                            text = if (isActivePlayer) "Active Speaker" else presenceText,
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                color = if (isActivePlayer) NeonCyan else presenceColor,
+                                fontWeight = FontWeight.Medium,
+                                fontSize = 11.sp
+                            ),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
             }
 
+            Spacer(modifier = Modifier.width(8.dp))
+
             if (isActivePlayer) {
-                Surface(
-                    shape = RoundedCornerShape(20.dp),
-                    color = IsaiLime
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(Brush.horizontalGradient(listOf(NeonCyan, NeonPurple)))
+                        .padding(horizontal = 10.dp, vertical = 5.dp)
                 ) {
                     Text(
-                        text = "Active Player",
+                        text = "⚡ Playing",
                         style = MaterialTheme.typography.labelSmall.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = DarkBackground
+                            fontWeight = FontWeight.ExtraBold,
+                            color = DarkBackground,
+                            fontSize = 11.sp
                         ),
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                        maxLines = 1,
+                        softWrap = false
                     )
                 }
             } else {
-                Text(
-                    text = "Connect",
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        color = TextSecondary,
-                        fontWeight = FontWeight.Medium
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color.White.copy(alpha = 0.08f))
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                ) {
+                    Text(
+                        text = "Switch",
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            color = NeonCyan,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 11.sp
+                        ),
+                        maxLines = 1,
+                        softWrap = false
                     )
-                )
+                }
             }
         }
     }

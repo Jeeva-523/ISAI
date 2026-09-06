@@ -31,6 +31,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.automirrored.filled.VolumeDown
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
@@ -137,11 +138,8 @@ fun PlayerScreen(
 
     val queue by viewModel.playbackQueue.collectAsState()
     val currentQueueIdx by viewModel.currentQueueIndex.collectAsState()
-    val suggestions by viewModel.suggestions.collectAsState()
-    val isLoadingSuggestions by viewModel.isLoadingSuggestions.collectAsState()
 
     var showQueueSheet by remember { mutableStateOf(false) }
-    var selectedSheetTab by remember { mutableIntStateOf(0) }
 
     var showConnectSheet by remember { mutableStateOf(false) }
     var showMoreMenu by remember { mutableStateOf(false) }
@@ -153,8 +151,6 @@ fun PlayerScreen(
     val currentSong = song ?: return
     val isFav = viewModel.isFavorite(currentSong.videoId)
     val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
-    val isDirectAudio = viewModel.ytPlayerController.isDirectAudio()
 
     // Smooth continuous vinyl rotation
     val infiniteTransition = rememberInfiniteTransition(label = "VinylSpin")
@@ -270,7 +266,7 @@ fun PlayerScreen(
                                 .background(if (isPlaying) com.saavn.music.ui.theme.IsaiLime else TextMuted)
                         )
                         Text(
-                            text = if (isDirectAudio) "320 KBPS HD • UN ISAI" else "ISAI STREAM",
+                            text = "UN ISAI",
                             color = com.saavn.music.ui.theme.IsaiLime,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.ExtraBold,
@@ -344,14 +340,14 @@ fun PlayerScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(310.dp),
+                    .height(230.dp),
                 contentAlignment = Alignment.Center
             ) {
                 // Pulsing Aura behind Artwork Card
                 Box(
                     modifier = Modifier
-                        .size((275 * if (isPlaying) auraScale else 1f).dp)
-                        .clip(RoundedCornerShape(32.dp))
+                        .size((205 * if (isPlaying) auraScale else 1f).dp)
+                        .clip(RoundedCornerShape(24.dp))
                         .background(
                             Brush.radialGradient(
                                 colors = listOf(
@@ -366,18 +362,18 @@ fun PlayerScreen(
                 // Floating 3D Artwork Card
                 Box(
                     modifier = Modifier
-                        .size(280.dp)
+                        .size(210.dp)
                         .shadow(
-                            elevation = 28.dp,
-                            shape = RoundedCornerShape(26.dp),
+                            elevation = 20.dp,
+                            shape = RoundedCornerShape(20.dp),
                             spotColor = com.saavn.music.ui.theme.IsaiLime.copy(alpha = 0.5f),
                             ambientColor = NeonPurple.copy(alpha = 0.4f)
                         )
-                        .clip(RoundedCornerShape(26.dp))
+                        .clip(RoundedCornerShape(20.dp))
                         .border(
                             2.dp,
                             Brush.linearGradient(listOf(com.saavn.music.ui.theme.IsaiLime, NeonPurple, NeonPink)),
-                            RoundedCornerShape(26.dp)
+                            RoundedCornerShape(20.dp)
                         )
                 ) {
                     AsyncImage(
@@ -389,12 +385,12 @@ fun PlayerScreen(
                 }
             }
 
-            // Live Dancing Audio Waveform Visualizer
+            // Live Dancing Vibrant Full Rainbow Audio Waveform Visualizer
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(26.dp)
-                    .padding(horizontal = 8.dp),
+                    .height(20.dp)
+                    .padding(horizontal = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.Bottom
             ) {
@@ -403,13 +399,48 @@ fun PlayerScreen(
                     25, 17, 12, 24, 15, 20, 26, 11, 23, 16,
                     19, 25, 12, 21, 14, 24, 18, 10
                 )
+                val rainbowColors = listOf(
+                    Color(0xFFFF007A), // Neon Pink
+                    Color(0xFFFF3366), // Coral Pink
+                    Color(0xFFFF6600), // Electric Orange
+                    Color(0xFFFFD700), // Bright Gold
+                    Color(0xFFAEEA00), // Neon Lime
+                    Color(0xFF00FF88), // Spring Green
+                    Color(0xFF00E5FF), // Bright Turquoise
+                    Color(0xFF00F0FF), // Neon Cyan
+                    Color(0xFF0088FF), // Electric Blue
+                    Color(0xFF7000FF), // Deep Violet
+                    Color(0xFFB000FF), // Neon Purple
+                    Color(0xFFFF00E5), // Vivid Magenta
+                    Color(0xFFFF007A), // Neon Pink
+                    Color(0xFFFF5722), // Deep Orange
+                    Color(0xFFFFC107), // Gold
+                    Color(0xFF76FF03), // Lime Green
+                    Color(0xFF00E676), // Emerald
+                    Color(0xFF00B0FF), // Sky Blue
+                    Color(0xFF3D5AFE), // Indigo
+                    Color(0xFFD500F9), // Purple Pink
+                    Color(0xFFFF1744), // Crimson
+                    Color(0xFFFFAB00), // Amber
+                    Color(0xFF00E5FF), // Cyan
+                    Color(0xFF651FFF), // Purple
+                    Color(0xFFFF007A), // Pink
+                    Color(0xFF00FF88), // Green
+                    Color(0xFFFFD700), // Yellow Gold
+                    Color(0xFF00F0FF)  // Cyan
+                )
+
                 barHeights.forEachIndexed { index, _ ->
                     val dynamicH = if (isPlaying) {
-                        val factor = (Math.sin(rotationAngle.toDouble() * 0.1 + index) + 1) / 2.0
-                        (8 + factor * 18).coerceIn(4.0, 26.0).dp
+                        val factor = (Math.sin(rotationAngle.toDouble() * 0.12 + index * 0.4) + 1) / 2.0
+                        (5 + factor * 15).coerceIn(3.0, 20.0).dp
                     } else {
                         4.dp
                     }
+
+                    val topColor = rainbowColors[index % rainbowColors.size]
+                    val bottomColor = rainbowColors[(index + 4) % rainbowColors.size]
+
                     Box(
                         modifier = Modifier
                             .width(3.2.dp)
@@ -417,10 +448,7 @@ fun PlayerScreen(
                             .clip(RoundedCornerShape(3.dp))
                             .background(
                                 Brush.verticalGradient(
-                                    colors = listOf(
-                                        NeonCyan,
-                                        NeonPurple
-                                    )
+                                    colors = listOf(topColor, bottomColor)
                                 )
                             )
                     )
@@ -542,7 +570,7 @@ fun PlayerScreen(
                 }
             }
 
-            // Flagship Media Controls (Shuffle, Prev, Big FAB, Next, Repeat)
+            // Flagship Media Controls (Shuffle, Prev, Compact FAB, Next, Repeat)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly,
@@ -551,38 +579,38 @@ fun PlayerScreen(
                 // Shuffle Button
                 IconButton(
                     onClick = { viewModel.toggleShuffle() },
-                    modifier = Modifier.size(44.dp)
+                    modifier = Modifier.size(38.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Shuffle,
                         contentDescription = "Shuffle",
                         tint = if (isShuffle) NeonCyan else TextMuted,
-                        modifier = Modifier.size(24.dp)
+                        modifier = Modifier.size(20.dp)
                     )
                 }
 
                 // Previous
                 IconButton(
                     onClick = { viewModel.playPrevious() },
-                    modifier = Modifier.size(52.dp)
+                    modifier = Modifier.size(44.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.SkipPrevious,
                         contentDescription = "Previous",
                         tint = TextPrimary,
-                        modifier = Modifier.size(38.dp)
+                        modifier = Modifier.size(30.dp)
                     )
                 }
 
-                // Giant Glowing Neon FAB Play/Pause Button
+                // Glowing Neon FAB Play/Pause Button
                 Box(
                     modifier = Modifier
-                        .size(76.dp)
+                        .size(62.dp)
                         .shadow(
-                            elevation = 24.dp,
+                            elevation = 16.dp,
                             shape = CircleShape,
-                            spotColor = NeonCyan.copy(alpha = 0.7f),
-                            ambientColor = NeonPurple.copy(alpha = 0.5f)
+                            spotColor = NeonCyan.copy(alpha = 0.6f),
+                            ambientColor = NeonPurple.copy(alpha = 0.4f)
                         )
                         .clip(CircleShape)
                         .background(
@@ -598,15 +626,15 @@ fun PlayerScreen(
                     if (isBuffering) {
                         CircularProgressIndicator(
                             color = DarkBackground,
-                            modifier = Modifier.size(38.dp),
-                            strokeWidth = 3.5.dp
+                            modifier = Modifier.size(30.dp),
+                            strokeWidth = 3.dp
                         )
                     } else {
                         Icon(
                             imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                             contentDescription = if (isPlaying) "Pause" else "Play",
                             tint = DarkBackground,
-                            modifier = Modifier.size(42.dp)
+                            modifier = Modifier.size(34.dp)
                         )
                     }
                 }
@@ -614,197 +642,218 @@ fun PlayerScreen(
                 // Next
                 IconButton(
                     onClick = { viewModel.playNext() },
-                    modifier = Modifier.size(52.dp)
+                    modifier = Modifier.size(44.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.SkipNext,
                         contentDescription = "Next",
                         tint = TextPrimary,
-                        modifier = Modifier.size(38.dp)
+                        modifier = Modifier.size(30.dp)
                     )
                 }
 
                 // Repeat Button
                 IconButton(
                     onClick = { viewModel.toggleRepeat() },
-                    modifier = Modifier.size(44.dp)
+                    modifier = Modifier.size(38.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Repeat,
                         contentDescription = "Repeat",
                         tint = if (isRepeat) NeonPink else TextMuted,
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-            }
-
-            // Bottom Volume Row & Fallback YouTube Action
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(DarkSurfaceGlass)
-                    .border(1.dp, GlassBorderSubtle, RoundedCornerShape(16.dp))
-                    .padding(horizontal = 14.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.VolumeDown,
-                    contentDescription = "Volume Down",
-                    tint = TextMuted,
-                    modifier = Modifier.size(20.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Slider(
-                    value = volume.toFloat(),
-                    onValueChange = { viewModel.setVolume(it.toInt()) },
-                    valueRange = 0f..100f,
-                    colors = SliderDefaults.colors(
-                        thumbColor = NeonCyan,
-                        activeTrackColor = NeonCyan.copy(alpha = 0.7f),
-                        inactiveTrackColor = DarkSurfaceVariant
-                    ),
-                    modifier = Modifier.weight(1f)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.VolumeUp,
-                    contentDescription = "Volume Up",
-                    tint = TextMuted,
-                    modifier = Modifier.size(20.dp)
-                )
-
-                Spacer(modifier = Modifier.width(6.dp))
-
-                // ISAI Connect Multi-Device Selector Button
-                val isMyDeviceActive = viewModel.isaiConnectManager.isMyDeviceActive()
-                Surface(
-                    modifier = Modifier.clip(RoundedCornerShape(20.dp)).clickable { showConnectSheet = true },
-                    shape = RoundedCornerShape(20.dp),
-                    color = if (!isMyDeviceActive) com.saavn.music.ui.theme.IsaiLime else DarkSurfaceGlass,
-                    border = androidx.compose.foundation.BorderStroke(
-                        1.dp,
-                        if (!isMyDeviceActive) com.saavn.music.ui.theme.IsaiLime else GlassBorderSubtle
-                    )
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Devices,
-                            contentDescription = "ISAI Connect",
-                            tint = if (!isMyDeviceActive) DarkBackground else com.saavn.music.ui.theme.IsaiLime,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Text(
-                            text = if (!isMyDeviceActive) "Connected" else "Connect",
-                            style = androidx.compose.material3.MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.Bold,
-                                color = if (!isMyDeviceActive) DarkBackground else com.saavn.music.ui.theme.IsaiLime
-                            )
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.width(6.dp))
-
-                // Share Track Button
-                IconButton(
-                    onClick = {
-                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                            type = "text/plain"
-                            putExtra(Intent.EXTRA_SUBJECT, currentSong.title)
-                            putExtra(Intent.EXTRA_TEXT, "Listening to ${currentSong.title} - ${currentSong.channelTitle} on ISAI Music!")
-                        }
-                        context.startActivity(Intent.createChooser(shareIntent, "Share Track"))
-                    },
-                    modifier = Modifier.size(32.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Share,
-                        contentDescription = "Share Track",
-                        tint = NeonCyan,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            }
-
-
-
-            // Up Next & Queue Bar
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(
-                        Brush.horizontalGradient(
-                            listOf(
-                                com.saavn.music.ui.theme.IsaiLime.copy(alpha = 0.15f),
-                                DarkSurfaceGlass,
-                                NeonPink.copy(alpha = 0.15f)
-                            )
-                        )
-                    )
-                    .border(1.dp, GlassBorderSubtle, RoundedCornerShape(16.dp))
-                    .clickable { showQueueSheet = true }
-                    .padding(horizontal = 14.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.QueueMusic,
-                        contentDescription = "Queue",
-                        tint = NeonCyan,
                         modifier = Modifier.size(20.dp)
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Column {
-                        Text(
-                            text = "UP NEXT & QUEUE",
-                            color = TextPrimary,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            letterSpacing = 1.sp
-                        )
-                        val nextSong = queue.getOrNull(currentQueueIdx + 1) ?: suggestions.firstOrNull()
-                        if (nextSong != null) {
-                            Text(
-                                text = "Next: ${nextSong.title}",
-                                color = TextMuted,
-                                fontSize = 10.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    }
                 }
+            }
 
+            // Compact Bottom Controls & Up Next Group
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // Modern Compact Sound Volume Control Bar
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    modifier = Modifier
+                        .fillMaxWidth(0.85f)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(DarkSurfaceGlass)
+                        .border(1.dp, GlassBorderSubtle, RoundedCornerShape(14.dp))
+                        .padding(horizontal = 10.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
+                    var previousVol by remember { mutableIntStateOf(80) }
+                    IconButton(
+                        onClick = {
+                            if (volume > 0) {
+                                previousVol = volume
+                                viewModel.setVolume(0)
+                            } else {
+                                viewModel.setVolume(previousVol.coerceAtLeast(40))
+                            }
+                        },
+                        modifier = Modifier.size(26.dp)
+                    ) {
+                        Icon(
+                            imageVector = when {
+                                volume == 0 -> Icons.AutoMirrored.Filled.VolumeOff
+                                volume < 50 -> Icons.AutoMirrored.Filled.VolumeDown
+                                else -> Icons.AutoMirrored.Filled.VolumeUp
+                            },
+                            contentDescription = "Volume Toggle",
+                            tint = if (volume > 0) NeonCyan else TextMuted,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(4.dp))
+
+                    Slider(
+                        value = volume.toFloat(),
+                        onValueChange = { viewModel.setVolume(it.toInt()) },
+                        valueRange = 0f..100f,
+                        colors = SliderDefaults.colors(
+                            thumbColor = NeonCyan,
+                            activeTrackColor = NeonCyan,
+                            inactiveTrackColor = DarkSurfaceVariant
+                        ),
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    Spacer(modifier = Modifier.width(4.dp))
+
+                    // Volume Percentage Badge Pill
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(NeonCyan.copy(alpha = 0.25f))
-                            .padding(horizontal = 8.dp, vertical = 2.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(DarkSurfaceVariant)
+                            .border(1.dp, GlassBorderSubtle, RoundedCornerShape(8.dp))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
                     ) {
                         Text(
-                            text = "${queue.size} Songs",
+                            text = "$volume%",
                             color = NeonCyan,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
-                    Icon(
-                        imageVector = Icons.Default.KeyboardArrowUp,
-                        contentDescription = "Open Queue & Suggestions",
-                        tint = NeonCyan,
-                        modifier = Modifier.size(20.dp)
-                    )
+                }
+
+                // ISAI Connect Action Bar
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val isMyDeviceActive = viewModel.isaiConnectManager.isMyDeviceActive()
+
+                    // ISAI Connect Multi-Device Button
+                    Surface(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .clickable { showConnectSheet = true },
+                        shape = RoundedCornerShape(20.dp),
+                        color = if (!isMyDeviceActive) com.saavn.music.ui.theme.IsaiLime else DarkSurfaceGlass,
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            if (!isMyDeviceActive) com.saavn.music.ui.theme.IsaiLime else NeonCyan.copy(alpha = 0.5f)
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 18.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Devices,
+                                contentDescription = "ISAI Connect",
+                                tint = if (!isMyDeviceActive) DarkBackground else com.saavn.music.ui.theme.IsaiLime,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                text = if (!isMyDeviceActive) "⚡ Connected" else "⚡ Connect Devices",
+                                style = androidx.compose.material3.MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = if (!isMyDeviceActive) DarkBackground else com.saavn.music.ui.theme.IsaiLime
+                                )
+                            )
+                        }
+                    }
+                }
+
+                // Up Next & Queue Bar
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(
+                            Brush.horizontalGradient(
+                                listOf(
+                                    com.saavn.music.ui.theme.IsaiLime.copy(alpha = 0.15f),
+                                    DarkSurfaceGlass,
+                                    NeonPink.copy(alpha = 0.15f)
+                                )
+                            )
+                        )
+                        .border(1.dp, GlassBorderSubtle, RoundedCornerShape(14.dp))
+                        .clickable { showQueueSheet = true }
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.QueueMusic,
+                            contentDescription = "Queue",
+                            tint = NeonCyan,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
+                            Text(
+                                text = "UP NEXT",
+                                color = TextPrimary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                letterSpacing = 1.sp
+                            )
+                            val nextSong = queue.getOrNull(currentQueueIdx + 1)
+                            if (nextSong != null) {
+                                Text(
+                                    text = "Next: ${nextSong.title}",
+                                    color = TextMuted,
+                                    fontSize = 10.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(NeonCyan.copy(alpha = 0.25f))
+                                .padding(horizontal = 8.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = "${queue.size} Songs",
+                                color = NeonCyan,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Icon(
+                            imageVector = Icons.Default.KeyboardArrowUp,
+                            contentDescription = "Open Queue",
+                            tint = NeonCyan,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                 }
             }
         }
@@ -834,375 +883,168 @@ fun PlayerScreen(
                         .fillMaxWidth()
                         .padding(bottom = 24.dp)
                 ) {
-                    // Two Tabs: Up Next / Suggestions
-                    TabRow(
-                        selectedTabIndex = selectedSheetTab,
-                        containerColor = Color.Transparent,
-                        contentColor = TextPrimary,
-                        indicator = { tabPositions ->
-                            if (selectedSheetTab < tabPositions.size) {
-                                TabRowDefaults.SecondaryIndicator(
-                                    modifier = Modifier.tabIndicatorOffset(tabPositions[selectedSheetTab]),
-                                    color = if (selectedSheetTab == 0) NeonCyan else NeonPink,
-                                    height = 3.dp
-                                )
-                            }
-                        },
-                        divider = {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(1.dp)
-                                    .background(GlassBorderSubtle)
+                    // Single Header: Playing Queue
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.QueueMusic,
+                                contentDescription = null,
+                                tint = NeonCyan,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "PLAYING QUEUE (${queue.size})",
+                                color = TextPrimary,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.sp
                             )
                         }
-                    ) {
-                        Tab(
-                            selected = selectedSheetTab == 0,
-                            onClick = { selectedSheetTab = 0 },
-                            text = {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        Icons.Default.QueueMusic,
-                                        contentDescription = null,
-                                        tint = if (selectedSheetTab == 0) NeonCyan else TextMuted,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = "Up Next (${queue.size})",
-                                        color = if (selectedSheetTab == 0) NeonCyan else TextMuted,
-                                        fontWeight = if (selectedSheetTab == 0) FontWeight.Bold else FontWeight.Normal,
-                                        fontSize = 13.sp
-                                    )
-                                }
-                            }
-                        )
-                        Tab(
-                            selected = selectedSheetTab == 1,
-                            onClick = { selectedSheetTab = 1 },
-                            text = {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        Icons.Default.AutoAwesome,
-                                        contentDescription = null,
-                                        tint = if (selectedSheetTab == 1) NeonPink else TextMuted,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = "Suggestions (${suggestions.size})",
-                                        color = if (selectedSheetTab == 1) NeonPink else TextMuted,
-                                        fontWeight = if (selectedSheetTab == 1) FontWeight.Bold else FontWeight.Normal,
-                                        fontSize = 13.sp
-                                    )
-                                }
-                            }
-                        )
+
+                        if (queue.size > 1) {
+                            Text(
+                                text = "Clear Queue",
+                                color = NeonPink,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(NeonPink.copy(alpha = 0.15f))
+                                    .clickable { viewModel.clearQueue() }
+                                    .padding(horizontal = 10.dp, vertical = 4.dp)
+                            )
+                        }
                     }
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(1.dp)
+                            .background(GlassBorderSubtle)
+                    )
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    if (selectedSheetTab == 0) {
-                        // QUEUE VIEW
-                        Row(
+                    if (queue.isEmpty()) {
+                        Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 20.dp, vertical = 6.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                                .height(240.dp),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Text(
-                                text = "PLAYING QUEUE",
-                                color = TextMuted,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 1.2.sp
-                            )
-                            if (queue.size > 1) {
-                                Text(
-                                    text = "Clear Queue",
-                                    color = NeonPink,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(NeonPink.copy(alpha = 0.15f))
-                                        .clickable { viewModel.clearQueue() }
-                                        .padding(horizontal = 10.dp, vertical = 4.dp)
-                                )
-                            }
-                        }
-
-                        if (queue.isEmpty()) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(240.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text("Queue is empty", color = TextMuted, fontSize = 14.sp)
-                            }
-                        } else {
-                            LazyColumn(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(400.dp)
-                            ) {
-                                itemsIndexed(queue) { idx, qSong ->
-                                    val isCurrent = (idx == currentQueueIdx || qSong.videoId == currentSong.videoId)
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .background(
-                                                if (isCurrent) NeonCyan.copy(alpha = 0.12f) else Color.Transparent
-                                            )
-                                            .clickable {
-                                                viewModel.playSong(qSong, queue)
-                                            }
-                                            .padding(horizontal = 20.dp, vertical = 8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        // Rank or Equalizer
-                                        Box(
-                                            modifier = Modifier.width(28.dp),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            if (isCurrent && isPlaying) {
-                                                EqualizerBars(
-                                                    isPlaying = true,
-                                                    barCount = 3,
-                                                    barWidth = 2.5.dp,
-                                                    maxHeight = 14.dp,
-                                                    activeColor = NeonCyan
-                                                )
-                                            } else {
-                                                Text(
-                                                    text = "${idx + 1}",
-                                                    color = if (isCurrent) NeonCyan else TextMuted,
-                                                    fontSize = 12.sp,
-                                                    fontWeight = FontWeight.Bold
-                                                )
-                                            }
-                                        }
-
-                                        Spacer(modifier = Modifier.width(10.dp))
-
-                                        // Thumbnail
-                                        Box(
-                                            modifier = Modifier
-                                                .size(44.dp)
-                                                .clip(RoundedCornerShape(8.dp))
-                                        ) {
-                                            AsyncImage(
-                                                model = qSong.thumbnailUrl,
-                                                contentDescription = null,
-                                                modifier = Modifier.fillMaxSize(),
-                                                contentScale = ContentScale.Crop
-                                            )
-                                        }
-
-                                        Spacer(modifier = Modifier.width(12.dp))
-
-                                        // Details
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = qSong.title,
-                                                color = if (isCurrent) NeonCyan else TextPrimary,
-                                                fontSize = 13.sp,
-                                                fontWeight = FontWeight.SemiBold,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                            Text(
-                                                text = qSong.channelTitle,
-                                                color = TextSecondary,
-                                                fontSize = 11.sp,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                        }
-
-                                        if (!isCurrent) {
-                                            IconButton(
-                                                onClick = { viewModel.removeFromQueue(idx) },
-                                                modifier = Modifier.size(32.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.DeleteOutline,
-                                                    contentDescription = "Remove",
-                                                    tint = TextMuted,
-                                                    modifier = Modifier.size(18.dp)
-                                                )
-                                            }
-                                        } else {
-                                            Box(
-                                                modifier = Modifier
-                                                    .clip(RoundedCornerShape(6.dp))
-                                                    .background(NeonCyan.copy(alpha = 0.2f))
-                                                    .padding(horizontal = 6.dp, vertical = 2.dp)
-                                            ) {
-                                                Text(
-                                                    "PLAYING",
-                                                    color = NeonCyan,
-                                                    fontSize = 9.sp,
-                                                    fontWeight = FontWeight.ExtraBold
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                            Text("Queue is empty", color = TextMuted, fontSize = 14.sp)
                         }
                     } else {
-                        // SUGGESTIONS VIEW (YouTube Music Style)
-                        Row(
+                        LazyColumn(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 20.dp, vertical = 6.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                                .height(420.dp)
                         ) {
-                            Text(
-                                text = "SIMILAR SONGS",
-                                color = TextMuted,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 0.8.sp
-                            )
-                            if (suggestions.isNotEmpty()) {
-                                Text(
-                                    text = "+ Add All to Queue",
-                                    color = NeonCyan,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
+                            itemsIndexed(queue) { idx, qSong ->
+                                val isCurrent = (idx == currentQueueIdx || qSong.videoId == currentSong.videoId)
+                                Row(
                                     modifier = Modifier
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(NeonCyan.copy(alpha = 0.15f))
+                                        .fillMaxWidth()
+                                        .background(
+                                            if (isCurrent) NeonCyan.copy(alpha = 0.12f) else Color.Transparent
+                                        )
                                         .clickable {
-                                            suggestions.forEach { viewModel.addToQueue(it) }
+                                            viewModel.playSong(qSong, queue)
                                         }
-                                        .padding(horizontal = 10.dp, vertical = 4.dp)
-                                )
-                            }
-                        }
-
-                        if (isLoadingSuggestions) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(240.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    CircularProgressIndicator(color = NeonPink, modifier = Modifier.size(28.dp))
-                                    Spacer(modifier = Modifier.height(10.dp))
-                                    Text("Finding similar Tamil tracks...", color = TextMuted, fontSize = 12.sp)
-                                }
-                            }
-                        } else if (suggestions.isEmpty()) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(240.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text("No suggestions found", color = TextMuted, fontSize = 13.sp)
-                            }
-                        } else {
-                            LazyColumn(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(400.dp)
-                            ) {
-                                itemsIndexed(suggestions) { sIdx, sSong ->
-                                    val inQueue = queue.any { it.videoId == sSong.videoId }
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clickable {
-                                                viewModel.playSong(sSong)
-                                            }
-                                            .padding(horizontal = 20.dp, vertical = 8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
+                                        .padding(horizontal = 20.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    // Rank or Equalizer
+                                    Box(
+                                        modifier = Modifier.width(28.dp),
+                                        contentAlignment = Alignment.Center
                                     ) {
-                                        // Thumbnail
-                                        Box(
-                                            modifier = Modifier
-                                                .size(44.dp)
-                                                .clip(RoundedCornerShape(8.dp))
-                                        ) {
-                                            AsyncImage(
-                                                model = sSong.thumbnailUrl,
-                                                contentDescription = null,
-                                                modifier = Modifier.fillMaxSize(),
-                                                contentScale = ContentScale.Crop
+                                        if (isCurrent && isPlaying) {
+                                            EqualizerBars(
+                                                isPlaying = true,
+                                                barCount = 3,
+                                                barWidth = 2.5.dp,
+                                                maxHeight = 14.dp,
+                                                activeColor = NeonCyan
                                             )
-                                        }
-
-                                        Spacer(modifier = Modifier.width(12.dp))
-
-                                        // Title & Artist
-                                        Column(modifier = Modifier.weight(1f)) {
+                                        } else {
                                             Text(
-                                                text = sSong.title,
-                                                color = TextPrimary,
-                                                fontSize = 13.sp,
-                                                fontWeight = FontWeight.SemiBold,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                            Text(
-                                                text = sSong.channelTitle,
-                                                color = TextSecondary,
-                                                fontSize = 11.sp,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                        }
-
-                                        Spacer(modifier = Modifier.width(8.dp))
-
-                                        // "+ Queue" action pill
-                                        Box(
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(12.dp))
-                                                .background(
-                                                    if (inQueue) DarkSurfaceVariant else NeonCyan.copy(alpha = 0.2f)
-                                                )
-                                                .border(
-                                                    1.dp,
-                                                    if (inQueue) Color.Transparent else NeonCyan.copy(alpha = 0.5f),
-                                                    RoundedCornerShape(12.dp)
-                                                )
-                                                .clickable {
-                                                    if (!inQueue) {
-                                                        viewModel.addToQueue(sSong)
-                                                    }
-                                                }
-                                                .padding(horizontal = 10.dp, vertical = 5.dp),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text(
-                                                text = if (inQueue) "Added" else "+ Queue",
-                                                color = if (inQueue) TextMuted else NeonCyan,
-                                                fontSize = 11.sp,
+                                                text = "${idx + 1}",
+                                                color = if (isCurrent) NeonCyan else TextMuted,
+                                                fontSize = 12.sp,
                                                 fontWeight = FontWeight.Bold
                                             )
                                         }
+                                    }
 
-                                        Spacer(modifier = Modifier.width(6.dp))
+                                    Spacer(modifier = Modifier.width(10.dp))
 
-                                        // Direct Play button
+                                    // Thumbnail
+                                    Box(
+                                        modifier = Modifier
+                                            .size(44.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                    ) {
+                                        AsyncImage(
+                                            model = qSong.thumbnailUrl,
+                                            contentDescription = null,
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentScale = ContentScale.Crop
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.width(12.dp))
+
+                                    // Details
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = qSong.title,
+                                            color = if (isCurrent) NeonCyan else TextPrimary,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = qSong.channelTitle,
+                                            color = TextSecondary,
+                                            fontSize = 11.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+
+                                    if (!isCurrent) {
                                         IconButton(
-                                            onClick = { viewModel.playSong(sSong) },
+                                            onClick = { viewModel.removeFromQueue(idx) },
                                             modifier = Modifier.size(32.dp)
                                         ) {
                                             Icon(
-                                                imageVector = Icons.Default.PlayArrow,
-                                                contentDescription = "Play",
-                                                tint = TextPrimary,
-                                                modifier = Modifier.size(20.dp)
+                                                imageVector = Icons.Default.DeleteOutline,
+                                                contentDescription = "Remove",
+                                                tint = TextMuted,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    } else {
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(NeonCyan.copy(alpha = 0.2f))
+                                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                        ) {
+                                            Text(
+                                                "PLAYING",
+                                                color = NeonCyan,
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.ExtraBold
                                             )
                                         }
                                     }
@@ -1218,6 +1060,7 @@ fun PlayerScreen(
     if (showConnectSheet) {
         com.saavn.music.ui.components.IsaiConnectBottomSheet(
             connectManager = viewModel.isaiConnectManager,
+            viewModel = viewModel,
             onDismissRequest = { showConnectSheet = false }
         )
     }

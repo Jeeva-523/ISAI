@@ -1,12 +1,24 @@
 import React, { useEffect, useState } from 'react'
+import type { Song } from '@shared/models/song'
 import { IsaiConnectService, DeviceInfo, PlaybackStateSync } from '../services/IsaiConnectService'
 
 interface IsaiConnectModalProps {
   isOpen: boolean
   onClose: () => void
+  currentSong?: Song | null
+  currentTime?: number
+  onTransferToLocal?: () => void
+  onTransferToRemote?: (targetDeviceId: string) => void
 }
 
-export const IsaiConnectModal: React.FC<IsaiConnectModalProps> = ({ isOpen, onClose }) => {
+export const IsaiConnectModal: React.FC<IsaiConnectModalProps> = ({
+  isOpen,
+  onClose,
+  currentSong,
+  currentTime = 0,
+  onTransferToLocal,
+  onTransferToRemote
+}) => {
   const [devices, setDevices] = useState<DeviceInfo[]>([])
   const [playbackState, setPlaybackState] = useState<PlaybackStateSync | null>(null)
   const myDeviceId = IsaiConnectService.getMyDeviceId()
@@ -49,7 +61,49 @@ export const IsaiConnectModal: React.FC<IsaiConnectModalProps> = ({ isOpen, onCl
   }
 
   const handleSelectDevice = (targetDeviceId: string) => {
-    IsaiConnectService.transferPlaybackToDevice(targetDeviceId)
+    if (targetDeviceId === myDeviceId) {
+      IsaiConnectService.transferPlaybackToDevice(myDeviceId)
+      onTransferToLocal?.()
+    } else {
+      // Transfer to Remote Device (e.g. Phone):
+      const activeSong = currentSong || (playbackState?.currentSongId ? {
+        videoId: playbackState.currentSongId,
+        title: playbackState.currentTitle,
+        channelTitle: playbackState.currentArtist,
+        thumbnailUrl: playbackState.currentArtwork,
+        audioUrl: playbackState.currentAudioUrl,
+        durationFormatted: '3:30',
+        durationMs: playbackState.durationMs || 210000,
+        viewCountFormatted: ''
+      } : null)
+
+      const posMs = Math.round((currentTime || (playbackState?.positionMs ? playbackState.positionMs / 1000 : 0)) * 1000)
+
+      if (activeSong) {
+        // 1. Send PLAY_SONG command targeted specifically to the phone/remote device
+        IsaiConnectService.sendCommand('PLAY_SONG', {
+          song: activeSong,
+          positionMs: posMs,
+          targetDeviceId
+        })
+
+        // 2. Claim target device ownership and sync song state in RTDB
+        IsaiConnectService.updatePlaybackState({
+          currentDeviceId: targetDeviceId,
+          currentSongId: activeSong.videoId,
+          currentTitle: activeSong.title,
+          currentArtist: activeSong.channelTitle,
+          currentArtwork: activeSong.thumbnailUrl,
+          currentAudioUrl: activeSong.audioUrl,
+          isPlaying: true,
+          positionMs: posMs
+        })
+      } else {
+        IsaiConnectService.transferPlaybackToDevice(targetDeviceId)
+      }
+
+      onTransferToRemote?.(targetDeviceId)
+    }
   }
 
   return (
@@ -83,7 +137,7 @@ export const IsaiConnectModal: React.FC<IsaiConnectModalProps> = ({ isOpen, onCl
             <span style={{ fontSize: '24px' }}>🎧</span>
             <div>
               <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 'bold', color: '#FFFFFF' }}>ISAI Connect</h2>
-              <p style={{ margin: 0, fontSize: '13px', color: '#A5A5AE' }}>Seamless multi-device audio sync</p>
+              <p style={{ margin: 0, fontSize: '12px', color: '#C8FF00' }}>⚡ Syncing account: <b>{IsaiConnectService.getUserEmail() || 'Guest Account'}</b></p>
             </div>
           </div>
           <button onClick={onClose} style={{
@@ -160,64 +214,69 @@ export const IsaiConnectModal: React.FC<IsaiConnectModalProps> = ({ isOpen, onCl
 
         {/* Section: Available Devices */}
         <div>
-          <div style={{ fontSize: '12px', textTransform: 'uppercase', color: '#A5A5AE', fontWeight: 'bold', marginBottom: '10px' }}>
-            Available Devices ({devices.filter(d => d.deviceId !== myDeviceId).length})
-          </div>
+          {(() => {
+            const availableDevices = devices.filter(d => d.deviceId !== myDeviceId && IsaiConnectService.isDeviceOnline(d))
+            return (
+              <>
+                <div style={{ fontSize: '12px', textTransform: 'uppercase', color: '#A5A5AE', fontWeight: 'bold', marginBottom: '10px' }}>
+                  Available Devices ({availableDevices.length})
+                </div>
 
-          {devices.filter(d => d.deviceId !== myDeviceId).length === 0 ? (
-            <div style={{
-              textAlign: 'center',
-              padding: '24px',
-              backgroundColor: '#1C1C26',
-              borderRadius: '14px',
-              color: '#A5A5AE',
-              fontSize: '13px'
-            }}>
-              Log into your ISAI account on Android or another browser to switch playback seamlessly!
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {devices.filter(d => d.deviceId !== myDeviceId).map((device) => {
-                const isSelected = currentActiveDeviceId === device.deviceId
-                return (
-                  <div
-                    key={device.deviceId}
-                    onClick={() => handleSelectDevice(device.deviceId)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      padding: '14px 16px',
-                      backgroundColor: isSelected ? 'rgba(200, 255, 0, 0.12)' : '#1C1C26',
-                      border: isSelected ? '1.5px solid #C8FF00' : '1px solid rgba(255,255,255,0.08)',
-                      borderRadius: '14px',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s ease'
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                      <span style={{ fontSize: '22px' }}>{getPlatformIcon(device.platform)}</span>
-                      <div>
-                        <div style={{ fontWeight: '600', color: isSelected ? '#C8FF00' : '#FFFFFF' }}>
-                          {device.deviceName}
-                        </div>
-                        <div style={{ fontSize: '12px', marginTop: '2px' }}>
-                          {formatPresence(device)}
-                        </div>
-                      </div>
-                    </div>
-                    {isSelected ? (
-                      <span style={{ backgroundColor: '#C8FF00', color: '#0B0B0F', fontSize: '12px', fontWeight: 'bold', padding: '4px 10px', borderRadius: '20px' }}>
-                        Active Player
-                      </span>
-                    ) : (
-                      <span style={{ color: '#A5A5AE', fontSize: '13px' }}>Tap to Connect</span>
-                    )}
+                {availableDevices.length === 0 ? (
+                  <div style={{
+                    textAlign: 'center',
+                    padding: '24px',
+                    backgroundColor: '#1C1C26',
+                    borderRadius: '14px',
+                    color: '#A5A5AE',
+                    fontSize: '13px'
+                  }}>
+                    Log into your ISAI account on Android or another browser to switch playback seamlessly!
                   </div>
-                )
-              })}
-            </div>
-          )}
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {availableDevices.map((device) => {
+                      const isSelected = currentActiveDeviceId === device.deviceId
+                      return (
+                        <div
+                          key={device.deviceId}
+                          onClick={() => handleSelectDevice(device.deviceId)}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            padding: '14px 16px',
+                            backgroundColor: isSelected ? 'rgba(200, 255, 0, 0.12)' : '#1C1C26',
+                            border: isSelected ? '1.5px solid #C8FF00' : '1px solid rgba(255,255,255,0.08)',
+                            borderRadius: '14px',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s ease'
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                            <span style={{ fontSize: '22px' }}>{getPlatformIcon(device.platform)}</span>
+                            <div>
+                              <div style={{ fontWeight: '600', color: isSelected ? '#C8FF00' : '#FFFFFF' }}>
+                                {device.deviceName}
+                              </div>
+                              <div style={{ fontSize: '12px', color: '#A5A5AE', marginTop: '2px' }}>
+                                {formatPresence(device)}
+                              </div>
+                            </div>
+                          </div>
+                          {isSelected && (
+                            <span style={{ backgroundColor: '#C8FF00', color: '#0B0B0F', fontSize: '12px', fontWeight: 'bold', padding: '4px 10px', borderRadius: '20px' }}>
+                              Active Player
+                            </span>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </>
+            )
+          })()}
         </div>
 
       </div>

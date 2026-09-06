@@ -1,7 +1,9 @@
+import React from 'react'
 import type { UserPlaylist } from '@shared/models/song'
 import { SearchBar } from '../components/SearchBar'
+import { Home, Search, Library, Plus, Music, Heart, User, Bell } from 'lucide-react'
 
-export type PageTab = 'home' | 'search' | 'library' | 'login'
+export type PageTab = 'home' | 'search' | 'library' | 'profile' | 'login' | 'artist-detail' | 'playlist-detail'
 
 interface MainLayoutProps {
   currentTab: PageTab
@@ -9,12 +11,13 @@ interface MainLayoutProps {
   searchQuery: string
   onSearchChange: (q: string) => void
   onSearchClear: () => void
-  onOpenLogin: () => void
+  onOpenLogin?: () => void
   userName?: string
   userAvatar?: string
   userPlaylists?: UserPlaylist[]
   onCreatePlaylist?: () => void
   onSelectPlaylist?: (pl: UserPlaylist) => void
+  hasPlayer?: boolean
   children: React.ReactNode
 }
 
@@ -24,29 +27,32 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
   searchQuery,
   onSearchChange,
   onSearchClear,
-  onOpenLogin,
+  onOpenLogin: _onOpenLogin,
   userName = 'JEEVA ⚡',
   userAvatar = 'J',
   userPlaylists = [],
   onCreatePlaylist,
   onSelectPlaylist,
+  hasPlayer = false,
   children
 }) => {
   return (
-    <div className="app-container">
-      {/* 1. YouTube Music Style Left Sidebar */}
+    <div className={`app-container ${hasPlayer ? 'has-player' : ''}`}>
+      {/* 1. Desktop Left Sidebar */}
       <aside className="ytm-sidebar">
-        {/* YTM Logo Brand */}
+        {/* ISAI Brand Logo */}
         <div className="ytm-brand">
           <div className="ytm-logo-box">
             <img src="/logo.png" alt="ISAI Logo" className="ytm-logo-img" />
           </div>
-          <div className="ytm-brand-text-group">
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
               <span className="isai-brand-font">ISAI</span>
               <span className="ytm-brand-text">Music</span>
             </div>
-            <span style={{ fontSize: '10px', color: '#C8FF00', fontWeight: 700, letterSpacing: '0.4px' }}>Un Isai. Un Feel. 🎧</span>
+            <span style={{ fontSize: '9px', color: 'var(--isai-purple-light)', fontWeight: 800, letterSpacing: '0.6px' }}>
+              LISTEN • FEEL • LIVE 🎧
+            </span>
           </div>
         </div>
 
@@ -56,9 +62,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
             className={`ytm-nav-item ${currentTab === 'home' ? 'active' : ''}`}
             onClick={() => onSelectTab('home')}
           >
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" />
-            </svg>
+            <Home size={20} />
             <span>Home</span>
           </button>
 
@@ -66,9 +70,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
             className={`ytm-nav-item ${currentTab === 'search' ? 'active' : ''}`}
             onClick={() => onSelectTab('search')}
           >
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 16h-2v-2h2v2zm1.07-7.75l-.9.92C12.45 11.9 12 12.5 12 14h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H7c0-2.76 2.24-5 5-5s5 2.24 5 5c0 1.04-.42 1.99-1.07 2.75z" />
-            </svg>
+            <Search size={20} />
             <span>Explore</span>
           </button>
 
@@ -76,9 +78,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
             className={`ytm-nav-item ${currentTab === 'library' ? 'active' : ''}`}
             onClick={() => onSelectTab('library')}
           >
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12z" />
-            </svg>
+            <Library size={20} />
             <span>Library</span>
           </button>
         </nav>
@@ -87,17 +87,19 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
 
         {/* New Playlist Action Button */}
         <button className="ytm-btn-new-playlist" onClick={onCreatePlaylist}>
-          <span style={{ fontSize: '18px', fontWeight: 'bold' }}>+</span> New playlist
+          <Plus size={18} /> New playlist
         </button>
 
         {/* User Playlists List */}
         <div className="ytm-playlists-container">
           <div
-            className="ytm-playlist-item active-fav"
+            className="ytm-playlist-item"
             onClick={() => onSelectTab('library')}
             style={{ cursor: 'pointer' }}
           >
-            <span className="ytm-pl-icon">📌</span>
+            <div className="ytm-pl-icon" style={{ background: 'rgba(236, 72, 153, 0.15)' }}>
+              <Heart size={16} color="var(--isai-pink)" fill="var(--isai-pink)" />
+            </div>
             <div>
               <div className="ytm-pl-title">Liked Music</div>
               <div className="ytm-pl-sub">Auto playlist</div>
@@ -115,27 +117,33 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
               }}
               style={{ cursor: 'pointer' }}
             >
-              <span className="ytm-pl-icon">🎵</span>
+              <div className="ytm-pl-icon">
+                <Music size={16} color="var(--isai-purple-light)" />
+              </div>
               <div>
                 <div className="ytm-pl-title">{pl.name}</div>
-                <div className="ytm-pl-sub">{userName} • {pl.songs?.length || 0} tracks</div>
+                <div className="ytm-pl-sub">{pl.songs?.length || 0} tracks</div>
               </div>
             </div>
           ))}
         </div>
 
         {/* User Footer Profile Badge */}
-        <div className="ytm-sidebar-user-footer" onClick={onOpenLogin} style={{ cursor: 'pointer' }} title="Click to Sign In / Manage Account">
+        <div
+          className={`ytm-sidebar-user-footer ${currentTab === 'profile' || currentTab === 'login' ? 'active' : ''}`}
+          onClick={() => onSelectTab('profile')}
+          style={{ cursor: 'pointer' }}
+          title="Profile & Account"
+        >
           <div className="ytm-user-avatar">{userAvatar}</div>
           <span style={{ fontSize: '13px', fontWeight: 700 }}>{userName}</span>
         </div>
       </aside>
 
       {/* 2. Main Content Viewport */}
-      <div className="main-content ytm-main-content">
-        <header className="top-nav ytm-top-header">
-          {/* Centered Wide Search Bar */}
-          <div style={{ flex: 1, maxWidth: '640px', margin: '0 auto' }}>
+      <div className={`main-content ${hasPlayer ? 'has-player' : ''}`}>
+        <header className="top-nav">
+          <div style={{ flex: 1, maxWidth: '620px' }}>
             <SearchBar
               value={searchQuery}
               onChange={(q) => {
@@ -148,48 +156,56 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <button className="ytm-cast-btn" title="Cast to device">
-              📡
+            <button className="control-btn" title="Notifications">
+              <Bell size={20} />
             </button>
             <div
-              className="ytm-profile-circle"
-              onClick={onOpenLogin}
+              className={`ytm-profile-circle ${currentTab === 'profile' || currentTab === 'login' ? 'active' : ''}`}
+              onClick={() => onSelectTab('profile')}
+              title="Profile & Account"
               style={{ cursor: 'pointer' }}
-              title="Sign In / User Account"
             >
               {userAvatar}
             </div>
           </div>
         </header>
 
-        <main className="page-wrapper ytm-page-wrapper">
+        <main className="ytm-page-wrapper">
           {children}
         </main>
 
-        {/* 3. Mobile Navigation Bar */}
+        {/* 3. Mobile Tab Navigation Bar */}
         <nav className="mobile-nav">
           <button
             className={`nav-link ${currentTab === 'home' ? 'active' : ''}`}
             onClick={() => onSelectTab('home')}
           >
-            <span>🏠</span>
-            <span style={{ fontSize: '11px' }}>Home</span>
+            <Home size={20} />
+            <span style={{ fontSize: '11px', fontWeight: 600 }}>Home</span>
           </button>
 
           <button
             className={`nav-link ${currentTab === 'search' ? 'active' : ''}`}
             onClick={() => onSelectTab('search')}
           >
-            <span>🧭</span>
-            <span style={{ fontSize: '11px' }}>Explore</span>
+            <Search size={20} />
+            <span style={{ fontSize: '11px', fontWeight: 600 }}>Explore</span>
           </button>
 
           <button
             className={`nav-link ${currentTab === 'library' ? 'active' : ''}`}
             onClick={() => onSelectTab('library')}
           >
-            <span>📚</span>
-            <span style={{ fontSize: '11px' }}>Library</span>
+            <Library size={20} />
+            <span style={{ fontSize: '11px', fontWeight: 600 }}>Library</span>
+          </button>
+
+          <button
+            className={`nav-link ${currentTab === 'profile' || currentTab === 'login' ? 'active' : ''}`}
+            onClick={() => onSelectTab('profile')}
+          >
+            <User size={20} />
+            <span style={{ fontSize: '11px', fontWeight: 600 }}>Profile</span>
           </button>
         </nav>
       </div>

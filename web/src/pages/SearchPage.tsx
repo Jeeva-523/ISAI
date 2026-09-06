@@ -1,265 +1,139 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import type { Song } from '@shared/models/song'
-import { QUICK_SEARCH_QUERIES } from '@shared/constants/categories'
-import { CategoryChips } from '../components/CategoryChips'
-import { SongCard } from '../components/SongCard'
-import { LoadingSpinner } from '../components/LoadingSpinner'
-import { ErrorBanner } from '../components/ErrorBanner'
-import { EmptyState } from '../components/EmptyState'
+import { SearchBar } from '../components/SearchBar'
+import { SongListItem } from '../components/SongListItem'
+import { GenreTile, type Genre } from '../components/GenreTile'
+import { type Artist } from '../components/ArtistCard'
+import { SkeletonSongRow } from '../components/SkeletonLoader'
+import { Compass, Music } from 'lucide-react'
 
 interface SearchPageProps {
-  query: string
-  results: Song[]
-  isLoading: boolean
-  error: string | null
-  onQueryChange: (q: string) => void
-  onRetry: () => void
+  searchQuery: string
+  onSearchChange: (q: string) => void
+  onSearchClear: () => void
+  searchResults: Song[]
+  isSearching: boolean
   isFavorite: (videoId: string) => boolean
   onToggleFavorite: (song: Song) => void
-  onPlaySong?: (song: Song) => void
+  onPlaySong: (song: Song) => void
+  onAddToPlaylist?: (song: Song) => void
+  onSelectCategory: (q: string) => void
+  onSelectArtist?: (artist: Artist) => void
+  currentSong?: Song | null
+  isPlaying?: boolean
 }
 
-const TANGLISH_MAP: Record<string, string> = {
-  anirud: 'Anirudh Ravichander',
-  aniruth: 'Anirudh Ravichander',
-  kadhal: 'காதல் (Love Songs)',
-  kaadhal: 'காதல் (Love Songs)',
-  kathal: 'காதல் (Love Songs)',
-  vaathi: 'வாத்தி (Vaathi Coming)',
-  vikram: '🎬 Vikram (Movie Soundtrack)',
-  sad: '💔 Sad Melodies'
-}
+const SEARCH_GENRES: Genre[] = [
+  { id: 'g1', name: 'Melody & Romance', query: 'Tamil feel good melody hit songs', gradient: 'linear-gradient(135deg, #EC4899, #8B5CF6)', icon: '💖' },
+  { id: 'g2', name: 'Mass & Kuthu', query: 'Tamil party kuthu mass songs', gradient: 'linear-gradient(135deg, #F59E0B, #EF4444)', icon: '🔥' },
+  { id: 'g3', name: 'Love Hits', query: 'Tamil love romantic hit songs', gradient: 'linear-gradient(135deg, #8B5CF6, #3B82F6)', icon: '🌹' },
+  { id: 'g4', name: 'Workout Beats', query: 'Tamil energetic gym workout bgm beats', gradient: 'linear-gradient(135deg, #10B981, #06B6D4)', icon: '⚡' },
+  { id: 'g5', name: 'Classical & Devotional', query: 'Tamil god devotional songs', gradient: 'linear-gradient(135deg, #F97316, #EAB308)', icon: '🪔' },
+  { id: 'g6', name: 'Gaana & Folk', query: 'Tamil gaana hit songs', gradient: 'linear-gradient(135deg, #84CC16, #10B981)', icon: '🥁' },
+  { id: 'g7', name: 'Sad & Emotional', query: 'Tamil sad heartbreak songs', gradient: 'linear-gradient(135deg, #3B82F6, #1E40AF)', icon: '🌧️' },
+  { id: 'g8', name: 'Retro & 90s Hits', query: '90s Tamil hit songs Ilaiyaraaja AR Rahman', gradient: 'linear-gradient(135deg, #A855F7, #EC4899)', icon: '📻' }
+]
+
+type FilterType = 'all' | 'songs' | 'artists' | 'playlists'
 
 export const SearchPage: React.FC<SearchPageProps> = ({
-  query,
-  results,
-  isLoading,
-  error,
-  onQueryChange,
-  onRetry,
+  searchQuery,
+  onSearchChange,
+  onSearchClear,
+  searchResults,
+  isSearching,
   isFavorite,
   onToggleFavorite,
-  onPlaySong
+  onPlaySong,
+  onAddToPlaylist,
+  onSelectCategory,
+  currentSong,
+  isPlaying = false
 }) => {
-  const [history, setHistory] = useState<string[]>([])
-
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem('isai_search_history')
-      if (stored) setHistory(JSON.parse(stored))
-    } catch {}
-  }, [])
-
-  useEffect(() => {
-    if (query && query.trim().length > 1) {
-      setHistory((prev) => {
-        const filtered = prev.filter((item) => item.toLowerCase() !== query.toLowerCase())
-        const updated = [query.trim(), ...filtered].slice(0, 10)
-        try {
-          localStorage.setItem('isai_search_history', JSON.stringify(updated))
-        } catch {}
-        return updated
-      })
-    }
-  }, [query])
-
-  const removeHistoryItem = (itemToRemove: string, e: React.MouseEvent) => {
-    e.stopPropagation()
-    setHistory((prev) => {
-      const updated = prev.filter((i) => i !== itemToRemove)
-      try {
-        localStorage.setItem('isai_search_history', JSON.stringify(updated))
-      } catch {}
-      return updated
-    })
-  }
-
-  const clearHistory = () => {
-    setHistory([])
-    try {
-      localStorage.removeItem('isai_search_history')
-    } catch {}
-  }
-
-  const cleanQ = query.trim().toLowerCase()
-  const suggestionHint = TANGLISH_MAP[cleanQ] || null
-  const topResult = results.length > 0 ? results[0] : null
+  const [activeFilter, setActiveFilter] = useState<FilterType>('all')
 
   return (
-    <div style={{ maxWidth: '1200px', margin: '0 auto', paddingBottom: '60px' }}>
+    <div style={{ maxWidth: '1300px', margin: '0 auto', paddingBottom: '8px' }}>
+      {/* Prominent Search Bar Header */}
       <div style={{ marginBottom: '24px' }}>
-        <h1 style={{ fontSize: '26px', fontWeight: 800, marginBottom: '6px' }}>
-          ISAI Smart <span style={{ color: 'var(--isai-lime)' }}>Search Discovery</span>
-        </h1>
-        <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
-          Search songs, artists, Tamil & Tanglish titles, movies, or moods
-        </p>
+        <SearchBar
+          value={searchQuery}
+          onChange={onSearchChange}
+          onClear={onSearchClear}
+          placeholder="Search songs, artists, playlists, albums..."
+        />
       </div>
 
-      {/* Recent Search History */}
-      {history.length > 0 && !query && (
-        <div style={{ marginBottom: '24px', background: 'var(--surface-card)', padding: '16px 20px', borderRadius: '16px', border: '1px solid var(--border-subtle)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-            <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              🕘 Recent Searches
-            </span>
-            <button onClick={clearHistory} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '12px', cursor: 'pointer' }}>
-              Clear All
+      {/* Filter Chips */}
+      {searchQuery && (
+        <div style={{ display: 'flex', gap: '10px', marginBottom: '24px' }}>
+          {(['all', 'songs', 'artists', 'playlists'] as FilterType[]).map((filter) => (
+            <button
+              key={filter}
+              className={`pill-button ${activeFilter === filter ? 'active' : ''}`}
+              onClick={() => setActiveFilter(filter)}
+            >
+              {filter.charAt(0).toUpperCase() + filter.slice(1)}
             </button>
-          </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-            {history.map((item) => (
-              <div
-                key={item}
-                onClick={() => onQueryChange(item)}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  padding: '6px 14px',
-                  background: 'var(--surface-dark)',
-                  border: '1px solid var(--border-subtle)',
-                  borderRadius: '20px',
-                  fontSize: '13px',
-                  color: 'var(--text-primary)',
-                  cursor: 'pointer'
-                }}
-              >
-                <span>{item}</span>
-                <span
-                  onClick={(e) => removeHistoryItem(item, e)}
-                  style={{ color: 'var(--text-muted)', fontSize: '12px', padding: '0 2px' }}
-                >
-                  ✕
-                </span>
-              </div>
-            ))}
-          </div>
+          ))}
         </div>
       )}
 
-      {/* Tanglish Transliteration Suggestion */}
-      {suggestionHint && (
-        <div
-          onClick={() => onQueryChange(suggestionHint.replace(/ \(.*\)/, ''))}
-          style={{
-            marginBottom: '20px',
-            padding: '12px 18px',
-            background: 'rgba(200, 255, 0, 0.08)',
-            border: '1px solid var(--isai-lime)',
-            borderRadius: '12px',
-            color: 'var(--isai-lime)',
-            fontSize: '14px',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px'
-          }}
-        >
-          <span>💡 Did you mean:</span>
-          <strong>{suggestionHint}</strong>
-        </div>
-      )}
-
-      {/* Quick Search Chips */}
-      <CategoryChips selectedQuery={query} onSelect={(q) => onQueryChange(q)} />
-
-      {/* State Renderers */}
-      {isLoading ? (
-        <LoadingSpinner message="Discovering Tamil songs..." subMessage={query ? `Searching "${query}"` : undefined} />
-      ) : error ? (
-        <ErrorBanner title="Search Error" message={error} onRetry={onRetry} />
-      ) : query && results.length === 0 ? (
-        <EmptyState
-          icon="🔍"
-          title="No Matching Songs Found"
-          description={`We couldn't find any songs matching "${query}". Try searching for artist names like Anirudh or A.R. Rahman, movie names like Vikram or Leo, or Tamil/Tanglish words.`}
-          suggestions={QUICK_SEARCH_QUERIES.slice(0, 4)}
-          onSuggestionClick={(s) => onQueryChange(s)}
-        />
-      ) : results.length > 0 ? (
+      {/* When Empty Query: Render Genre/Mood Grid Tiles */}
+      {!searchQuery ? (
         <div>
-          {/* Top Result Card */}
-          {topResult && (
-            <div style={{ marginBottom: '28px' }}>
-              <h3 style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                🌟 Top Result
-              </h3>
-              <div
-                onClick={() => onPlaySong && onPlaySong(topResult)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '20px',
-                  padding: '18px 24px',
-                  background: 'linear-gradient(135deg, var(--surface-card) 0%, #1E222C 100%)',
-                  border: '1px solid var(--border-glass)',
-                  borderRadius: '20px',
-                  cursor: 'pointer'
-                }}
-              >
-                <img
-                  src={topResult.thumbnailUrl}
-                  alt={topResult.title}
-                  style={{ width: '80px', height: '80px', borderRadius: '16px', objectFit: 'cover' }}
-                />
-                <div style={{ flex: 1 }}>
-                  <span style={{ fontSize: '11px', fontWeight: 700, background: 'var(--isai-lime)', color: '#000', padding: '2px 8px', borderRadius: '10px', textTransform: 'uppercase' }}>
-                    Song
-                  </span>
-                  <h2 style={{ fontSize: '20px', fontWeight: 800, marginTop: '4px', color: 'var(--text-primary)' }}>
-                    {topResult.title}
-                  </h2>
-                  <p style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
-                    {topResult.channelTitle}
-                  </p>
-                </div>
-                <button
-                  style={{
-                    width: '50px',
-                    height: '50px',
-                    borderRadius: '50%',
-                    background: 'var(--isai-lime)',
-                    border: 'none',
-                    color: '#000',
-                    fontSize: '20px',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}
-                >
-                  ▶
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Songs List */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-            <div>
-              <h2 style={{ fontSize: '18px', fontWeight: 700 }}>
-                Discovered Songs ({results.length})
-              </h2>
-              <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                ISAI HD Music • Tap song to play
-              </p>
-            </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '20px' }}>
+            <Compass color="var(--isai-purple-light)" size={24} />
+            <h2 style={{ fontSize: '24px', fontWeight: 900 }}>Explore Genres & Moods</h2>
           </div>
 
-          <div className="ytm-grid">
-            {results.map((song) => (
-              <SongCard
-                key={song.videoId}
-                song={song}
-                isFavorite={isFavorite(song.videoId)}
-                onToggleFavorite={onToggleFavorite}
-                onPlay={() => onPlaySong && onPlaySong(song)}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '20px' }}>
+            {SEARCH_GENRES.map((genre) => (
+              <GenreTile
+                key={genre.id}
+                genre={genre}
+                onSelect={(q) => {
+                  onSearchChange(q)
+                  onSelectCategory(q)
+                }}
               />
             ))}
           </div>
         </div>
-      ) : null}
+      ) : isSearching ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '16px' }}>
+          {[...Array(6)].map((_, i) => (
+            <SkeletonSongRow key={i} />
+          ))}
+        </div>
+      ) : searchResults.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-muted)' }}>
+          <Music size={48} style={{ margin: '0 auto 16px', opacity: 0.4 }} />
+          <h3 style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)' }}>No results found for "{searchQuery}"</h3>
+          <p style={{ fontSize: '14px', marginTop: '4px' }}>Try searching for song titles, artist names, or movie names.</p>
+        </div>
+      ) : (
+        <div>
+          <h2 style={{ fontSize: '20px', fontWeight: 900, marginBottom: '16px' }}>
+            Search Results ({searchResults.length})
+          </h2>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            {searchResults.map((song, idx) => (
+              <SongListItem
+                key={song.videoId}
+                song={song}
+                index={idx}
+                isPlaying={currentSong?.videoId === song.videoId && isPlaying}
+                isFavorite={isFavorite(song.videoId)}
+                onPlay={onPlaySong}
+                onToggleFavorite={onToggleFavorite}
+                onAddToPlaylist={onAddToPlaylist}
+              />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

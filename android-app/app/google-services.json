@@ -2,6 +2,7 @@
   "project_info": {
     "project_number": "995240299930",
     "project_id": "isai-49b51",
+    "firebase_url": "https://isai-49b51-default-rtdb.firebaseio.com",
     "storage_bucket": "isai-49b51.firebasestorage.app"
   },
   "client": [

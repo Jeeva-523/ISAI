@@ -1,5 +1,4 @@
 import java.util.Properties
-import java.io.FileInputStream
 
 plugins {
     id("com.android.application")
@@ -10,7 +9,7 @@ plugins {
 val localProps = Properties().apply {
     val localFile = rootProject.file("local.properties")
     if (localFile.exists()) {
-        load(FileInputStream(localFile))
+        localFile.inputStream().use { load(it) }
     }
 }
 val youtubeApiKey: String = localProps.getProperty("YOUTUBE_API_KEY")

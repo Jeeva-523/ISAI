@@ -1,55 +1,66 @@
 import React from 'react'
 import type { Song } from '@shared/models/song'
+import { Play, Heart, Plus } from 'lucide-react'
 
 interface SongCardProps {
   song: Song
+  isPlaying?: boolean
   isFavorite?: boolean
   onToggleFavorite?: (song: Song) => void
   onPlay?: (song: Song) => void
+  onAddToPlaylist?: (song: Song) => void
   variant?: 'square' | 'landscape'
 }
 
 export const SongCard: React.FC<SongCardProps> = ({
   song,
+  isPlaying = false,
   isFavorite = false,
   onToggleFavorite,
   onPlay,
+  onAddToPlaylist,
   variant = 'square'
 }) => {
   const isLandscape = variant === 'landscape'
 
   return (
     <div
-      className={`song-card ${isLandscape ? 'ytm-video-card' : ''}`}
+      className={`song-card ${isLandscape ? 'ytm-video-card' : ''} ${isPlaying ? 'active-playing-card' : ''}`}
       title={`Play ${song.title}`}
       onClick={() => onPlay?.(song)}
-      style={{ cursor: onPlay ? 'pointer' : 'default' }}
     >
-      <div className={isLandscape ? 'ytm-video-thumb-wrap' : 'song-thumbnail-wrap'}>
+      <div className="song-thumbnail-wrap">
         <img
-          src={song.thumbnailUrl}
+          src={song.thumbnailUrl || 'https://c.saavncdn.com/187/Jailer-Tamil-2023-20230728081443-500x500.jpg'}
           alt={song.title}
           className="song-thumbnail"
           loading="lazy"
           onError={(e) => {
             const target = e.currentTarget
-            if (!target.src.includes('hqdefault.jpg')) {
-              target.src = `https://img.youtube.com/vi/${song.videoId}/hqdefault.jpg`
+            if (!target.src.includes('Jailer-Tamil-2023')) {
+              target.src = 'https://c.saavncdn.com/187/Jailer-Tamil-2023-20230728081443-500x500.jpg'
             }
           }}
         />
-        {!isLandscape && <div className="discovery-badge">ISAI</div>}
+        <div className="discovery-badge">ISAI</div>
         {song.durationFormatted && (
           <div className="duration-badge">{song.durationFormatted}</div>
         )}
 
         {/* Hover / Active Play Button Overlay */}
-        <div className="play-hover-overlay">
-          <div className="play-icon-circle">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="#000">
-              <path d="M8 5v14l11-7z" />
-            </svg>
-          </div>
+        <div className="play-hover-overlay" style={{ opacity: isPlaying ? 1 : undefined }}>
+          {isPlaying ? (
+            <div className="equalizer-wave">
+              <div className="equalizer-bar" />
+              <div className="equalizer-bar" />
+              <div className="equalizer-bar" />
+              <div className="equalizer-bar" />
+            </div>
+          ) : (
+            <div className="play-icon-circle">
+              <Play size={22} fill="#ffffff" style={{ marginLeft: '3px' }} />
+            </div>
+          )}
         </div>
       </div>
 
@@ -60,37 +71,44 @@ export const SongCard: React.FC<SongCardProps> = ({
           {song.viewCountFormatted ? ` • ${song.viewCountFormatted}` : ''}
         </p>
 
-        {!isLandscape && (
-          <div className="song-meta-row">
-            <span className="views-tag">{song.viewCountFormatted || 'Tamil Track'}</span>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '8px' }}>
+          <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}>
+            {song.viewCountFormatted || 'Tamil Hit'}
+          </span>
 
-            <div className="card-actions">
-              {onToggleFavorite && (
-                <button
-                  className={`action-btn ${isFavorite ? 'active' : ''}`}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onToggleFavorite(song)
-                  }}
-                  title={isFavorite ? 'Remove Favorite' : 'Save to Favorites'}
-                >
-                  {isFavorite ? '💖' : '🤍'}
-                </button>
-              )}
-
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            {onToggleFavorite && (
               <button
-                className="action-btn play-action-btn"
+                className="control-btn"
                 onClick={(e) => {
                   e.stopPropagation()
-                  onPlay?.(song)
+                  onToggleFavorite(song)
                 }}
-                title="Play song"
+                style={{
+                  color: isFavorite ? 'var(--isai-pink)' : 'var(--text-muted)',
+                  padding: '4px'
+                }}
+                title={isFavorite ? 'Remove Favorite' : 'Save to Favorites'}
               >
-                ▶
+                <Heart size={16} fill={isFavorite ? 'var(--isai-pink)' : 'none'} />
               </button>
-            </div>
+            )}
+
+            {onAddToPlaylist && (
+              <button
+                className="control-btn"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onAddToPlaylist(song)
+                }}
+                style={{ color: 'var(--text-muted)', padding: '4px' }}
+                title="Add to Playlist"
+              >
+                <Plus size={16} />
+              </button>
+            )}
           </div>
-        )}
+        </div>
       </div>
     </div>
   )

@@ -13,6 +13,7 @@ val DarkBorder = Color(0xFF2A2038)
 
 // Brand Monochromatic Accents
 val IsaiLime = Color(0xFF8B5CF6) // Primary Accent: #8B5CF6
+val NeonLime = Color(0xFFC8FF00) // Vibrant Neon Lime: #C8FF00
 val IsaiViolet = Color(0xFF8B5CF6) // Primary Accent: #8B5CF6
 val NeonCyan = Color(0xFF8B5CF6) // Accent: #8B5CF6
 val NeonPurple = Color(0xFF8B5CF6) // Accent: #8B5CF6

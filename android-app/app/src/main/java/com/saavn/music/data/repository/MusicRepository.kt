@@ -13,7 +13,13 @@ class MusicRepository(
 
     suspend fun search(query: String): Result<List<SongItem>> = withContext(Dispatchers.IO) {
         try {
-            val response = api.searchSongs(query = query)
+            val cleanQuery = query.trim()
+            val queryWithTamil = if (!cleanQuery.contains("tamil", ignoreCase = true)) {
+                "$cleanQuery Tamil"
+            } else {
+                cleanQuery
+            }
+            val response = api.searchSongs(query = queryWithTamil)
             val songs = response.results?.mapNotNull { it.toSongItem() } ?: emptyList()
             Result.success(songs)
         } catch (e: Exception) {

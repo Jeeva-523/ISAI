@@ -6,6 +6,7 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
+      'crypto-js': path.resolve(__dirname, 'node_modules/crypto-js'),
       '@shared': path.resolve(__dirname, '../shared')
     }
   },

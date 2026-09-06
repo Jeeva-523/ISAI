@@ -51,6 +51,7 @@ import com.saavn.music.ui.components.MiniPlayer
 import com.saavn.music.ui.screens.HomeScreen
 import com.saavn.music.ui.screens.LibraryScreen
 import com.saavn.music.ui.screens.PlayerScreen
+import com.saavn.music.ui.screens.ProfileScreen
 import com.saavn.music.ui.screens.SearchScreen
 import com.saavn.music.ui.theme.DarkBackground
 import com.saavn.music.ui.theme.DarkSurfaceGlass
@@ -128,7 +129,7 @@ fun IsaiApp(viewModel: MainViewModel = viewModel()) {
                     viewModel.saveUserProfile(systemAcc)
                     android.widget.Toast.makeText(context, "Welcome, ${systemAcc.displayName}!", android.widget.Toast.LENGTH_SHORT).show()
                 } else {
-                    viewModel.quickSignInGoogleAccount("Google User", "user.google@gmail.com")
+                    viewModel.quickSignInGoogleAccount("JEEVA ⚡", "jeeva@isaimusic.com")
                     android.widget.Toast.makeText(context, "Signed in with Google Account", android.widget.Toast.LENGTH_SHORT).show()
                 }
             }
@@ -139,7 +140,7 @@ fun IsaiApp(viewModel: MainViewModel = viewModel()) {
                 viewModel.saveUserProfile(systemAcc)
                 android.widget.Toast.makeText(context, "Welcome, ${systemAcc.displayName}!", android.widget.Toast.LENGTH_SHORT).show()
             } else {
-                viewModel.quickSignInGoogleAccount("Google User", "user.google@gmail.com")
+                viewModel.quickSignInGoogleAccount("JEEVA ⚡", "jeeva@isaimusic.com")
                 android.widget.Toast.makeText(context, "Signed in with Google Account", android.widget.Toast.LENGTH_SHORT).show()
             }
         }
@@ -165,6 +166,7 @@ fun IsaiApp(viewModel: MainViewModel = viewModel()) {
                 AppScreen.HOME -> HomeScreen(viewModel = viewModel)
                 AppScreen.SEARCH -> SearchScreen(viewModel = viewModel)
                 AppScreen.LIBRARY -> LibraryScreen(viewModel = viewModel)
+                AppScreen.PROFILE -> ProfileScreen(viewModel = viewModel)
             }
         }
 
@@ -217,6 +219,7 @@ fun IsaiApp(viewModel: MainViewModel = viewModel()) {
         if (showLoginDialog) {
             LoginDialog(
                 userProfile = userProfile,
+                authService = viewModel.authService,
                 onGoogleSignInClick = {
                     try {
                         googleSignInLauncher.launch(viewModel.googleAuthHelper.getSignInIntent())
@@ -252,20 +255,20 @@ fun GlassBottomNavigationBar(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 14.dp, vertical = 6.dp)
-            .shadow(28.dp, RoundedCornerShape(28.dp), spotColor = NeonCyan.copy(alpha = 0.4f))
-            .clip(RoundedCornerShape(28.dp))
+            .padding(horizontal = 36.dp, vertical = 2.dp)
+            .shadow(12.dp, RoundedCornerShape(20.dp), spotColor = NeonCyan.copy(alpha = 0.25f))
+            .clip(RoundedCornerShape(20.dp))
             .background(DarkSurfaceGlass)
             .border(
                 1.dp,
                 Brush.horizontalGradient(
                     listOf(
-                        NeonCyan.copy(alpha = 0.4f),
-                        NeonPurple.copy(alpha = 0.25f),
-                        NeonCyan.copy(alpha = 0.4f)
+                        NeonCyan.copy(alpha = 0.3f),
+                        NeonPurple.copy(alpha = 0.15f),
+                        NeonCyan.copy(alpha = 0.3f)
                     )
                 ),
-                RoundedCornerShape(28.dp)
+                RoundedCornerShape(20.dp)
             )
             .clickable(
                 indication = null,
@@ -273,7 +276,7 @@ fun GlassBottomNavigationBar(
             ) {
                 // Consume taps on bottom bar background space
             }
-            .padding(vertical = 6.dp, horizontal = 8.dp)
+            .padding(vertical = 2.dp, horizontal = 8.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -319,26 +322,26 @@ fun NavigationTabItem(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
         modifier = modifier
-            .clip(RoundedCornerShape(18.dp))
+            .clip(RoundedCornerShape(12.dp))
             .clickable { onClick() }
-            .padding(vertical = 6.dp)
+            .padding(vertical = 2.dp)
     ) {
         // Active Indicator Bar / Pill
         Box(
             modifier = Modifier
-                .width(if (isSelected) 24.dp else 0.dp)
-                .height(3.dp)
+                .width(if (isSelected) 14.dp else 0.dp)
+                .height(2.dp)
                 .clip(CircleShape)
                 .background(if (isSelected) NeonCyan else Color.Transparent)
         )
 
-        Spacer(modifier = Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height(1.dp))
 
         // Icon Container
         Box(
             modifier = Modifier
-                .size(width = 48.dp, height = 28.dp)
-                .clip(RoundedCornerShape(14.dp))
+                .size(width = 34.dp, height = 18.dp)
+                .clip(RoundedCornerShape(9.dp))
                 .background(
                     if (isSelected) NeonCyan.copy(alpha = 0.18f)
                     else Color.Transparent
@@ -349,19 +352,19 @@ fun NavigationTabItem(
                 imageVector = icon,
                 contentDescription = title,
                 tint = if (isSelected) NeonCyan else TextSecondary,
-                modifier = Modifier.size(22.dp)
+                modifier = Modifier.size(15.dp)
             )
         }
 
-        Spacer(modifier = Modifier.height(3.dp))
+        Spacer(modifier = Modifier.height(1.dp))
 
         // Tab Title Text
         Text(
             text = title,
             color = if (isSelected) NeonCyan else TextSecondary,
-            fontSize = 11.sp,
+            fontSize = 9.sp,
             fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Medium,
-            letterSpacing = 0.2.sp
+            letterSpacing = 0.1.sp
         )
     }
 }

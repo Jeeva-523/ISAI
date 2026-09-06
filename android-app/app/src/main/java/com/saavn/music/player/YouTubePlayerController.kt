@@ -3,6 +3,7 @@ package com.saavn.music.player
 import android.content.Context
 import android.util.Log
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.PlayerConstants
@@ -100,6 +101,20 @@ class YouTubePlayerController(
                     else -> _isBuffering.value = false
                 }
             }
+
+            override fun onPlayerError(error: PlaybackException) {
+                Log.e("ISAI_PLAYER", "[YouTubePlayerController] ExoPlayer error: ${error.message}", error)
+                if (isUsingExoPlayer) {
+                    isUsingExoPlayer = false
+                    _isBuffering.value = false
+                    _isPlaying.value = false
+                    val current = _currentSong.value
+                    if (current != null) {
+                        Log.i("ISAI_PLAYER", "[YouTubePlayerController] Falling back to YouTube video ID: ${current.videoId}")
+                        activeYouTubePlayer?.loadVideo(current.videoId, 0f)
+                    }
+                }
+            }
         })
     }
 
@@ -182,8 +197,8 @@ class YouTubePlayerController(
         })
     }
 
-    fun playSong(song: YouTubeSong, queue: List<YouTubeSong>? = null) {
-        Log.i("ISAI_PLAYER", "[YouTubePlayerController] playSong: '${song.title}' (${song.videoId}) | audioUrl=${song.audioUrl}")
+    fun playSong(song: YouTubeSong, queue: List<YouTubeSong>? = null, startPositionSec: Float = 0f) {
+        Log.i("ISAI_PLAYER", "[YouTubePlayerController] playSong: '${song.title}' (${song.videoId}) | startPos=${startPositionSec}s | audioUrl=${song.audioUrl}")
         _currentSong.value = song
         val targetQueue = when {
             queue != null -> queue
@@ -194,7 +209,7 @@ class YouTubePlayerController(
         _playbackQueue.value = targetQueue
         val idx = targetQueue.indexOfFirst { it.videoId == song.videoId }
         _currentQueueIndex.value = if (idx >= 0) idx else 0
-        _currentPositionSec.value = 0f
+        _currentPositionSec.value = startPositionSec
         _isBuffering.value = true
 
         localStorage.addRecentlyPlayed(song)
@@ -205,24 +220,27 @@ class YouTubePlayerController(
                 // Pause YouTube if it was playing
                 activeYouTubePlayer?.pause()
 
-                Log.i("ISAI_PLAYER", "[YouTubePlayerController] >>> Playing 320kbps HD Audio via ExoPlayer: ${song.audioUrl} <<<")
+                Log.i("ISAI_PLAYER", "[YouTubePlayerController] >>> Playing 320kbps HD Audio via ExoPlayer at ${startPositionSec}s: ${song.audioUrl} <<<")
                 val mediaItem = MediaItem.fromUri(song.audioUrl)
                 exoPlayer.setMediaItem(mediaItem)
+                if (startPositionSec > 0f) {
+                    exoPlayer.seekTo((startPositionSec * 1000).toLong())
+                }
                 exoPlayer.prepare()
                 exoPlayer.play()
                 startProgressTracker()
             } catch (e: Exception) {
                 Log.e("ISAI_PLAYER", "[YouTubePlayerController] ExoPlayer failed to load: ${e.message}", e)
                 isUsingExoPlayer = false
-                activeYouTubePlayer?.loadVideo(song.videoId, 0f)
+                activeYouTubePlayer?.loadVideo(song.videoId, startPositionSec)
             }
         } else {
             isUsingExoPlayer = false
             exoPlayer.stop()
             stopProgressTracker()
             if (activeYouTubePlayer != null) {
-                Log.i("ISAI_PLAYER", "[YouTubePlayerController] Loading into activeYouTubePlayer: ${song.videoId}")
-                activeYouTubePlayer?.loadVideo(song.videoId, 0f)
+                Log.i("ISAI_PLAYER", "[YouTubePlayerController] Loading into activeYouTubePlayer at ${startPositionSec}s: ${song.videoId}")
+                activeYouTubePlayer?.loadVideo(song.videoId, startPositionSec)
             } else {
                 Log.w("ISAI_PLAYER", "[YouTubePlayerController] activeYouTubePlayer is NULL in playSong! FullPlayer view will initialize.")
             }
@@ -237,6 +255,16 @@ class YouTubePlayerController(
             activeYouTubePlayer?.pause()
         }
         _isPlaying.value = false
+    }
+
+    fun play() {
+        Log.i("ISAI_PLAYER", "[YouTubePlayerController] play() requested")
+        if (isUsingExoPlayer) {
+            exoPlayer.play()
+        } else {
+            activeYouTubePlayer?.play()
+        }
+        _isPlaying.value = true
     }
 
     fun togglePlayPause() {
@@ -295,6 +323,22 @@ class YouTubePlayerController(
             list.add(song)
             _playbackQueue.value = list
             Log.i("ISAI_PLAYER", "[YouTubePlayerController] Added to queue: '${song.title}', total=${list.size}")
+        }
+    }
+
+    fun appendQueue(songs: List<YouTubeSong>) {
+        if (songs.isEmpty()) return
+        val list = _playbackQueue.value.toMutableList()
+        var addedCount = 0
+        songs.forEach { song ->
+            if (list.none { it.videoId == song.videoId }) {
+                list.add(song)
+                addedCount++
+            }
+        }
+        if (addedCount > 0) {
+            _playbackQueue.value = list
+            Log.i("ISAI_PLAYER", "[YouTubePlayerController] Appended $addedCount new songs to queue, total=${list.size}")
         }
     }
 

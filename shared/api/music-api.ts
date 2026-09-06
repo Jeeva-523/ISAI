@@ -1,18 +1,45 @@
 import { API_CONFIG } from '../constants/api'
 import type { Song } from '../models/song'
 import { cleanHtmlTitle, deduplicateSongs } from '../utils/formatters'
+import { decryptMediaUrl } from '../utils/crypto'
 
 export interface MusicApiOptions {
   baseUrl?: string
 }
 
 function mapToSong(item: any): Song {
-  // If it's JioSaavn / NepoTuneAPI format:
-  if (item.name && item.downloadUrl) {
+  // 1. Official JioSaavn API format (with encrypted_media_url)
+  if (item.more_info && (item.more_info.encrypted_media_url || item.more_info.media_url)) {
+    const encUrl = item.more_info.encrypted_media_url
+    const decryptedAudio = decryptMediaUrl(encUrl) || item.more_info.media_url || ''
+    const rawImg = item.image || ''
+    const thumbnailUrl = typeof rawImg === 'string'
+      ? rawImg.replace('-150x150', '-500x500').replace('-50x50', '-500x500').replace('images.saavncdn.com', 'c.saavncdn.com')
+      : ''
+    const durSec = Number(item.more_info.duration) || 0
+    const mins = Math.floor(durSec / 60)
+    const secs = durSec % 60
+    const durationFormatted = durSec > 0 ? `${mins}:${secs < 10 ? '0' : ''}${secs}` : '3:30'
+
+    return {
+      videoId: item.id || `saavn_${Date.now()}`,
+      title: cleanHtmlTitle(item.title || item.name || ''),
+      channelTitle: cleanHtmlTitle(item.subtitle || item.more_info.artistMap?.primary_artists?.map((a: any) => a.name).join(', ') || 'Tamil Artist'),
+      thumbnailUrl: thumbnailUrl || `https://img.youtube.com/vi/${item.id}/hqdefault.jpg`,
+      durationFormatted,
+      durationMs: durSec > 0 ? durSec * 1000 : 210000,
+      viewCountFormatted: item.play_count ? `${Number(item.play_count).toLocaleString()} plays` : '',
+      album: cleanHtmlTitle(item.more_info.album || ''),
+      audioUrl: decryptedAudio
+    }
+  }
+
+  // 2. JioSaavn / NepoTune API format (with downloadUrl array):
+  if (item.name && (item.downloadUrl || item.audioUrl)) {
     const downloadUrls = Array.isArray(item.downloadUrl) ? item.downloadUrl : []
     const audio320 = downloadUrls.find((d: any) => d.quality === '320kbps')?.url
     const audio160 = downloadUrls.find((d: any) => d.quality === '160kbps')?.url
-    const audioUrl = audio320 || audio160 || downloadUrls.at(-1)?.url || ''
+    const audioUrl = audio320 || audio160 || downloadUrls.at(-1)?.url || item.audioUrl || ''
 
     const images = Array.isArray(item.image) ? item.image : []
     const img500 = images.find((i: any) => i.quality === '500x500')?.url
@@ -31,8 +58,8 @@ function mapToSong(item: any): Song {
     const durationFormatted = durSec > 0 ? `${mins}:${secs < 10 ? '0' : ''}${secs}` : '3:30'
 
     return {
-      videoId: item.id,
-      title: cleanHtmlTitle(item.name || ''),
+      videoId: item.id || `saavn_${Date.now()}`,
+      title: cleanHtmlTitle(item.name || item.title || ''),
       channelTitle: cleanHtmlTitle(artistNames),
       thumbnailUrl,
       durationFormatted,
@@ -43,7 +70,7 @@ function mapToSong(item: any): Song {
     }
   }
 
-  // Fallback for YouTube or already-formed Song items:
+  // 3. Fallback format:
   const videoId = item.videoId || item.id || ''
   const ytThumb = videoId && videoId.length === 11 ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` : ''
   const rawThumb = item.thumbnailUrl || (typeof item.image === 'string' ? item.image : '') || ''
@@ -74,7 +101,6 @@ function ensureDistinctThumbnails(songs: Song[]): Song[] {
   }
 
   return songs.map((song) => {
-    // If an image URL repeats 3 or more times (compilation album art), fallback to YouTube thumbnail if videoId available
     if (song.thumbnailUrl && (imageCounts.get(song.thumbnailUrl) || 0) >= 3) {
       if (song.videoId && song.videoId.length === 11) {
         return {
@@ -98,39 +124,51 @@ export class MusicApiClient {
     this.baseUrl = url
   }
 
+  getBaseUrl(): string {
+    return this.baseUrl
+  }
+
   /**
-   * Search Tamil songs via NepoTune / JioSaavn direct audio API with fallback
+   * Search Tamil songs via official JioSaavn & NepoTune 320kbps audio API
    */
   async searchSongs(query: string, maxResults = 20): Promise<Song[]> {
     if (!query || !query.trim()) return []
 
     const cleanQuery = query.trim()
-    const jioSaavnUrl = `${this.baseUrl}/api/search/songs?query=${encodeURIComponent(cleanQuery)}&limit=${maxResults}`
+    const queryWithTamil = !cleanQuery.toLowerCase().includes('tamil')
+      ? `${cleanQuery} Tamil`
+      : cleanQuery
+
+    const jioSaavnOfficialUrl = `https://www.jiosaavn.com/api.php?__call=search.getResults&_format=json&api_version=4&ctx=web6dot0&q=${encodeURIComponent(queryWithTamil)}&n=${maxResults}`
 
     try {
-      const response = await fetch(jioSaavnUrl, { signal: AbortSignal.timeout(3500) })
+      const response = await fetch(jioSaavnOfficialUrl, { signal: AbortSignal.timeout(3500) })
       if (response.ok) {
         const data = await response.json()
-        const rawResults = data.data?.results || data.results || []
+        const rawResults = data.results || data.data?.results || []
         if (Array.isArray(rawResults) && rawResults.length > 0) {
-          return ensureDistinctThumbnails(deduplicateSongs(rawResults.map(mapToSong)))
+          const mapped = rawResults.map(mapToSong).filter(s => Boolean(s.audioUrl))
+          if (mapped.length > 0) {
+            return ensureDistinctThumbnails(deduplicateSongs(mapped))
+          }
         }
       }
     } catch (error) {
-      console.warn('[MusicApiClient] Direct audio search failed, trying fallback...', error)
+      console.warn('[MusicApiClient] JioSaavn official API search failed, trying mirror...', error)
     }
 
-    // Fallback to unified search endpoint if direct audio search is empty
+    // Mirror API fallback
     try {
-      const fallbackUrl = `${this.baseUrl}${API_CONFIG.SEARCH_ENDPOINT}?q=${encodeURIComponent(cleanQuery)}&maxResults=${maxResults}`
-      const response = await fetch(fallbackUrl, { signal: AbortSignal.timeout(3500) })
+      const mirrorUrl = `https://saavn.dev/api/search/songs?query=${encodeURIComponent(queryWithTamil)}&limit=${maxResults}`
+      const response = await fetch(mirrorUrl, { signal: AbortSignal.timeout(3500) })
       if (response.ok) {
         const data = await response.json()
-        const raw = data.data?.results || data.items || data.results || []
-        return ensureDistinctThumbnails(deduplicateSongs(raw.map(mapToSong)))
+        const raw = data.data?.results || data.results || []
+        const mapped = raw.map(mapToSong)
+        return ensureDistinctThumbnails(deduplicateSongs(mapped))
       }
     } catch (error) {
-      console.error('[MusicApiClient] Fallback search also failed:', error)
+      console.error('[MusicApiClient] Mirror search also failed:', error)
     }
 
     return []
