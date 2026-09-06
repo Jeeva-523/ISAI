@@ -1,47 +1,49 @@
 :root {
   /* Main Backgrounds */
-  --bg-dark: #07080C;
-  --bg-darker: #07080C;
-  --surface-dark: #0D0F15;
-  --surface-card: #141720;
-  --surface-card-hover: #1C202A;
-  --surface-elevated: #1C202A;
-  --surface-glass: rgba(20, 23, 32, 0.92);
-  --border-glass: rgba(198, 255, 0, 0.35);
-  --border-glass-bright: rgba(198, 255, 0, 0.6);
-  --border-subtle: #252A35;
+  --bg-dark: #09070F;
+  --bg-darker: #09070F;
+  --surface-dark: #100C18;
+  --surface-card: #171122;
+  --surface-card-hover: #211733;
+  --surface-elevated: #211733;
+  --surface-glass: rgba(23, 17, 34, 0.92);
+  --border-glass: rgba(139, 92, 246, 0.35);
+  --border-glass-bright: rgba(139, 92, 246, 0.6);
+  --border-subtle: #2A2038;
 
-  /* Brand Accents */
-  --isai-lime: #C6FF00;
+  /* Brand Accents - Single Color Monochromatic Purple */
+  --isai-lime: #8B5CF6;
   --isai-violet: #8B5CF6;
-  --neon-cyan: #C6FF00;
-  --neon-blue: #38BDF8;
+  --isai-light: #A78BFA;
+  --isai-soft: #6D4BC3;
+  --neon-cyan: #8B5CF6;
+  --neon-blue: #A78BFA;
   --neon-purple: #8B5CF6;
-  --neon-pink: #F472B6;
-  --neon-emerald: #22C55E;
-  --neon-amber: #F59E0B;
+  --neon-pink: #A78BFA;
+  --neon-emerald: #8B5CF6;
+  --neon-amber: #A78BFA;
 
   /* Mood Accents */
-  --mood-calm: #60A5FA;
-  --mood-sad: #818CF8;
-  --mood-love: #F472B6;
-  --mood-energy: #FB923C;
-  --mood-chill: #2DD4BF;
-  --mood-night: #6366F1;
-  --mood-party: #FACC15;
+  --mood-calm: #8B5CF6;
+  --mood-sad: #6D4BC3;
+  --mood-love: #A78BFA;
+  --mood-energy: #8B5CF6;
+  --mood-chill: #6D4BC3;
+  --mood-night: #8B5CF6;
+  --mood-party: #A78BFA;
 
   /* Status Colors */
-  --status-success: #22C55E;
-  --status-warning: #F59E0B;
+  --status-success: #8B5CF6;
+  --status-warning: #A78BFA;
   --status-error: #EF4444;
-  --status-info: #38BDF8;
+  --status-info: #A78BFA;
 
   /* Text Colors */
-  --text-primary: #F5F7FA;
-  --text-secondary: #9CA3AF;
-  --text-muted: #6B7280;
-  --text-disabled: #4B5563;
-  --divider: #252A35;
+  --text-primary: #F5F3FF;
+  --text-secondary: #B8AFC8;
+  --text-muted: #776D86;
+  --text-disabled: #554B64;
+  --divider: #2A2038;
 
   --font-heading: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
   --font-body: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
