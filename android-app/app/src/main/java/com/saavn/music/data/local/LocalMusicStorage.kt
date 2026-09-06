@@ -10,6 +10,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.util.UUID
 
+import com.saavn.music.data.model.UserProfile
+
 data class UserPlaylist(
     val id: String = UUID.randomUUID().toString(),
     val name: String,
@@ -31,6 +33,12 @@ class LocalMusicStorage(context: Context) {
 
     private val _recentlyPlayed = MutableStateFlow<List<YouTubeSong>>(emptyList())
     val recentlyPlayed: StateFlow<List<YouTubeSong>> = _recentlyPlayed.asStateFlow()
+
+    private val _userProfile = MutableStateFlow<UserProfile?>(null)
+    val userProfile: StateFlow<UserProfile?> = _userProfile.asStateFlow()
+
+    private val _localDeviceSongs = MutableStateFlow<List<YouTubeSong>>(emptyList())
+    val localDeviceSongs: StateFlow<List<YouTubeSong>> = _localDeviceSongs.asStateFlow()
 
     init {
         loadAll()
@@ -69,6 +77,31 @@ class LocalMusicStorage(context: Context) {
                 _recentlyPlayed.value = emptyList()
             }
         }
+
+        // 4. User Profile
+        val userJson = prefs.getString(KEY_USER_PROFILE, null)
+        if (!userJson.isNullOrBlank()) {
+            try {
+                _userProfile.value = gson.fromJson(userJson, UserProfile::class.java)
+            } catch (e: Exception) {
+                _userProfile.value = null
+            }
+        }
+    }
+
+    fun setLocalDeviceSongs(songs: List<YouTubeSong>) {
+        _localDeviceSongs.value = songs
+    }
+
+    // --- User Profile ---
+    fun saveUserProfile(profile: UserProfile) {
+        _userProfile.value = profile
+        prefs.edit().putString(KEY_USER_PROFILE, gson.toJson(profile)).apply()
+    }
+
+    fun clearUserProfile() {
+        _userProfile.value = null
+        prefs.edit().remove(KEY_USER_PROFILE).apply()
     }
 
     // --- Favorites ---
@@ -140,5 +173,6 @@ class LocalMusicStorage(context: Context) {
         private const val KEY_FAVORITES = "isai_fav_songs"
         private const val KEY_PLAYLISTS = "isai_user_playlists"
         private const val KEY_RECENTLY_PLAYED = "isai_recent_20_songs"
+        private const val KEY_USER_PROFILE = "isai_user_profile"
     }
 }

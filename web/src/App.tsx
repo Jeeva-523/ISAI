@@ -2,51 +2,53 @@ import { useEffect, useRef, useState } from 'react'
 
 import { musicApi } from '@shared/api/music-api'
 import { storageService } from '@shared/services/storageService'
-import type { Song } from '@shared/models/song'
+import type { Song, UserPlaylist } from '@shared/models/song'
 
 import { WebPlayer } from './components/WebPlayer'
+import { LoginModal, type UserProfile } from './components/LoginModal'
 import { MainLayout, type PageTab } from './layouts/MainLayout'
 import { HomePage } from './pages/HomePage'
 import { LibraryPage } from './pages/LibraryPage'
 import { SearchPage } from './pages/SearchPage'
+import { LoginPage } from './pages/LoginPage'
 
 // Curated fallback songs for instant offline-first display
 const INITIAL_CURATED_SONGS: Song[] = [
   {
-    videoId: 'kJQP7kiw5Fk',
-    title: 'Luis Fonsi - Despacito ft. Daddy Yankee',
-    channelTitle: 'Luis Fonsi',
-    thumbnailUrl: 'https://img.youtube.com/vi/kJQP7kiw5Fk/hqdefault.jpg',
-    durationFormatted: '4:42',
-    durationMs: 282000,
-    viewCountFormatted: '8.2B views'
+    videoId: 'W6L3wM0WnQ8',
+    title: 'Hukum - Thalaivar Alappara | Jailer | Rajinikanth | Anirudh',
+    channelTitle: 'Anirudh Ravichander',
+    thumbnailUrl: 'https://img.youtube.com/vi/W6L3wM0WnQ8/hqdefault.jpg',
+    durationFormatted: '3:27',
+    durationMs: 207000,
+    viewCountFormatted: '120M views'
   },
   {
-    videoId: '2Vv-BfVoq4g',
-    title: 'Ed Sheeran - Perfect',
-    channelTitle: 'Ed Sheeran',
-    thumbnailUrl: 'https://img.youtube.com/vi/2Vv-BfVoq4g/hqdefault.jpg',
+    videoId: 'Y4u0F6VpY6k',
+    title: 'Naa Ready | Leo | Thalapathy Vijay | Anirudh Ravichander',
+    channelTitle: 'Anirudh Ravichander',
+    thumbnailUrl: 'https://img.youtube.com/vi/Y4u0F6VpY6k/hqdefault.jpg',
+    durationFormatted: '4:08',
+    durationMs: 248000,
+    viewCountFormatted: '180M views'
+  },
+  {
+    videoId: 'mNP7V2sSg-4',
+    title: 'Arabic Kuthu - Halamithi Habibo | Beast | Vijay | Anirudh',
+    channelTitle: 'Anirudh Ravichander',
+    thumbnailUrl: 'https://img.youtube.com/vi/mNP7V2sSg-4/hqdefault.jpg',
     durationFormatted: '4:39',
     durationMs: 279000,
-    viewCountFormatted: '3.6B views'
+    viewCountFormatted: '340M views'
   },
   {
-    videoId: 'OPf0YbXqDm0',
-    title: 'Mark Ronson - Uptown Funk ft. Bruno Mars',
-    channelTitle: 'Mark Ronson',
-    thumbnailUrl: 'https://img.youtube.com/vi/OPf0YbXqDm0/hqdefault.jpg',
-    durationFormatted: '4:30',
-    durationMs: 270000,
-    viewCountFormatted: '4.8B views'
-  },
-  {
-    videoId: 'JGwWNGJdvx8',
-    title: 'Ed Sheeran - Shape of You',
-    channelTitle: 'Ed Sheeran',
-    thumbnailUrl: 'https://img.youtube.com/vi/JGwWNGJdvx8/hqdefault.jpg',
-    durationFormatted: '4:23',
-    durationMs: 263000,
-    viewCountFormatted: '6.1B views'
+    videoId: '3tmd-ClpJxA',
+    title: 'Marakkuma Nenjam | Vendhu Thanindhathu Kaadu | A.R. Rahman',
+    channelTitle: 'A.R. Rahman',
+    thumbnailUrl: 'https://img.youtube.com/vi/3tmd-ClpJxA/hqdefault.jpg',
+    durationFormatted: '4:16',
+    durationMs: 256000,
+    viewCountFormatted: '65M views'
   }
 ]
 
@@ -64,6 +66,34 @@ export function App() {
   const [favorites, setFavorites] = useState<Song[]>([])
   const [currentPlayingSong, setCurrentPlayingSong] = useState<Song | null>(null)
 
+  const [playbackQueue, setPlaybackQueue] = useState<Song[]>([])
+  const [currentQueueIndex, setCurrentQueueIndex] = useState<number>(-1)
+
+  const [user, setUser] = useState<UserProfile>(() => {
+    const saved = localStorage.getItem('isai_user_session')
+    if (saved) {
+      try { return JSON.parse(saved) } catch {}
+    }
+    return {
+      name: 'JEEVA ⚡',
+      email: 'jeeva@isaimusic.com',
+      avatar: 'J',
+      isLoggedIn: true,
+      isPremium: true
+    }
+  })
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false)
+
+  const [userPlaylists, setUserPlaylists] = useState<UserPlaylist[]>(() => storageService.getPlaylists())
+
+  const handleCreatePlaylist = () => {
+    const name = window.prompt('Enter playlist name:')
+    if (name && name.trim()) {
+      storageService.createPlaylist(name.trim())
+      setUserPlaylists(storageService.getPlaylists())
+    }
+  }
+
   const searchTimerRef = useRef<number | null>(null)
 
   // Load favorites & trending on mount
@@ -71,6 +101,30 @@ export function App() {
     setFavorites(storageService.getFavorites())
     loadTrending()
   }, [])
+
+  const handleLogin = (userData: Partial<UserProfile>) => {
+    const updated: UserProfile = {
+      name: userData.name || 'User',
+      email: userData.email || 'user@isaimusic.com',
+      avatar: userData.avatar || 'U',
+      isLoggedIn: true,
+      isPremium: true
+    }
+    setUser(updated)
+    localStorage.setItem('isai_user_session', JSON.stringify(updated))
+  }
+
+  const handleLogout = () => {
+    const loggedOut: UserProfile = {
+      name: 'Guest User',
+      email: 'guest@isaimusic.com',
+      avatar: 'G',
+      isLoggedIn: false,
+      isPremium: false
+    }
+    setUser(loggedOut)
+    localStorage.setItem('isai_user_session', JSON.stringify(loggedOut))
+  }
 
   const loadTrending = async () => {
     setIsTrendingLoading(true)
@@ -85,6 +139,64 @@ export function App() {
       setTrendingSongs(INITIAL_CURATED_SONGS)
     } finally {
       setIsTrendingLoading(false)
+    }
+  }
+
+  const handlePlaySong = (song: Song, queue?: Song[]) => {
+    setCurrentPlayingSong(song)
+    storageService.addRecentlyPlayed(song)
+
+    if (queue && queue.length > 0) {
+      setPlaybackQueue(queue)
+      const idx = queue.findIndex((s) => s.videoId === song.videoId)
+      setCurrentQueueIndex(idx >= 0 ? idx : 0)
+    } else {
+      setPlaybackQueue([song])
+      setCurrentQueueIndex(0)
+    }
+  }
+
+  const handleNextSong = async () => {
+    if (!currentPlayingSong) return
+
+    // 1. Next in queue
+    if (playbackQueue.length > 0 && currentQueueIndex >= 0 && currentQueueIndex < playbackQueue.length - 1) {
+      const nextIdx = currentQueueIndex + 1
+      setCurrentQueueIndex(nextIdx)
+      setCurrentPlayingSong(playbackQueue[nextIdx])
+      return
+    }
+
+    // 2. Auto-fetch related songs by channelTitle/artist or title
+    try {
+      const artist = currentPlayingSong.channelTitle.replace(/ - Topic| Official/g, '').trim()
+      const query = artist && artist !== 'Tamil Artist' ? `${artist} Tamil hit songs` : `${currentPlayingSong.title} Tamil song`
+      const related = await musicApi.searchSongs(query)
+      const fresh = related.filter((s) => s.videoId !== currentPlayingSong.videoId)
+      if (fresh.length > 0) {
+        const nextSong = fresh[0]
+        setPlaybackQueue(fresh)
+        setCurrentQueueIndex(0)
+        setCurrentPlayingSong(nextSong)
+        return
+      }
+    } catch (e) {
+      console.warn('Failed to fetch next recommendation:', e)
+    }
+
+    // 3. Fallback to next song in trending list
+    if (trendingSongs.length > 0) {
+      const curIdx = trendingSongs.findIndex((s) => s.videoId === currentPlayingSong.videoId)
+      const nextIdx = (curIdx + 1) % trendingSongs.length
+      setCurrentPlayingSong(trendingSongs[nextIdx])
+    }
+  }
+
+  const handlePrevSong = () => {
+    if (playbackQueue.length > 0 && currentQueueIndex > 0) {
+      const prevIdx = currentQueueIndex - 1
+      setCurrentQueueIndex(prevIdx)
+      setCurrentPlayingSong(playbackQueue[prevIdx])
     }
   }
 
@@ -142,6 +254,11 @@ export function App() {
       searchQuery={searchQuery}
       onSearchChange={handleSearchChange}
       onSearchClear={() => handleSearchChange('')}
+      onOpenLogin={() => setIsLoginModalOpen(true)}
+      userName={user.name}
+      userAvatar={user.avatar}
+      userPlaylists={userPlaylists}
+      onCreatePlaylist={handleCreatePlaylist}
     >
       {currentTab === 'home' && (
         <HomePage
@@ -152,7 +269,7 @@ export function App() {
           onRetry={loadTrending}
           isFavorite={isFavorite}
           onToggleFavorite={handleToggleFavorite}
-          onPlaySong={setCurrentPlayingSong}
+          onPlaySong={(song) => handlePlaySong(song, trendingSongs)}
         />
       )}
 
@@ -166,7 +283,7 @@ export function App() {
           onRetry={() => handleSearchChange(searchQuery)}
           isFavorite={isFavorite}
           onToggleFavorite={handleToggleFavorite}
-          onPlaySong={setCurrentPlayingSong}
+          onPlaySong={(song) => handlePlaySong(song, searchResults)}
         />
       )}
 
@@ -175,9 +292,27 @@ export function App() {
           favorites={favorites}
           onToggleFavorite={handleToggleFavorite}
           onExplore={() => setCurrentTab('home')}
-          onPlaySong={setCurrentPlayingSong}
+          onPlaySong={(song) => handlePlaySong(song, favorites)}
         />
       )}
+
+      {currentTab === 'login' && (
+        <LoginPage
+          user={user}
+          onLogin={handleLogin}
+          onLogout={handleLogout}
+          onNavigateHome={() => setCurrentTab('home')}
+        />
+      )}
+
+      {/* Login Modal Overlay */}
+      <LoginModal
+        isOpen={isLoginModalOpen}
+        onClose={() => setIsLoginModalOpen(false)}
+        user={user}
+        onLogin={handleLogin}
+        onLogout={handleLogout}
+      />
 
       {/* Floating Modern YouTube Player */}
       <WebPlayer
@@ -185,7 +320,13 @@ export function App() {
         onClose={() => setCurrentPlayingSong(null)}
         isFavorite={currentPlayingSong ? isFavorite(currentPlayingSong.videoId) : false}
         onToggleFavorite={handleToggleFavorite}
+        onNextSong={handleNextSong}
+        onPrevSong={handlePrevSong}
+        queue={playbackQueue.length > 0 ? playbackQueue : trendingSongs}
+        onSelectQueueItem={(s) => handlePlaySong(s, playbackQueue.length > 0 ? playbackQueue : trendingSongs)}
+        userId={user.email || 'user_jeeva_default'}
       />
     </MainLayout>
   )
 }
+

@@ -69,6 +69,28 @@ export class LocalMusicStorageService {
     return newPlaylist
   }
 
+  getRecentlyPlayed(): Song[] {
+    if (typeof window === 'undefined' || !window.localStorage) return []
+    try {
+      const data = localStorage.getItem('isai_recently_played')
+      return data ? JSON.parse(data) : []
+    } catch {
+      return []
+    }
+  }
+
+  addRecentlyPlayed(song: Song) {
+    if (typeof window === 'undefined' || !window.localStorage) return
+    const recents = this.getRecentlyPlayed().filter(s => s.videoId !== song.videoId)
+    recents.unshift(song)
+    const trimmed = recents.slice(0, 20)
+    try {
+      localStorage.setItem('isai_recently_played', JSON.stringify(trimmed))
+    } catch (e) {
+      console.error('Failed to save recently played song', e)
+    }
+  }
+
   addSongToPlaylist(playlistId: string, song: Song) {
     const playlists = this.getPlaylists()
     const target = playlists.find(p => p.id === playlistId)

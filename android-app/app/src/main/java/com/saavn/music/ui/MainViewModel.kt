@@ -18,6 +18,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
+import com.saavn.music.auth.GoogleAuthHelper
+import com.saavn.music.data.model.UserProfile
+
 enum class AppScreen {
     HOME,
     SEARCH,
@@ -27,9 +30,17 @@ enum class AppScreen {
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     val localStorage = LocalMusicStorage(application.applicationContext)
+    val googleAuthHelper = GoogleAuthHelper(application.applicationContext)
     val musicRepo = MusicRepository()
     val ytRepo = YouTubeMusicRepository()
     val ytPlayerController = YouTubePlayerController(application.applicationContext, localStorage)
+    val isaiConnectManager = com.saavn.music.connect.IsaiConnectManager(application.applicationContext)
+
+    // User Authentication Profile
+    val userProfile: StateFlow<UserProfile?> = localStorage.userProfile
+
+    private val _showLoginDialog = MutableStateFlow(false)
+    val showLoginDialog: StateFlow<Boolean> = _showLoginDialog.asStateFlow()
 
     private fun SongItem.toYouTubeSong(): YouTubeSong {
         return YouTubeSong(
@@ -92,6 +103,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _suggestions = MutableStateFlow<List<YouTubeSong>>(emptyList())
     val suggestions: StateFlow<List<YouTubeSong>> = _suggestions.asStateFlow()
 
+    private val _personalizedRecommendations = MutableStateFlow<List<YouTubeSong>>(emptyList())
+    val personalizedRecommendations: StateFlow<List<YouTubeSong>> = _personalizedRecommendations.asStateFlow()
+
+    private val _recommendedReason = MutableStateFlow("✨ Based on your listening")
+    val recommendedReason: StateFlow<String> = _recommendedReason.asStateFlow()
+
     private val _isLoadingSuggestions = MutableStateFlow(false)
     val isLoadingSuggestions: StateFlow<Boolean> = _isLoadingSuggestions.asStateFlow()
 
@@ -104,8 +121,98 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         loadHomeData()
+        loadPersonalizedRecommendations()
         ytPlayerController.onQueueExhausted = {
             playNextAutoSuggestion()
+        }
+        viewModelScope.launch {
+            localStorage.recentlyPlayed.collect {
+                loadPersonalizedRecommendations()
+            }
+        }
+
+        // Initialize ISAI Connect with user profile
+        viewModelScope.launch {
+            userProfile.collect { profile ->
+                val email = profile?.email?.ifBlank { null } ?: "user_jeeva_default"
+                isaiConnectManager.initialize(email)
+            }
+        }
+
+        // Sync local playback state to ISAI Connect when this device is active player
+        viewModelScope.launch {
+            ytPlayerController.currentSong.collect { song ->
+                if (song != null && isaiConnectManager.isMyDeviceActive()) {
+                    isaiConnectManager.updatePlaybackState(
+                        song = song,
+                        isPlaying = ytPlayerController.isPlaying.value,
+                        positionMs = (ytPlayerController.currentPositionSec.value * 1000).toLong(),
+                        durationMs = (ytPlayerController.durationSec.value * 1000).toLong()
+                    )
+                }
+            }
+        }
+
+        viewModelScope.launch {
+            ytPlayerController.isPlaying.collect { playing ->
+                if (isaiConnectManager.isMyDeviceActive()) {
+                    isaiConnectManager.updatePlaybackState(
+                        isPlaying = playing,
+                        positionMs = (ytPlayerController.currentPositionSec.value * 1000).toLong()
+                    )
+                }
+            }
+        }
+
+        // Remote playback listener: if another device becomes active, pause local playback
+        viewModelScope.launch {
+            isaiConnectManager.playbackState.collect { syncState ->
+                if (syncState != null && !isaiConnectManager.isMyDeviceActive()) {
+                    if (ytPlayerController.isPlaying.value) {
+                        ytPlayerController.pause()
+                    }
+                }
+            }
+        }
+    }
+
+    fun loadPersonalizedRecommendations() {
+        viewModelScope.launch {
+            try {
+                val recentList = localStorage.recentlyPlayed.value
+                val favList = localStorage.favorites.value
+                val combined = (recentList + favList).distinctBy { it.videoId }
+
+                if (combined.isNotEmpty()) {
+                    val artistMap = mutableMapOf<String, Int>()
+                    combined.forEach { song ->
+                        val artist = song.channelTitle
+                            .replace(" - Topic", "")
+                            .replace(" Official", "")
+                            .trim()
+                        if (artist.isNotBlank() && artist != "Tamil Artist" && artist != "Tamil Music") {
+                            artistMap[artist] = (artistMap[artist] ?: 0) + 1
+                        }
+                    }
+
+                    val topArtist = artistMap.maxByOrNull { it.value }?.key
+                    if (!topArtist.isNullOrBlank()) {
+                        _recommendedReason.value = "Because you listen to $topArtist"
+                        val saavnResult = musicRepo.search("$topArtist Tamil songs")
+                        val recSongs = saavnResult.getOrNull()?.map { it.toYouTubeSong() } ?: emptyList()
+                        if (recSongs.isNotEmpty()) {
+                            val filtered = recSongs.filterNot { s -> combined.any { it.videoId == s.videoId } }
+                            _personalizedRecommendations.value = if (filtered.isNotEmpty()) filtered else recSongs
+                            return@launch
+                        }
+                    }
+                }
+
+                // Default recommendation mix for first-time users
+                _recommendedReason.value = "✨ Top Picks For You"
+                val defaultRec = musicRepo.getTrending("Tamil").getOrNull()?.map { it.toYouTubeSong() } ?: emptyList()
+                _personalizedRecommendations.value = defaultRec.take(12)
+            } catch (_: Exception) {}
         }
     }
 
@@ -224,6 +331,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun scanDeviceMusic(context: android.content.Context) {
+        viewModelScope.launch {
+            try {
+                val scanner = com.saavn.music.data.local.LocalAudioScanner(context)
+                val localSongs = scanner.scanDeviceAudioFiles()
+                localStorage.setLocalDeviceSongs(localSongs)
+            } catch (e: Exception) {
+                android.util.Log.e("ISAI_PLAYER", "Failed to scan device music: ${e.message}")
+            }
+        }
+    }
+
     fun playSong(song: YouTubeSong, queue: List<YouTubeSong>? = null) {
         android.util.Log.i("ISAI_PLAYER", "========================================")
         android.util.Log.i("ISAI_PLAYER", "[MainViewModel] playSong triggered!")
@@ -232,10 +351,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         android.util.Log.i("ISAI_PLAYER", "========================================")
 
         _showFullPlayer.value = true
+
+        // Generate smart YouTube Radio auto-recommendation queue if single song passed
+        val effectiveQueue = if (queue.isNullOrEmpty() || queue.size <= 1) {
+            val suggestionsList = _suggestions.value.filter { it.videoId != song.videoId }
+            val trendingList = _trendingSongs.value.filter { it.videoId != song.videoId }
+            val combined = (listOf(song) + suggestionsList + trendingList).distinctBy { it.videoId }
+            combined.take(20)
+        } else {
+            queue
+        }
+
         loadSuggestionsForSong(song)
 
         if (!song.audioUrl.isNullOrBlank()) {
-            ytPlayerController.playSong(song, queue)
+            ytPlayerController.playSong(song, effectiveQueue)
         } else {
             // Asynchronously resolve direct 320kbps audio stream from MusicRepository
             viewModelScope.launch {
@@ -246,13 +376,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     if (!directUrl.isNullOrBlank()) {
                         android.util.Log.i("ISAI_PLAYER", "[MainViewModel] Resolved direct 320kbps audio: $directUrl")
                         val updatedSong = song.copy(audioUrl = directUrl)
-                        ytPlayerController.playSong(updatedSong, queue)
+                        val updatedQueue = effectiveQueue.map { if (it.videoId == song.videoId) updatedSong else it }
+                        ytPlayerController.playSong(updatedSong, updatedQueue)
                         return@launch
                     }
                 } catch (e: Exception) {
                     android.util.Log.w("ISAI_PLAYER", "[MainViewModel] Could not resolve direct stream: ${e.message}")
                 }
-                ytPlayerController.playSong(song, queue)
+                ytPlayerController.playSong(song, effectiveQueue)
             }
         }
     }
@@ -401,6 +532,47 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun toggleRepeat() {
         ytPlayerController.toggleRepeat()
+    }
+
+    fun openLoginDialog() {
+        _showLoginDialog.value = true
+    }
+
+    fun closeLoginDialog() {
+        _showLoginDialog.value = false
+    }
+
+    fun saveUserProfile(profile: UserProfile) {
+        localStorage.saveUserProfile(profile)
+        closeLoginDialog()
+    }
+
+    fun updateUsername(newUsername: String) {
+        val current = userProfile.value ?: UserProfile(
+            id = "user_" + System.currentTimeMillis(),
+            displayName = newUsername,
+            email = "user@isaimusic.com"
+        )
+        val updated = current.copy(displayName = newUsername)
+        localStorage.saveUserProfile(updated)
+    }
+
+    fun quickSignInGoogleAccount(displayName: String = "JEEVA ⚡", email: String = "jeeva.google@gmail.com") {
+        val profile = UserProfile(
+            id = "google_" + System.currentTimeMillis(),
+            displayName = displayName,
+            email = email,
+            photoUrl = null
+        )
+        localStorage.saveUserProfile(profile)
+        closeLoginDialog()
+    }
+
+    fun logoutUser() {
+        googleAuthHelper.signOut {
+            localStorage.clearUserProfile()
+            closeLoginDialog()
+        }
     }
 
     fun openLyrics() {

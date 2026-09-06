@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "995240299930",
+    "project_id": "isai-49b51",
+    "storage_bucket": "isai-49b51.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:995240299930:android:a0c325a216239fa21b7e23",
+        "android_client_info": {
+          "package_name": "com.company.isai"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "995240299930-96b4us0iacmncfl4h437041tld0sbg0m.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBOhY_AQODdBTAj4gSsImvwLiuG92UrTeA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "995240299930-96b4us0iacmncfl4h437041tld0sbg0m.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

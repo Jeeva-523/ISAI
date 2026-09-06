@@ -24,6 +24,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
@@ -75,6 +76,8 @@ fun HomeScreen(
     val selectedCategory by viewModel.selectedCategory.collectAsState()
     val currentPlayingSong by viewModel.ytPlayerController.currentSong.collectAsState()
     val isPlaying by viewModel.ytPlayerController.isPlaying.collectAsState()
+    val personalizedRecs by viewModel.personalizedRecommendations.collectAsState()
+    val recommendedReason by viewModel.recommendedReason.collectAsState()
 
     val categories = listOf(
         "Trending", "Tamil Songs", "Melody", "Love Songs",
@@ -123,7 +126,11 @@ fun HomeScreen(
                             text = "ISAI",
                             fontSize = 25.sp,
                             fontWeight = FontWeight.ExtraBold,
-                            color = NeonCyan,
+                            style = androidx.compose.ui.text.TextStyle(
+                                brush = Brush.horizontalGradient(
+                                    colors = listOf(NeonCyan, NeonPurple, NeonPink)
+                                )
+                            ),
                             letterSpacing = 1.5.sp
                         )
                         Text(
@@ -136,21 +143,55 @@ fun HomeScreen(
                     }
                 }
 
-                // Search Action Button
-                IconButton(
-                    onClick = { viewModel.setScreen(AppScreen.SEARCH) },
-                    modifier = Modifier
-                        .size(42.dp)
-                        .clip(CircleShape)
-                        .background(DarkSurfaceGlass)
-                        .border(1.dp, GlassBorderSubtle, CircleShape)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Search,
-                        contentDescription = "Search",
-                        tint = NeonCyan,
-                        modifier = Modifier.size(20.dp)
-                    )
+                    // Profile / Login Button
+                    val userProfile by viewModel.userProfile.collectAsState()
+                    IconButton(
+                        onClick = { viewModel.openLoginDialog() },
+                        modifier = Modifier
+                            .size(42.dp)
+                            .clip(CircleShape)
+                            .background(DarkSurfaceGlass)
+                            .border(1.dp, GlassBorderSubtle, CircleShape)
+                    ) {
+                        if (userProfile?.photoUrl != null) {
+                            AsyncImage(
+                                model = userProfile?.photoUrl,
+                                contentDescription = "Profile",
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(CircleShape),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Icon(
+                                imageVector = androidx.compose.material.icons.Icons.Default.Person,
+                                contentDescription = "Account",
+                                tint = if (userProfile != null) NeonCyan else TextSecondary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+
+                    // Search Action Button
+                    IconButton(
+                        onClick = { viewModel.setScreen(AppScreen.SEARCH) },
+                        modifier = Modifier
+                            .size(42.dp)
+                            .clip(CircleShape)
+                            .background(DarkSurfaceGlass)
+                            .border(1.dp, GlassBorderSubtle, CircleShape)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = "Search",
+                            tint = NeonCyan,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                 }
             }
         }
@@ -231,6 +272,55 @@ fun HomeScreen(
             }
         }
 
+        // 3.5 ✨ Recommended For You (Personalized Suggestions Based on Listening History)
+        if (personalizedRecs.isNotEmpty()) {
+            item {
+                Spacer(modifier = Modifier.height(22.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "✨ Recommended For You",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary
+                        )
+                        Text(
+                            text = recommendedReason,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = NeonCyan
+                        )
+                    }
+                    Text(
+                        text = "MADE FOR YOU",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = NeonPurple
+                    )
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    items(personalizedRecs.size) { index ->
+                        val song = personalizedRecs[index]
+                        YouTubeQuickHitCard(
+                            song = song,
+                            onClick = { viewModel.playSong(song, personalizedRecs) }
+                        )
+                    }
+                }
+            }
+        }
+
         // 4. Quick Hits Horizontal Cards
         if (trendingSongs.size > 4) {
             val quickPicks = trendingSongs.drop(4).take(8)
@@ -250,7 +340,7 @@ fun HomeScreen(
                         color = TextPrimary
                     )
                     Text(
-                        text = "OFFICIAL YOUTUBE",
+                        text = "ISAI MUSIC HD",
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
                         color = NeonCyan

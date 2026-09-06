@@ -47,15 +47,20 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.QueueMusic
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.TabRowDefaults
@@ -138,9 +143,12 @@ fun PlayerScreen(
     var showQueueSheet by remember { mutableStateOf(false) }
     var selectedSheetTab by remember { mutableIntStateOf(0) }
 
+    var showConnectSheet by remember { mutableStateOf(false) }
+    var showMoreMenu by remember { mutableStateOf(false) }
+    var showLyricsSheet by remember { mutableStateOf(false) }
     var isDraggingSlider by remember { mutableStateOf(false) }
     var dragPositionSec by remember { mutableFloatStateOf(0f) }
-    var visualMode by remember { mutableStateOf(PlayerVisualMode.VINYL) }
+    var visualMode by remember { mutableStateOf(PlayerVisualMode.ALBUM_CARD) }
 
     val currentSong = song ?: return
     val isFav = viewModel.isFavorite(currentSong.videoId)
@@ -210,7 +218,7 @@ fun PlayerScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // Top Bar
+            // Top Navigation Bar
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -218,7 +226,7 @@ fun PlayerScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Minimize Button
+                // ↓ Back Button
                 IconButton(
                     onClick = { viewModel.closeFullPlayer() },
                     modifier = Modifier
@@ -229,20 +237,20 @@ fun PlayerScreen(
                 ) {
                     Icon(
                         imageVector = Icons.Default.KeyboardArrowDown,
-                        contentDescription = "Minimize",
+                        contentDescription = "Back",
                         tint = TextPrimary,
                         modifier = Modifier.size(28.dp)
                     )
                 }
 
-                // Center Title & Live Stream Pill
+                // Center Title: NOW PLAYING & ISAI Audio Quality Badge
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        text = "ISAI STUDIO PLAYER",
-                        color = TextMuted,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.5.sp
+                        text = "NOW PLAYING",
+                        color = TextPrimary,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 2.sp
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Row(
@@ -253,269 +261,125 @@ fun PlayerScreen(
                             modifier = Modifier
                                 .size(6.dp)
                                 .clip(CircleShape)
-                                .background(if (isPlaying) NeonCyan else TextMuted)
+                                .background(if (isPlaying) com.saavn.music.ui.theme.IsaiLime else TextMuted)
                         )
                         Text(
-                            text = if (isDirectAudio) "320 KBPS HD DIRECT" else "LIVE STREAM",
-                            color = NeonCyan,
-                            fontSize = 11.sp,
+                            text = if (isDirectAudio) "320 KBPS HD • UN ISAI" else "ISAI STREAM",
+                            color = com.saavn.music.ui.theme.IsaiLime,
+                            fontSize = 10.sp,
                             fontWeight = FontWeight.ExtraBold,
                             letterSpacing = 0.8.sp
                         )
                     }
                 }
 
-                // Add to Playlist Button
-                IconButton(
-                    onClick = { viewModel.openAddToPlaylistDialog(currentSong) },
-                    modifier = Modifier
-                        .size(42.dp)
-                        .clip(CircleShape)
-                        .background(DarkSurfaceGlass)
-                        .border(1.dp, GlassBorderSubtle, CircleShape)
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.PlaylistAdd,
-                        contentDescription = "Add to Playlist",
-                        tint = NeonCyan,
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-            }
-
-            // Visual Mode Switcher (Vinyl vs Card vs Video)
-            Row(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(Color(0xFF101322))
-                    .border(1.dp, GlassBorderSubtle, RoundedCornerShape(20.dp))
-                    .padding(3.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                val modes = if (isDirectAudio) {
-                    listOf(PlayerVisualMode.VINYL to "Vinyl Disc", PlayerVisualMode.ALBUM_CARD to "Album Art")
-                } else {
-                    listOf(PlayerVisualMode.VINYL to "Vinyl", PlayerVisualMode.ALBUM_CARD to "Art", PlayerVisualMode.VIDEO to "Video")
-                }
-
-                modes.forEach { (mode, label) ->
-                    val isSelected = visualMode == mode
-                    val itemModifier = if (isSelected) {
-                        Modifier
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(Brush.horizontalGradient(listOf(NeonCyan.copy(alpha = 0.8f), NeonPurple.copy(alpha = 0.8f))))
-                    } else {
-                        Modifier
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(Color.Transparent)
-                    }
-                    Box(
-                        modifier = itemModifier
-                            .clickable { visualMode = mode }
-                            .padding(horizontal = 14.dp, vertical = 6.dp)
+                // ⋮ More Options Menu
+                Box {
+                    IconButton(
+                        onClick = { showMoreMenu = true },
+                        modifier = Modifier
+                            .size(42.dp)
+                            .clip(CircleShape)
+                            .background(DarkSurfaceGlass)
+                            .border(1.dp, GlassBorderSubtle, CircleShape)
                     ) {
-                        Text(
-                            text = label,
-                            color = if (isSelected) DarkBackground else TextSecondary,
-                            fontSize = 11.sp,
-                            fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Medium
+                        Icon(
+                            imageVector = Icons.Default.MoreVert,
+                            contentDescription = "More Options",
+                            tint = TextPrimary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+
+                    DropdownMenu(
+                        expanded = showMoreMenu,
+                        onDismissRequest = { showMoreMenu = false },
+                        modifier = Modifier.background(DarkSurfaceGlass)
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("➕ Add to Playlist", color = TextPrimary) },
+                            onClick = {
+                                showMoreMenu = false
+                                viewModel.openAddToPlaylistDialog(currentSong)
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("🔗 Share Track", color = TextPrimary) },
+                            onClick = {
+                                showMoreMenu = false
+                                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(Intent.EXTRA_SUBJECT, currentSong.title)
+                                    putExtra(Intent.EXTRA_TEXT, "Listening to ${currentSong.title} - ${currentSong.channelTitle} on ISAI Music!")
+                                }
+                                context.startActivity(Intent.createChooser(shareIntent, "Share Track"))
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("📥 Offline Download", color = TextPrimary) },
+                            onClick = {
+                                showMoreMenu = false
+                                viewModel.addToQueue(currentSong)
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("👤 Go to Artist", color = TextPrimary) },
+                            onClick = {
+                                showMoreMenu = false
+                                viewModel.onSearchQueryChanged(currentSong.channelTitle)
+                                viewModel.closeFullPlayer()
+                            }
                         )
                     }
                 }
             }
 
-            // Visual Showcase Center Area
+            // Visual Showcase Center Area - Hero Album Cover Card
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(290.dp),
+                    .height(310.dp),
                 contentAlignment = Alignment.Center
             ) {
-                when (visualMode) {
-                    PlayerVisualMode.VINYL -> {
-                        // Glowing Pulsing Aura
-                        Box(
-                            modifier = Modifier
-                                .size((270 * if (isPlaying) auraScale else 1f).dp)
-                                .clip(CircleShape)
-                                .background(
-                                    Brush.radialGradient(
-                                        colors = listOf(
-                                            NeonCyan.copy(alpha = 0.35f),
-                                            NeonPurple.copy(alpha = 0.2f),
-                                            Color.Transparent
-                                        )
-                                    )
+                // Pulsing Aura behind Artwork Card
+                Box(
+                    modifier = Modifier
+                        .size((275 * if (isPlaying) auraScale else 1f).dp)
+                        .clip(RoundedCornerShape(32.dp))
+                        .background(
+                            Brush.radialGradient(
+                                colors = listOf(
+                                    com.saavn.music.ui.theme.IsaiLime.copy(alpha = 0.35f),
+                                    NeonPurple.copy(alpha = 0.2f),
+                                    Color.Transparent
                                 )
+                            )
                         )
+                )
 
-                        // Realistic Concentric Grooved Vinyl Record
-                        Box(
-                            modifier = Modifier
-                                .size(268.dp)
-                                .shadow(
-                                    elevation = 32.dp,
-                                    shape = CircleShape,
-                                    spotColor = NeonCyan.copy(alpha = 0.6f),
-                                    ambientColor = NeonPurple.copy(alpha = 0.45f)
-                                )
-                                .clip(CircleShape)
-                                .background(Color(0xFF090A10))
-                                .border(
-                                    3.5.dp,
-                                    Brush.sweepGradient(
-                                        listOf(
-                                            NeonCyan,
-                                            NeonPurple,
-                                            NeonPink,
-                                            NeonCyan
-                                        )
-                                    ),
-                                    CircleShape
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            // Metallic vinyl micro grooves
-                            Box(
-                                modifier = Modifier
-                                    .size(244.dp)
-                                    .clip(CircleShape)
-                                    .border(1.dp, Color(0xFF22283A), CircleShape)
-                            )
-                            Box(
-                                modifier = Modifier
-                                    .size(220.dp)
-                                    .clip(CircleShape)
-                                    .border(1.dp, Color(0xFF1B1F30), CircleShape)
-                            )
-                            Box(
-                                modifier = Modifier
-                                    .size(196.dp)
-                                    .clip(CircleShape)
-                                    .border(1.dp, Color(0xFF252C42), CircleShape)
-                            )
-
-                            // Center Rotating Album Artwork
-                            AsyncImage(
-                                model = currentSong.thumbnailUrl,
-                                contentDescription = currentSong.title,
-                                modifier = Modifier
-                                    .size(140.dp)
-                                    .clip(CircleShape)
-                                    .rotate(if (isPlaying) rotationAngle else 0f)
-                                    .border(2.dp, NeonCyan.copy(alpha = 0.7f), CircleShape),
-                                contentScale = ContentScale.Crop
-                            )
-
-                            // Center Spindle Hole with Live Equalizer
-                            Box(
-                                modifier = Modifier
-                                    .size(46.dp)
-                                    .clip(CircleShape)
-                                    .background(DarkBackground)
-                                    .border(2.dp, NeonCyan, CircleShape),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                EqualizerBars(
-                                    isPlaying = isPlaying,
-                                    barCount = 3,
-                                    barWidth = 2.5.dp,
-                                    maxHeight = 14.dp,
-                                    activeColor = NeonCyan
-                                )
-                            }
-                        }
-                    }
-
-                    PlayerVisualMode.ALBUM_CARD -> {
-                        // Floating 3D Artwork Card
-                        Box(
-                            modifier = Modifier
-                                .size(260.dp)
-                                .shadow(
-                                    elevation = 28.dp,
-                                    shape = RoundedCornerShape(26.dp),
-                                    spotColor = NeonCyan.copy(alpha = 0.5f),
-                                    ambientColor = NeonPurple.copy(alpha = 0.4f)
-                                )
-                                .clip(RoundedCornerShape(26.dp))
-                                .border(
-                                    2.dp,
-                                    Brush.linearGradient(listOf(NeonCyan, NeonPurple, NeonPink)),
-                                    RoundedCornerShape(26.dp)
-                                )
-                        ) {
-                            AsyncImage(
-                                model = currentSong.thumbnailUrl,
-                                contentDescription = currentSong.title,
-                                modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Crop
-                            )
-                        }
-                    }
-
-                    PlayerVisualMode.VIDEO -> {
-                        // Embedded YouTube Player View (Fallback)
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .aspectRatio(16f / 9f)
-                                .clip(RoundedCornerShape(18.dp))
-                                .background(Color.Black)
-                                .border(1.5.dp, GlassBorder, RoundedCornerShape(18.dp))
-                        ) {
-                            AndroidView(
-                                factory = { ctx ->
-                                    YouTubePlayerView(ctx).apply {
-                                        lifecycleOwner.lifecycle.addObserver(this)
-                                        addYouTubePlayerListener(object : AbstractYouTubePlayerListener() {
-                                            override fun onReady(youTubePlayer: YouTubePlayer) {
-                                                viewModel.ytPlayerController.registerPlayer(youTubePlayer)
-                                                youTubePlayer.loadVideo(currentSong.videoId, 0f)
-                                            }
-                                            override fun onStateChange(youTubePlayer: YouTubePlayer, state: PlayerConstants.PlayerState) {
-                                                when (state) {
-                                                    PlayerConstants.PlayerState.PLAYING -> {
-                                                        viewModel.ytPlayerController.setBuffering(false)
-                                                        viewModel.ytPlayerController.setPlaying(true)
-                                                    }
-                                                    PlayerConstants.PlayerState.PAUSED -> {
-                                                        viewModel.ytPlayerController.setBuffering(false)
-                                                        viewModel.ytPlayerController.setPlaying(false)
-                                                    }
-                                                    PlayerConstants.PlayerState.BUFFERING -> {
-                                                        viewModel.ytPlayerController.setBuffering(true)
-                                                    }
-                                                    PlayerConstants.PlayerState.ENDED -> {
-                                                        viewModel.playNext()
-                                                    }
-                                                    else -> viewModel.ytPlayerController.setBuffering(false)
-                                                }
-                                            }
-                                        })
-                                        tag = currentSong.videoId
-                                    }
-                                },
-                                update = { playerView ->
-                                    if (playerView.tag != currentSong.videoId) {
-                                        playerView.tag = currentSong.videoId
-                                        val activePlayer = viewModel.ytPlayerController.getActivePlayer()
-                                        if (activePlayer != null) {
-                                            activePlayer.loadVideo(currentSong.videoId, 0f)
-                                        } else {
-                                            playerView.getYouTubePlayerWhenReady(object : YouTubePlayerCallback {
-                                                override fun onYouTubePlayer(youTubePlayer: YouTubePlayer) {
-                                                    viewModel.ytPlayerController.registerPlayer(youTubePlayer)
-                                                    youTubePlayer.loadVideo(currentSong.videoId, 0f)
-                                                }
-                                            })
-                                        }
-                                    }
-                                },
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        }
-                    }
+                // Floating 3D Artwork Card
+                Box(
+                    modifier = Modifier
+                        .size(280.dp)
+                        .shadow(
+                            elevation = 28.dp,
+                            shape = RoundedCornerShape(26.dp),
+                            spotColor = com.saavn.music.ui.theme.IsaiLime.copy(alpha = 0.5f),
+                            ambientColor = NeonPurple.copy(alpha = 0.4f)
+                        )
+                        .clip(RoundedCornerShape(26.dp))
+                        .border(
+                            2.dp,
+                            Brush.linearGradient(listOf(com.saavn.music.ui.theme.IsaiLime, NeonPurple, NeonPink)),
+                            RoundedCornerShape(26.dp)
+                        )
+                ) {
+                    AsyncImage(
+                        model = currentSong.thumbnailUrl,
+                        contentDescription = currentSong.title,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
                 }
             }
 
@@ -804,7 +668,41 @@ fun PlayerScreen(
                     modifier = Modifier.size(20.dp)
                 )
 
-                Spacer(modifier = Modifier.width(10.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+
+                // ISAI Connect Multi-Device Selector Button
+                val isMyDeviceActive = viewModel.isaiConnectManager.isMyDeviceActive()
+                Surface(
+                    modifier = Modifier.clip(RoundedCornerShape(20.dp)).clickable { showConnectSheet = true },
+                    shape = RoundedCornerShape(20.dp),
+                    color = if (!isMyDeviceActive) com.saavn.music.ui.theme.IsaiLime else DarkSurfaceGlass,
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        if (!isMyDeviceActive) com.saavn.music.ui.theme.IsaiLime else GlassBorderSubtle
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Devices,
+                            contentDescription = "ISAI Connect",
+                            tint = if (!isMyDeviceActive) DarkBackground else com.saavn.music.ui.theme.IsaiLime,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = if (!isMyDeviceActive) "Connected" else "Connect",
+                            style = androidx.compose.material3.MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = if (!isMyDeviceActive) DarkBackground else com.saavn.music.ui.theme.IsaiLime
+                            )
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(6.dp))
 
                 // Share Track Button
                 IconButton(
@@ -827,7 +725,48 @@ fun PlayerScreen(
                 }
             }
 
-            // YouTube Music Style Up Next & Queue Bar
+            // ✨ View Lyrics Button
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .clickable { viewModel.openLyrics() },
+                shape = RoundedCornerShape(16.dp),
+                color = DarkSurfaceGlass,
+                border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorderSubtle)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "✨",
+                            fontSize = 16.sp
+                        )
+                        Text(
+                            text = "View Synchronized Lyrics",
+                            style = androidx.compose.material3.MaterialTheme.typography.bodyMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary
+                            )
+                        )
+                    }
+                    Text(
+                        text = "OPEN →",
+                        style = androidx.compose.material3.MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.ExtraBold,
+                            color = com.saavn.music.ui.theme.IsaiLime
+                        )
+                    )
+                }
+            }
+
+            // Up Next & Queue Bar
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -835,7 +774,7 @@ fun PlayerScreen(
                     .background(
                         Brush.horizontalGradient(
                             listOf(
-                                NeonCyan.copy(alpha = 0.15f),
+                                com.saavn.music.ui.theme.IsaiLime.copy(alpha = 0.15f),
                                 DarkSurfaceGlass,
                                 NeonPink.copy(alpha = 0.15f)
                             )
@@ -1307,6 +1246,13 @@ fun PlayerScreen(
                 }
             }
         }
+    }
+
+    if (showConnectSheet) {
+        com.saavn.music.ui.components.IsaiConnectBottomSheet(
+            connectManager = viewModel.isaiConnectManager,
+            onDismissRequest = { showConnectSheet = false }
+        )
     }
 }
 

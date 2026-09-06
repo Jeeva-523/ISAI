@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.saavn.music.ui.MainViewModel
 import com.saavn.music.ui.theme.DarkBackground
+import com.saavn.music.ui.theme.DarkSurfaceVariant
 import com.saavn.music.ui.theme.DarkSurfaceGlass
 import com.saavn.music.ui.theme.GlassBorderSubtle
 import com.saavn.music.ui.theme.NeonCyan
@@ -133,36 +134,27 @@ fun MiniPlayer(
                         .padding(horizontal = 12.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Glowing Rotating Vinyl Miniature
+                    // Sleek Album Artwork Thumbnail
                     Box(
                         modifier = Modifier
                             .size(46.dp)
                             .shadow(
                                 elevation = 8.dp,
-                                shape = CircleShape,
+                                shape = RoundedCornerShape(12.dp),
                                 spotColor = NeonCyan.copy(alpha = 0.5f)
                             )
-                            .clip(CircleShape)
-                            .background(Color(0xFF0B0D15))
-                            .border(1.5.dp, Brush.sweepGradient(listOf(NeonCyan, NeonPurple, NeonPink, NeonCyan)), CircleShape),
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(DarkSurfaceVariant)
+                            .border(1.dp, GlassBorderSubtle, RoundedCornerShape(12.dp)),
                         contentAlignment = Alignment.Center
                     ) {
                         AsyncImage(
                             model = song.thumbnailUrl,
                             contentDescription = song.title,
                             modifier = Modifier
-                                .fillMaxSize(0.76f)
-                                .clip(CircleShape)
-                                .rotate(if (isPlaying) rotationAngle else 0f),
+                                .fillMaxSize()
+                                .clip(RoundedCornerShape(12.dp)),
                             contentScale = ContentScale.Crop
-                        )
-                        // Tiny vinyl core pin
-                        Box(
-                            modifier = Modifier
-                                .size(8.dp)
-                                .clip(CircleShape)
-                                .background(DarkBackground)
-                                .border(1.dp, NeonCyan, CircleShape)
                         )
                     }
 
@@ -210,13 +202,24 @@ fun MiniPlayer(
                                 modifier = Modifier.weight(1f, fill = false)
                             )
 
-                            Text(
-                                text = "• 320K HD",
-                                color = NeonCyan.copy(alpha = 0.85f),
-                                fontSize = 9.5.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                letterSpacing = 0.5.sp
-                            )
+                            val isMyDeviceActive = viewModel.isaiConnectManager.isMyDeviceActive()
+                            if (!isMyDeviceActive) {
+                                Text(
+                                    text = "• 📱 Connected",
+                                    color = com.saavn.music.ui.theme.IsaiLime,
+                                    fontSize = 9.5.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    letterSpacing = 0.5.sp
+                                )
+                            } else {
+                                Text(
+                                    text = "• 320K HD",
+                                    color = NeonCyan.copy(alpha = 0.85f),
+                                    fontSize = 9.5.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    letterSpacing = 0.5.sp
+                                )
+                            }
                         }
                     }
 

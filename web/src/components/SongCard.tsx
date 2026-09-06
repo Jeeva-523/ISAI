@@ -6,36 +6,39 @@ interface SongCardProps {
   isFavorite?: boolean
   onToggleFavorite?: (song: Song) => void
   onPlay?: (song: Song) => void
+  variant?: 'square' | 'landscape'
 }
 
 export const SongCard: React.FC<SongCardProps> = ({
   song,
   isFavorite = false,
   onToggleFavorite,
-  onPlay
+  onPlay,
+  variant = 'square'
 }) => {
+  const isLandscape = variant === 'landscape'
+
   return (
     <div
-      className="song-card"
+      className={`song-card ${isLandscape ? 'ytm-video-card' : ''}`}
       title={`Play ${song.title}`}
       onClick={() => onPlay?.(song)}
       style={{ cursor: onPlay ? 'pointer' : 'default' }}
     >
-      <div className="song-thumbnail-wrap">
+      <div className={isLandscape ? 'ytm-video-thumb-wrap' : 'song-thumbnail-wrap'}>
         <img
           src={song.thumbnailUrl}
           alt={song.title}
           className="song-thumbnail"
           loading="lazy"
           onError={(e) => {
-            // Fallback to official YouTube default thumbnail if high fails
             const target = e.currentTarget
             if (!target.src.includes('hqdefault.jpg')) {
               target.src = `https://img.youtube.com/vi/${song.videoId}/hqdefault.jpg`
             }
           }}
         />
-        <div className="discovery-badge">ISAI</div>
+        {!isLandscape && <div className="discovery-badge">ISAI</div>}
         {song.durationFormatted && (
           <div className="duration-badge">{song.durationFormatted}</div>
         )}
@@ -52,37 +55,42 @@ export const SongCard: React.FC<SongCardProps> = ({
 
       <div className="song-info">
         <h3 className="song-title">{song.title}</h3>
-        <p className="song-artist">{song.channelTitle}</p>
+        <p className="song-artist">
+          {song.channelTitle}
+          {song.viewCountFormatted ? ` • ${song.viewCountFormatted}` : ''}
+        </p>
 
-        <div className="song-meta-row">
-          <span className="views-tag">{song.viewCountFormatted || 'Tamil Track'}</span>
+        {!isLandscape && (
+          <div className="song-meta-row">
+            <span className="views-tag">{song.viewCountFormatted || 'Tamil Track'}</span>
 
-          <div className="card-actions">
-            {onToggleFavorite && (
+            <div className="card-actions">
+              {onToggleFavorite && (
+                <button
+                  className={`action-btn ${isFavorite ? 'active' : ''}`}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onToggleFavorite(song)
+                  }}
+                  title={isFavorite ? 'Remove Favorite' : 'Save to Favorites'}
+                >
+                  {isFavorite ? '💖' : '🤍'}
+                </button>
+              )}
+
               <button
-                className={`action-btn ${isFavorite ? 'active' : ''}`}
+                className="action-btn play-action-btn"
                 onClick={(e) => {
                   e.stopPropagation()
-                  onToggleFavorite(song)
+                  onPlay?.(song)
                 }}
-                title={isFavorite ? 'Remove Favorite' : 'Save to Favorites'}
+                title="Play song"
               >
-                {isFavorite ? '💖' : '🤍'}
+                ▶
               </button>
-            )}
-
-            <button
-              className="action-btn play-action-btn"
-              onClick={(e) => {
-                e.stopPropagation()
-                onPlay?.(song)
-              }}
-              title="Play song"
-            >
-              ▶
-            </button>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   )

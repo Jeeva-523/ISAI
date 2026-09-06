@@ -229,6 +229,16 @@ class YouTubePlayerController(
         }
     }
 
+    fun pause() {
+        Log.i("ISAI_PLAYER", "[YouTubePlayerController] pause() requested")
+        if (isUsingExoPlayer) {
+            exoPlayer.pause()
+        } else {
+            activeYouTubePlayer?.pause()
+        }
+        _isPlaying.value = false
+    }
+
     fun togglePlayPause() {
         Log.i("ISAI_PLAYER", "[YouTubePlayerController] togglePlayPause: isUsingExoPlayer=$isUsingExoPlayer, isPlaying=${_isPlaying.value}")
         if (isUsingExoPlayer) {

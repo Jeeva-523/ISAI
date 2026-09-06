@@ -74,17 +74,23 @@ import com.saavn.music.ui.theme.TextMuted
 import com.saavn.music.ui.theme.TextPrimary
 import com.saavn.music.ui.theme.TextSecondary
 
+import androidx.compose.material.icons.filled.SdCard
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.ui.platform.LocalContext
+
 @Composable
 fun LibraryScreen(
     viewModel: MainViewModel,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     var selectedTab by remember { mutableIntStateOf(0) }
-    val tabs = listOf("💖 Favorites", "📂 Playlists", "🕒 Recent (20)")
+    val tabs = listOf("💖 Favorites", "📂 Playlists", "🕒 Recent", "📱 Device Songs")
 
     val favorites by viewModel.favorites.collectAsState()
     val playlists by viewModel.playlists.collectAsState()
     val recentlyPlayed by viewModel.recentlyPlayed.collectAsState()
+    val localDeviceSongs by viewModel.localStorage.localDeviceSongs.collectAsState()
 
     var showCreatePlaylistDialog by remember { mutableStateOf(false) }
     var selectedPlaylistForView by remember { mutableStateOf<UserPlaylist?>(null) }
@@ -110,27 +116,49 @@ fun LibraryScreen(
                     color = TextPrimary
                 )
                 Text(
-                    text = "Personal music collection & history",
+                    text = "Personal music collection & local songs",
                     fontSize = 12.sp,
                     color = TextSecondary
                 )
             }
 
-            if (selectedTab == 1) {
-                // New Playlist Button
-                IconButton(
-                    onClick = { showCreatePlaylistDialog = true },
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(Brush.linearGradient(listOf(NeonCyan, NeonPurple)))
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = "Create Playlist",
-                        tint = DarkBackground,
-                        modifier = Modifier.size(22.dp)
-                    )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (selectedTab == 3) {
+                    // Refresh Device Songs Button
+                    IconButton(
+                        onClick = { viewModel.scanDeviceMusic(context) },
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(DarkSurfaceGlass)
+                            .border(1.dp, GlassBorderSubtle, CircleShape)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "Scan Device Songs",
+                            tint = NeonCyan,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                }
+
+                if (selectedTab == 1) {
+                    // New Playlist Button
+                    IconButton(
+                        onClick = { showCreatePlaylistDialog = true },
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(Brush.linearGradient(listOf(NeonCyan, NeonPurple)))
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = "Create Playlist",
+                            tint = DarkBackground,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
                 }
             }
         }
@@ -303,6 +331,52 @@ fun LibraryScreen(
                                 isCurrent = (viewModel.ytPlayerController.currentSong.collectAsState().value?.videoId == song.videoId),
                                 isPlaying = viewModel.ytPlayerController.isPlaying.collectAsState().value,
                                 onClick = { viewModel.playSong(song, recentlyPlayed) },
+                                isFav = isFav,
+                                onToggleFav = { viewModel.toggleFavorite(song) },
+                                onAddToPlaylist = { viewModel.openAddToPlaylistDialog(song) },
+                                onAddToQueue = { viewModel.addToQueue(song) },
+                                onPlayNext = { viewModel.playNextInQueue(song) }
+                            )
+                        }
+                    }
+                }
+            }
+
+            3 -> {
+                // Device Storage Songs
+                if (localDeviceSongs.isEmpty()) {
+                    Column(
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        EmptyLibraryView(
+                            icon = Icons.Default.SdCard,
+                            title = "No Device Songs Found",
+                            subtitle = "Tap the refresh button to scan MP3/Audio files stored on your device."
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        androidx.compose.material3.Button(
+                            onClick = { viewModel.scanDeviceMusic(context) },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = NeonCyan)
+                        ) {
+                            Text("Scan Device Songs", color = DarkBackground, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(bottom = 120.dp)
+                    ) {
+                        itemsIndexed(localDeviceSongs) { index, song ->
+                            val isFav = viewModel.isFavorite(song.videoId)
+                            YouTubeSongRowItem(
+                                index = index + 1,
+                                song = song,
+                                isCurrent = (viewModel.ytPlayerController.currentSong.collectAsState().value?.videoId == song.videoId),
+                                isPlaying = viewModel.ytPlayerController.isPlaying.collectAsState().value,
+                                onClick = { viewModel.playSong(song, localDeviceSongs) },
                                 isFav = isFav,
                                 onToggleFav = { viewModel.toggleFavorite(song) },
                                 onAddToPlaylist = { viewModel.openAddToPlaylistDialog(song) },

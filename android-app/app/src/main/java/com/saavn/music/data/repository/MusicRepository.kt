@@ -118,11 +118,23 @@ class MusicRepository(
     }
 
     private fun cleanHtml(text: String): String {
-        return text
-            .replace("&quot;", "\"")
-            .replace("&#039;", "'")
-            .replace("&amp;", "&")
-            .replace("&lt;", "<")
-            .replace("&gt;", ">")
+        if (text.isBlank()) return ""
+        var cleaned = text
+        var prev = ""
+        var pass = 0
+        while (cleaned != prev && pass < 5) {
+            prev = cleaned
+            pass++
+            cleaned = cleaned
+                .replace("&quot;", "\"")
+                .replace("&#039;", "'")
+                .replace("&#39;", "'")
+                .replace("&apos;", "'")
+                .replace("&amp;", "&")
+                .replace("&lt;", "<")
+                .replace("&gt;", ">")
+                .replace("&nbsp;", " ")
+        }
+        return cleaned.trim()
     }
 }

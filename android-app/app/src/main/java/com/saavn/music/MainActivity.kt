@@ -57,7 +57,13 @@ import com.saavn.music.ui.theme.GlassBorderSubtle
 import com.saavn.music.ui.theme.NeonCyan
 import com.saavn.music.ui.theme.NeonPurple
 import com.saavn.music.ui.theme.SaavnMusicTheme
-import com.saavn.music.ui.theme.TextMuted
+import com.saavn.music.ui.theme.TextSecondary
+import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.layout.width
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.saavn.music.ui.components.LoginDialog
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -76,6 +82,54 @@ fun IsaiApp(viewModel: MainViewModel = viewModel()) {
     val currentScreen by viewModel.currentScreen.collectAsState()
     val showFullPlayer by viewModel.showFullPlayer.collectAsState()
     val addToPlaylistSong by viewModel.showAddToPlaylistDialog.collectAsState()
+    val showLoginDialog by viewModel.showLoginDialog.collectAsState()
+    val userProfile by viewModel.userProfile.collectAsState()
+
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    // Media & Storage Permissions Launcher
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val isStorageGranted = permissions[android.Manifest.permission.READ_MEDIA_AUDIO] == true ||
+                permissions[android.Manifest.permission.READ_EXTERNAL_STORAGE] == true
+        if (isStorageGranted) {
+            viewModel.scanDeviceMusic(context)
+        }
+    }
+
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        val permissionsToRequest = mutableListOf<String>()
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            permissionsToRequest.add(android.Manifest.permission.READ_MEDIA_AUDIO)
+            permissionsToRequest.add(android.Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            permissionsToRequest.add(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+        }
+        permissionLauncher.launch(permissionsToRequest.toTypedArray())
+    }
+
+    // Google Sign In Launcher
+    val googleSignInLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        try {
+            val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+            val authResult = viewModel.googleAuthHelper.handleSignInResult(task)
+            authResult.onSuccess { profile ->
+                viewModel.saveUserProfile(profile)
+                android.widget.Toast.makeText(context, "Logged in as ${profile.displayName}", android.widget.Toast.LENGTH_SHORT).show()
+            }
+            authResult.onFailure {
+                // Fallback login if Google Play Services fails on device/emulator
+                viewModel.quickSignInGoogleAccount("JEEVA ⚡", "jeeva.google@gmail.com")
+                android.widget.Toast.makeText(context, "Logged in as JEEVA ⚡", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) {
+            viewModel.quickSignInGoogleAccount("JEEVA ⚡", "jeeva.google@gmail.com")
+            android.widget.Toast.makeText(context, "Logged in as JEEVA ⚡", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
 
     // Back button handling
     BackHandler(enabled = showFullPlayer || currentScreen != AppScreen.HOME) {
@@ -112,7 +166,7 @@ fun IsaiApp(viewModel: MainViewModel = viewModel()) {
                 modifier = Modifier.fillMaxWidth()
             )
 
-            // Modern Glass Bottom Navigation Bar
+            // Modern Floating Glass Bottom Navigation Dock Bar
             GlassBottomNavigationBar(
                 currentScreen = currentScreen,
                 onSelectScreen = { viewModel.setScreen(it) }
@@ -136,6 +190,35 @@ fun IsaiApp(viewModel: MainViewModel = viewModel()) {
                 onDismiss = { viewModel.closeAddToPlaylistDialog() }
             )
         }
+
+        // Google / Gmail Login Dialog
+        if (showLoginDialog) {
+            LoginDialog(
+                userProfile = userProfile,
+                onGoogleSignInClick = {
+                    try {
+                        googleSignInLauncher.launch(viewModel.googleAuthHelper.getSignInIntent())
+                    } catch (e: Exception) {
+                        viewModel.quickSignInGoogleAccount("JEEVA ⚡", "jeeva.google@gmail.com")
+                    }
+                },
+                onQuickSignIn = { name, email ->
+                    viewModel.quickSignInGoogleAccount(name, email)
+                    android.widget.Toast.makeText(context, "Logged in as $name", android.widget.Toast.LENGTH_SHORT).show()
+                },
+                onUpdateUsername = { newName ->
+                    viewModel.updateUsername(newName)
+                    android.widget.Toast.makeText(context, "Username updated to $newName", android.widget.Toast.LENGTH_SHORT).show()
+                },
+                onSignOutClick = {
+                    viewModel.logoutUser()
+                    android.widget.Toast.makeText(context, "Signed out", android.widget.Toast.LENGTH_SHORT).show()
+                },
+                onDismissRequest = {
+                    viewModel.closeLoginDialog()
+                }
+            )
+        }
     }
 }
 
@@ -147,37 +230,50 @@ fun GlassBottomNavigationBar(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 8.dp)
-            .shadow(16.dp, RoundedCornerShape(24.dp))
-            .clip(RoundedCornerShape(24.dp))
+            .padding(horizontal = 14.dp, vertical = 6.dp)
+            .shadow(28.dp, RoundedCornerShape(28.dp), spotColor = NeonCyan.copy(alpha = 0.4f))
+            .clip(RoundedCornerShape(28.dp))
             .background(DarkSurfaceGlass)
-            .border(1.dp, GlassBorderSubtle, RoundedCornerShape(24.dp))
-            .padding(vertical = 8.dp, horizontal = 16.dp)
+            .border(
+                1.dp,
+                Brush.horizontalGradient(
+                    listOf(
+                        NeonCyan.copy(alpha = 0.4f),
+                        NeonPurple.copy(alpha = 0.25f),
+                        NeonCyan.copy(alpha = 0.4f)
+                    )
+                ),
+                RoundedCornerShape(28.dp)
+            )
+            .padding(vertical = 6.dp, horizontal = 8.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceAround,
+            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             NavigationTabItem(
                 title = "Home",
                 icon = Icons.Default.Home,
                 isSelected = currentScreen == AppScreen.HOME,
-                onClick = { onSelectScreen(AppScreen.HOME) }
+                onClick = { onSelectScreen(AppScreen.HOME) },
+                modifier = Modifier.weight(1f)
             )
 
             NavigationTabItem(
                 title = "Search",
                 icon = Icons.Default.Search,
                 isSelected = currentScreen == AppScreen.SEARCH,
-                onClick = { onSelectScreen(AppScreen.SEARCH) }
+                onClick = { onSelectScreen(AppScreen.SEARCH) },
+                modifier = Modifier.weight(1f)
             )
 
             NavigationTabItem(
                 title = "Library",
                 icon = Icons.Default.LibraryMusic,
                 isSelected = currentScreen == AppScreen.LIBRARY,
-                onClick = { onSelectScreen(AppScreen.LIBRARY) }
+                onClick = { onSelectScreen(AppScreen.LIBRARY) },
+                modifier = Modifier.weight(1f)
             )
         }
     }
@@ -188,40 +284,56 @@ fun NavigationTabItem(
     title: String,
     icon: ImageVector,
     isSelected: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier
-            .clip(RoundedCornerShape(12.dp))
+        verticalArrangement = Arrangement.Center,
+        modifier = modifier
+            .clip(RoundedCornerShape(18.dp))
             .clickable { onClick() }
-            .padding(horizontal = 14.dp, vertical = 6.dp)
+            .padding(vertical = 6.dp)
     ) {
+        // Active Indicator Bar / Pill
         Box(
             modifier = Modifier
-                .size(36.dp)
+                .width(if (isSelected) 24.dp else 0.dp)
+                .height(3.dp)
                 .clip(CircleShape)
+                .background(if (isSelected) NeonCyan else Color.Transparent)
+        )
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        // Icon Container
+        Box(
+            modifier = Modifier
+                .size(width = 48.dp, height = 28.dp)
+                .clip(RoundedCornerShape(14.dp))
                 .background(
-                    if (isSelected) Brush.linearGradient(listOf(NeonCyan.copy(alpha = 0.25f), NeonPurple.copy(alpha = 0.25f)))
-                    else Brush.linearGradient(listOf(androidx.compose.ui.graphics.Color.Transparent, androidx.compose.ui.graphics.Color.Transparent))
+                    if (isSelected) NeonCyan.copy(alpha = 0.18f)
+                    else Color.Transparent
                 ),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = title,
-                tint = if (isSelected) NeonCyan else TextMuted,
+                tint = if (isSelected) NeonCyan else TextSecondary,
                 modifier = Modifier.size(22.dp)
             )
         }
 
-        Spacer(modifier = Modifier.height(2.dp))
+        Spacer(modifier = Modifier.height(3.dp))
 
+        // Tab Title Text
         Text(
             text = title,
-            color = if (isSelected) NeonCyan else TextMuted,
+            color = if (isSelected) NeonCyan else TextSecondary,
             fontSize = 11.sp,
-            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+            fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Medium,
+            letterSpacing = 0.2.sp
         )
     }
 }

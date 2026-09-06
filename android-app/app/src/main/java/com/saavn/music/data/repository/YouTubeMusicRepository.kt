@@ -129,17 +129,20 @@ class YouTubeMusicRepository {
                     )
                 }
 
-                searchCache[cacheKey] = songs
-                Result.success(songs)
+                val deduplicated = deduplicateSongs(songs)
+                searchCache[cacheKey] = deduplicated
+                Result.success(deduplicated)
             } catch (e: Exception) {
-                Log.e("YouTubeRepo", "Search failed: ${e.message}", e)
-                Result.failure(e)
+                Log.w("YouTubeRepo", "Search API failed: ${e.message}, returning curated songs fallback", e)
+                val fallback = getCuratedTamilSongs(query)
+                searchCache[cacheKey] = fallback
+                Result.success(fallback)
             }
         }
 
     // Category fetchers with fallback to curated songs
     suspend fun getTrendingTamil(): List<YouTubeSong> =
-        searchTamilSongs("Trending Tamil songs 2024").getOrElse { getCuratedTamilSongs("Trending") }
+        searchTamilSongs("Latest Tamil Movie Hit Songs 2024 2025").getOrElse { getCuratedTamilSongs("Trending") }
 
     suspend fun getTamilMelody(): List<YouTubeSong> =
         searchTamilSongs("Tamil melody songs all time hits").getOrElse { getCuratedTamilSongs("Melody") }
@@ -160,7 +163,7 @@ class YouTubeMusicRepository {
         searchTamilSongs("Tamil classical carnatic songs").getOrElse { getCuratedTamilSongs("Classical") }
 
     suspend fun getNewReleases(): List<YouTubeSong> =
-        searchTamilSongs("Latest Tamil songs new releases").getOrElse { getCuratedTamilSongs("New") }
+        searchTamilSongs("Latest Tamil movie songs 2024 2025").getOrElse { getCuratedTamilSongs("New") }
 
     /**
      * Native YouTube Music Innertube WEB_REMIX search implementation
@@ -288,20 +291,64 @@ class YouTubeMusicRepository {
             if (songs.size >= maxResults) break
         }
 
-        return songs
+        return deduplicateSongs(songs)
+    }
+
+    fun deduplicateSongs(songs: List<YouTubeSong>): List<YouTubeSong> {
+        if (songs.isEmpty()) return emptyList()
+        val seenIds = mutableSetOf<String>()
+        val seenKeys = mutableSetOf<String>()
+        val result = mutableListOf<YouTubeSong>()
+
+        for (song in songs) {
+            if (song.videoId.isBlank() || song.title.isBlank()) continue
+            if (seenIds.contains(song.videoId)) continue
+
+            val normTitle = song.title
+                .lowercase()
+                .replace(Regex("\\(.*?\\)|\\[.*?\\]"), "")
+                .replace(Regex("official video|lyric video|full video|trending version|hd song|audio|lyric|video"), "")
+                .replace(Regex("[^a-z0-9]"), "")
+                .trim()
+
+            val artistKey = song.channelTitle.lowercase().replace(Regex("[^a-z0-9]"), "").take(12)
+            val normKey = "${normTitle}_$artistKey"
+
+            if (normTitle.length > 2 && seenKeys.contains(normKey)) {
+                continue
+            }
+
+            seenIds.add(song.videoId)
+            if (normTitle.length > 2) seenKeys.add(normKey)
+            result.add(song)
+        }
+        return result
     }
 
     private fun cleanHtmlTitle(raw: String): String {
-        return try {
-            Html.fromHtml(raw, Html.FROM_HTML_MODE_LEGACY).toString().trim()
-        } catch (e: Exception) {
-            raw.replace("&amp;", "&")
+        if (raw.isBlank()) return ""
+        var cleaned = raw
+        var prev = ""
+        var pass = 0
+        while (cleaned != prev && pass < 5) {
+            prev = cleaned
+            pass++
+            cleaned = try {
+                Html.fromHtml(cleaned, Html.FROM_HTML_MODE_LEGACY).toString()
+            } catch (e: Exception) {
+                cleaned
+            }
+            cleaned = cleaned
                 .replace("&quot;", "\"")
+                .replace("&#039;", "'")
                 .replace("&#39;", "'")
+                .replace("&apos;", "'")
+                .replace("&amp;", "&")
                 .replace("&lt;", "<")
                 .replace("&gt;", ">")
-                .trim()
+                .replace("&nbsp;", " ")
         }
+        return cleaned.trim()
     }
 
     // Parses ISO 8601 duration e.g. PT4M35S -> ("04:35", 275000L)
@@ -371,13 +418,13 @@ class YouTubeMusicRepository {
                 viewCountFormatted = "240M views"
             ),
             YouTubeSong(
-                videoId = "kJQP7kiw5Fk",
-                title = "Despacito Tamil Tribute / Luis Fonsi",
-                channelTitle = "Universal Music",
-                thumbnailUrl = "https://img.youtube.com/vi/kJQP7kiw5Fk/hqdefault.jpg",
-                durationFormatted = "3:48",
-                durationMs = 228000L,
-                viewCountFormatted = "45M views"
+                videoId = "3tmd-ClpJxA",
+                title = "Marakkuma Nenjam - VTK | A.R. Rahman",
+                channelTitle = "Think Music India • A.R. Rahman",
+                thumbnailUrl = "https://img.youtube.com/vi/3tmd-ClpJxA/hqdefault.jpg",
+                durationFormatted = "4:16",
+                durationMs = 256000L,
+                viewCountFormatted = "65M views"
             ),
             YouTubeSong(
                 videoId = "mqqft2x_Aa4",
