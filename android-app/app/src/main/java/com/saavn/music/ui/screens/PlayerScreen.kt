@@ -725,46 +725,7 @@ fun PlayerScreen(
                 }
             }
 
-            // ✨ View Lyrics Button
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
-                    .clickable { viewModel.openLyrics() },
-                shape = RoundedCornerShape(16.dp),
-                color = DarkSurfaceGlass,
-                border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorderSubtle)
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = "✨",
-                            fontSize = 16.sp
-                        )
-                        Text(
-                            text = "View Synchronized Lyrics",
-                            style = androidx.compose.material3.MaterialTheme.typography.bodyMedium.copy(
-                                fontWeight = FontWeight.Bold,
-                                color = TextPrimary
-                            )
-                        )
-                    }
-                    Text(
-                        text = "OPEN →",
-                        style = androidx.compose.material3.MaterialTheme.typography.labelSmall.copy(
-                            fontWeight = FontWeight.ExtraBold,
-                            color = com.saavn.music.ui.theme.IsaiLime
-                        )
-                    )
-                }
-            }
+
 
             // Up Next & Queue Bar
             Row(
