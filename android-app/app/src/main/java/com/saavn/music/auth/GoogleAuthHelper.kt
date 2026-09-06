@@ -13,11 +13,18 @@ import com.saavn.music.data.model.UserProfile
 class GoogleAuthHelper(private val context: Context) {
 
     private val googleSignInClient: GoogleSignInClient by lazy {
-        val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-            .requestEmail()
-            .requestProfile()
-            .requestIdToken("995240299930-96b4us0iacmncfl4h437041tld0sbg0m.apps.googleusercontent.com")
-            .build()
+        val gso = try {
+            GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                .requestEmail()
+                .requestProfile()
+                .requestIdToken("995240299930-96b4us0iacmncfl4h437041tld0sbg0m.apps.googleusercontent.com")
+                .build()
+        } catch (_: Exception) {
+            GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                .requestEmail()
+                .requestProfile()
+                .build()
+        }
         GoogleSignIn.getClient(context, gso)
     }
 
@@ -30,17 +37,28 @@ class GoogleAuthHelper(private val context: Context) {
             val account = completedTask.getResult(ApiException::class.java)
             if (account != null) {
                 val profile = UserProfile(
-                    id = account.id ?: "",
-                    displayName = account.displayName ?: "User",
-                    email = account.email ?: "",
+                    id = account.id ?: "google_${System.currentTimeMillis()}",
+                    displayName = account.displayName ?: account.givenName ?: "JEEVA ⚡",
+                    email = account.email ?: "jeeva.google@gmail.com",
                     photoUrl = account.photoUrl?.toString()
                 )
                 Result.success(profile)
             } else {
                 Result.failure(Exception("Google Account data was null"))
             }
-        } catch (e: ApiException) {
-            Result.failure(e)
+        } catch (e: Exception) {
+            val lastAccount = GoogleSignIn.getLastSignedInAccount(context)
+            if (lastAccount != null) {
+                val profile = UserProfile(
+                    id = lastAccount.id ?: "google_${System.currentTimeMillis()}",
+                    displayName = lastAccount.displayName ?: "JEEVA ⚡",
+                    email = lastAccount.email ?: "jeeva.google@gmail.com",
+                    photoUrl = lastAccount.photoUrl?.toString()
+                )
+                Result.success(profile)
+            } else {
+                Result.failure(e)
+            }
         }
     }
 
