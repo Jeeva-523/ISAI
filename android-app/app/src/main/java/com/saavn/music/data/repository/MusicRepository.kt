@@ -31,7 +31,7 @@ class MusicRepository(
         try {
             val queries = if (category.equals("tamil", ignoreCase = true)) {
                 listOf(
-                    "Latest Tamil Movie Songs 2025 2026",
+                    "Latest Tamil Movie Songs 2024",
                     "Anirudh Ravichander Tamil Hits",
                     "A R Rahman Tamil Super Hits",
                     "Yuvan Shankar Raja Tamil Hits",
@@ -39,7 +39,7 @@ class MusicRepository(
                     "Santhosh Narayanan Tamil Hits"
                 )
             } else {
-                listOf("Latest $category Hit Songs 2025 2026")
+                listOf("Latest $category Hit Songs 2024")
             }
 
             val allSongs = mutableListOf<SongItem>()

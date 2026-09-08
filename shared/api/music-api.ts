@@ -179,7 +179,7 @@ export class MusicApiClient {
    */
   async getTrending(maxResults = 60): Promise<Song[]> {
     const trendingQueries = [
-      'Tamil Latest Hits 2024 2025',
+      'Tamil Latest Hits 2024',
       'Anirudh Ravichander Tamil Hits',
       'A R Rahman Tamil Super Hits',
       'Yuvan Shankar Raja Tamil Hits',
@@ -207,7 +207,7 @@ export class MusicApiClient {
       console.warn('[MusicApiClient] Fetching combined trending songs failed:', err)
     }
 
-    const fallback = await this.searchSongs('Latest Tamil Movie Songs 2025 2026', maxResults)
+    const fallback = await this.searchSongs('Latest Tamil Movie Songs 2024', maxResults)
     return fallback.filter((song) => {
       const title = song.title.toLowerCase()
       return !title.includes('trending') && !title.includes('jukebox')

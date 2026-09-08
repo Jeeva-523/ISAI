@@ -381,7 +381,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
                 // Load Popular New Releases (Released in last 30 days)
                 try {
-                    val newSaavn = musicRepo.search("Latest Tamil Movie Songs 2025 2026 official single").getOrNull()?.map { it.toYouTubeSong() } ?: emptyList()
+                    val newSaavn = musicRepo.search("Latest Tamil Movie Songs 2024 official single").getOrNull()?.map { it.toYouTubeSong() } ?: emptyList()
                     val cleanNew = newSaavn.filterNot { s ->
                         val t = s.title.lowercase()
                         t.contains("jukebox") || t.contains("full album") || t.contains("non stop") || t.contains("all time hits")
@@ -427,8 +427,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     "Devotional" -> "Tamil devotional songs"
                     "Gaana" -> "Tamil gaana hits"
                     "Classical" -> "Tamil classical hits"
-                    "New Releases" -> "Latest Tamil Movie Songs 2025 2026"
-                    else -> "Latest Tamil Movie Songs 2025 2026"
+                    "New Releases" -> "Latest Tamil Movie Songs 2024"
+                    else -> "Latest Tamil Movie Songs 2024"
                 }
                 val saavnResult = musicRepo.search(query)
                 val saavnSongs = saavnResult.getOrNull()?.map { it.toYouTubeSong() } ?: emptyList()
@@ -601,6 +601,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (!song.audioUrl.isNullOrBlank()) {
             ytPlayerController.playSong(song, effectiveQueue, startPositionSec)
         } else {
+            // Signal UI that buffering has started for the new song immediately
+            ytPlayerController.setBuffering(true)
+            
             // Asynchronously resolve direct 320kbps audio stream from MusicRepository
             viewModelScope.launch {
                 try {
@@ -718,8 +721,36 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         }
                     }
                 }
+                
+                // Always try to pre-resolve audio URLs for the upcoming songs in the queue
+                preResolveQueueUrls()
             } catch (e: Exception) {
                 android.util.Log.e("ISAI_PLAYER", "[MainViewModel] Endless queue error: ${e.message}")
+            }
+        }
+    }
+    
+    private fun preResolveQueueUrls() {
+        viewModelScope.launch {
+            val currentQueue = ytPlayerController.playbackQueue.value
+            val currentIndex = ytPlayerController.currentQueueIndex.value
+            
+            // Look ahead up to 3 upcoming songs
+            val lookahead = currentQueue.drop(currentIndex + 1).take(3)
+            for (song in lookahead) {
+                if (song.audioUrl.isNullOrBlank()) {
+                    try {
+                        val searchResult = musicRepo.search(song.title).getOrNull()
+                        val match = searchResult?.firstOrNull()
+                        val directUrl = match?.getStreamUrl(AudioQuality.VERY_HIGH)
+                        if (!directUrl.isNullOrBlank()) {
+                            android.util.Log.i("ISAI_PLAYER", "[MainViewModel] Pre-resolved queue song: ${song.title}")
+                            ytPlayerController.updateSongAudioUrl(song.videoId, directUrl)
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.w("ISAI_PLAYER", "[MainViewModel] Failed to pre-resolve ${song.title}: ${e.message}")
+                    }
+                }
             }
         }
     }

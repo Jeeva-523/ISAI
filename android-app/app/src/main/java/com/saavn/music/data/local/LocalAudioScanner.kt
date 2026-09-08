@@ -51,10 +51,8 @@ class LocalAudioScanner(private val context: Context) {
                         id
                     )
 
-                    val albumArtUri = ContentUris.withAppendedId(
-                        Uri.parse("content://media/external/audio/albumart"),
-                        albumId
-                    ).toString()
+                    // Use the App Logo as the thumbnail for all local songs as requested
+                    val appLogoUri = "android.resource://${context.packageName}/${com.saavn.music.R.mipmap.ic_launcher}"
 
                     val seconds = durationMs / 1000
                     val minutes = seconds / 60
@@ -66,7 +64,7 @@ class LocalAudioScanner(private val context: Context) {
                             videoId = "local_$id",
                             title = title,
                             channelTitle = if (artist.contains("<unknown>", ignoreCase = true)) "Device Audio" else artist,
-                            thumbnailUrl = albumArtUri,
+                            thumbnailUrl = appLogoUri,
                             durationFormatted = durationStr,
                             durationMs = durationMs,
                             viewCountFormatted = "Device Local",

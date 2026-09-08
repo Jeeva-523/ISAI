@@ -143,7 +143,7 @@ class YouTubeMusicRepository {
     // Category fetchers with fallback to curated songs
     suspend fun getTrendingTamil(maxResults: Int = 60): List<YouTubeSong> {
         val queries = listOf(
-            "Latest Tamil Movie Songs 2025 2026",
+            "Latest Tamil Movie Songs 2024",
             "Anirudh Ravichander Tamil Hits",
             "A R Rahman Tamil Super Hits",
             "Yuvan Shankar Raja Tamil Hits",
@@ -180,7 +180,7 @@ class YouTubeMusicRepository {
         searchTamilSongs("Tamil classical carnatic songs").getOrElse { getCuratedTamilSongs("Classical") }
 
     suspend fun getNewReleases(): List<YouTubeSong> =
-        searchTamilSongs("Latest Tamil movie songs 2024 2025").getOrElse { getCuratedTamilSongs("New") }
+        searchTamilSongs("Latest Tamil movie songs 2024").getOrElse { getCuratedTamilSongs("New") }
 
     /**
      * Native YouTube Music Innertube WEB_REMIX search implementation

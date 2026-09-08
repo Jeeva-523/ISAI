@@ -85,7 +85,7 @@ fun LibraryScreen(
 ) {
     val context = LocalContext.current
     var selectedTab by remember { mutableIntStateOf(0) }
-    val tabs = listOf("💖 Favorites", "📂 Playlists", "🕒 Recent", "📱 Device Songs")
+    val tabs = listOf("💖 Favorites", "📂 Playlists", "🕒 Recent", "📱 Local")
 
     val favorites by viewModel.favorites.collectAsState()
     val playlists by viewModel.playlists.collectAsState()
@@ -352,7 +352,7 @@ fun LibraryScreen(
                     ) {
                         EmptyLibraryView(
                             icon = Icons.Default.SdCard,
-                            title = "No Device Songs Found",
+                            title = "No Local Songs Found",
                             subtitle = "Tap the refresh button to scan MP3/Audio files stored on your device."
                         )
                         Spacer(modifier = Modifier.height(16.dp))
@@ -361,7 +361,7 @@ fun LibraryScreen(
                             shape = RoundedCornerShape(12.dp),
                             colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = NeonCyan)
                         ) {
-                            Text("Scan Device Songs", color = DarkBackground, fontWeight = FontWeight.Bold)
+                            Text("Scan Local Songs", color = DarkBackground, fontWeight = FontWeight.Bold)
                         }
                     }
                 } else {

@@ -234,7 +234,8 @@ fun ProfileScreen(
                         // Display Name with Edit Action
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
+                            horizontalArrangement = Arrangement.Center,
+                            modifier = Modifier.padding(horizontal = 16.dp)
                         ) {
                             Text(
                                 text = currentDisplayName,
@@ -242,7 +243,8 @@ fun ProfileScreen(
                                 fontWeight = FontWeight.ExtraBold,
                                 color = TextPrimary,
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             IconButton(
@@ -661,7 +663,7 @@ private fun ProfileDetailRow(
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.weight(1f)
+            modifier = Modifier.padding(end = 16.dp)
         ) {
             Box(
                 modifier = Modifier
@@ -682,7 +684,9 @@ private fun ProfileDetailRow(
                 text = label,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium,
-                color = TextSecondary
+                color = TextSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         }
 
@@ -692,7 +696,9 @@ private fun ProfileDetailRow(
             fontWeight = FontWeight.SemiBold,
             color = TextPrimary,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+            overflow = TextOverflow.Ellipsis,
+            textAlign = androidx.compose.ui.text.style.TextAlign.End,
+            modifier = Modifier.weight(1f)
         )
     }
 }

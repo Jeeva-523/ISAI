@@ -33,6 +33,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -67,8 +68,11 @@ import androidx.activity.result.contract.ActivityResultContracts
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.saavn.music.ui.components.LoginDialog
 
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
@@ -101,14 +105,26 @@ fun IsaiApp(viewModel: MainViewModel = viewModel()) {
     }
 
     androidx.compose.runtime.LaunchedEffect(Unit) {
+        // Small delay to ensure Activity is fully resumed so the dialog isn't suppressed
+        kotlinx.coroutines.delay(300)
+        
         val permissionsToRequest = mutableListOf<String>()
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-            permissionsToRequest.add(android.Manifest.permission.READ_MEDIA_AUDIO)
-            permissionsToRequest.add(android.Manifest.permission.POST_NOTIFICATIONS)
+            if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_MEDIA_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                permissionsToRequest.add(android.Manifest.permission.READ_MEDIA_AUDIO)
+            }
+            if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                permissionsToRequest.add(android.Manifest.permission.POST_NOTIFICATIONS)
+            }
         } else {
-            permissionsToRequest.add(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+            if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_EXTERNAL_STORAGE) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                permissionsToRequest.add(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+            }
         }
-        permissionLauncher.launch(permissionsToRequest.toTypedArray())
+        
+        if (permissionsToRequest.isNotEmpty()) {
+            permissionLauncher.launch(permissionsToRequest.toTypedArray())
+        }
     }
 
     // Google Sign In Launcher
@@ -154,21 +170,31 @@ fun IsaiApp(viewModel: MainViewModel = viewModel()) {
         }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(DarkBackground)
-            .systemBarsPadding()
-    ) {
-        // Main Screen Content
-        Box(modifier = Modifier.fillMaxSize()) {
-            when (currentScreen) {
-                AppScreen.HOME -> HomeScreen(viewModel = viewModel)
-                AppScreen.SEARCH -> SearchScreen(viewModel = viewModel)
-                AppScreen.LIBRARY -> LibraryScreen(viewModel = viewModel)
-                AppScreen.PROFILE -> ProfileScreen(viewModel = viewModel)
+    var showSplash by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(true) }
+
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(2000)
+        showSplash = false
+    }
+
+    if (showSplash) {
+        com.saavn.music.ui.screens.SplashScreen()
+    } else {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(DarkBackground)
+                .systemBarsPadding()
+        ) {
+            // Main Screen Content
+            Box(modifier = Modifier.fillMaxSize()) {
+                when (currentScreen) {
+                    AppScreen.HOME -> HomeScreen(viewModel = viewModel)
+                    AppScreen.SEARCH -> SearchScreen(viewModel = viewModel)
+                    AppScreen.LIBRARY -> LibraryScreen(viewModel = viewModel)
+                    AppScreen.PROFILE -> ProfileScreen(viewModel = viewModel)
+                }
             }
-        }
 
         // Bottom Controls Column: Floating MiniPlayer + Glass Bottom Navigation Bar
         Column(
@@ -208,7 +234,7 @@ fun IsaiApp(viewModel: MainViewModel = viewModel()) {
 
         // Add to Playlist Dialog
         addToPlaylistSong?.let { song ->
-            AddToPlaylistDialog(
+            com.saavn.music.ui.components.AddToPlaylistDialog(
                 song = song,
                 viewModel = viewModel,
                 onDismiss = { viewModel.closeAddToPlaylistDialog() }
@@ -244,7 +270,8 @@ fun IsaiApp(viewModel: MainViewModel = viewModel()) {
                 }
             )
         }
-    }
+    } // End of main app Box
+    } // End of else block
 }
 
 @Composable
