@@ -50,9 +50,9 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
   const [isSavedNotice, setIsSavedNotice] = useState(false)
   const [isConnectModalOpen, setIsConnectModalOpen] = useState(false)
 
-  const isEmailVerified = true // Default verified or based on Firebase user
-  const currentDisplayName = user.name || 'Jeevananth'
-  const currentEmail = user.email || 'jeevananthravikumar@gmail.com'
+  const isEmailVerified = Boolean(user.isLoggedIn)
+  const currentDisplayName = user.isLoggedIn ? (user.name || 'ISAI Listener') : 'Guest Listener'
+  const currentEmail = user.isLoggedIn ? (user.email || 'user@isaimusic.com') : 'Not signed in'
 
   const handleSaveName = (e: React.FormEvent) => {
     e.preventDefault()

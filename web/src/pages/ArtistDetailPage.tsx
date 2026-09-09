@@ -13,6 +13,8 @@ interface ArtistDetailPageProps {
   onToggleFavorite: (song: Song) => void
   onPlaySong: (song: Song) => void
   onAddToPlaylist: (song: Song) => void
+  onAddToQueue?: (song: Song) => void
+  onPlayNext?: (song: Song) => void
   onBack: () => void
 }
 
@@ -25,6 +27,8 @@ export const ArtistDetailPage: React.FC<ArtistDetailPageProps> = ({
   onToggleFavorite,
   onPlaySong,
   onAddToPlaylist,
+  onAddToQueue,
+  onPlayNext,
   onBack
 }) => {
   return (
@@ -117,6 +121,8 @@ export const ArtistDetailPage: React.FC<ArtistDetailPageProps> = ({
               onPlay={onPlaySong}
               onToggleFavorite={onToggleFavorite}
               onAddToPlaylist={onAddToPlaylist}
+              onAddToQueue={onAddToQueue}
+              onPlayNext={onPlayNext}
             />
           ))}
         </div>

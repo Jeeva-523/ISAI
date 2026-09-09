@@ -99,6 +99,14 @@ class IsaiConnectManager(private val context: Context) {
     private val _syncedRecentlyPlayed = MutableStateFlow<List<com.saavn.music.data.model.YouTubeSong>>(emptyList())
     val syncedRecentlyPlayed: StateFlow<List<com.saavn.music.data.model.YouTubeSong>> = _syncedRecentlyPlayed.asStateFlow()
 
+    private var homeSongsListener: ValueEventListener? = null
+    private val _syncedHomeSongs = MutableStateFlow<List<com.saavn.music.data.model.YouTubeSong>>(emptyList())
+    val syncedHomeSongs: StateFlow<List<com.saavn.music.data.model.YouTubeSong>> = _syncedHomeSongs.asStateFlow()
+
+    private var favoritesListener: ValueEventListener? = null
+    private val _syncedFavorites = MutableStateFlow<List<com.saavn.music.data.model.YouTubeSong>>(emptyList())
+    val syncedFavorites: StateFlow<List<com.saavn.music.data.model.YouTubeSong>> = _syncedFavorites.asStateFlow()
+
     private var devicesEventListener: ValueEventListener? = null
     private var playbackEventListener: ValueEventListener? = null
     private var commandEventListener: ValueEventListener? = null
@@ -149,6 +157,9 @@ class IsaiConnectManager(private val context: Context) {
         listenToPlaybackState()
         listenToCommands()
         listenToRecentlyPlayed()
+        listenToPreferences()
+        listenToHomeSongs()
+        listenToFavorites()
     }
 
     private fun registerDevice() {
@@ -261,8 +272,16 @@ class IsaiConnectManager(private val context: Context) {
         val stateRef = database.getReference("connect/$userId/playbackState")
         playbackEventListener = object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
-                snapshot.getValue(PlaybackStateSync::class.java)?.let {
-                    _playbackState.value = it
+                try {
+                    val rawPlaying = snapshot.child("isPlaying").getValue(Boolean::class.java)
+                    snapshot.getValue(PlaybackStateSync::class.java)?.let { state ->
+                        if (rawPlaying != null) {
+                            state.isPlaying = rawPlaying
+                        }
+                        _playbackState.value = state
+                    }
+                } catch (e: Exception) {
+                    Log.w("IsaiConnect", "Playback listener parse error: ${e.message}")
                 }
             }
 
@@ -293,9 +312,9 @@ class IsaiConnectManager(private val context: Context) {
 
                         if (issuedByDeviceId.isNotEmpty() && issuedByDeviceId != deviceId) {
                             val timeDiff = Math.abs(System.currentTimeMillis() - timestamp)
-                            if (timeDiff < 60_000L && timestamp != lastHandledCommandTimestamp) {
+                            if (timeDiff < 600_000L && timestamp != lastHandledCommandTimestamp) {
                                 lastHandledCommandTimestamp = timestamp
-                                android.util.Log.i("IsaiConnect", "Received command: $action for target: $targetDeviceId")
+                                android.util.Log.i("IsaiConnect", "Received command: $action for target: $targetDeviceId from: $issuedByDeviceId")
                                 _remoteCommand.tryEmit(
                                     RemoteCommand(
                                         action = action,
@@ -348,6 +367,13 @@ class IsaiConnectManager(private val context: Context) {
             map["songArtist"] = it.channelTitle
             map["songArtwork"] = it.thumbnailUrl
             it.audioUrl?.let { url -> if (url.isNotBlank()) map["songAudioUrl"] = url }
+            map["song"] = mapOf(
+                "videoId" to it.videoId,
+                "title" to it.title,
+                "channelTitle" to it.channelTitle,
+                "thumbnailUrl" to it.thumbnailUrl,
+                "audioUrl" to (it.audioUrl ?: "")
+            )
         }
         cmdRef.setValue(map)
     }
@@ -461,6 +487,162 @@ class IsaiConnectManager(private val context: Context) {
         historyRef.addValueEventListener(recentlyPlayedListener!!)
     }
 
+    private var preferencesListener: ValueEventListener? = null
+    private val _syncedPreferences = MutableStateFlow<List<String>>(emptyList())
+    val syncedPreferences: StateFlow<List<String>> = _syncedPreferences.asStateFlow()
+
+    fun syncPreferences(languages: List<String>) {
+        if (userId.isEmpty() || languages.isEmpty()) return
+        database.getReference("connect/$userId/preferences")
+            .updateChildren(mapOf("preferredLanguages" to languages))
+    }
+
+    private fun listenToPreferences() {
+        if (userId.isEmpty()) return
+        val prefRef = database.getReference("connect/$userId/preferences/preferredLanguages")
+        preferencesListener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val list = mutableListOf<String>()
+                if (snapshot.childrenCount > 0) {
+                    for (child in snapshot.children) {
+                        val lang = child.getValue(String::class.java)
+                        if (!lang.isNullOrBlank()) list.add(lang)
+                    }
+                } else {
+                    val single = snapshot.getValue(String::class.java)
+                    if (!single.isNullOrBlank()) list.add(single)
+                }
+                if (list.isNotEmpty()) {
+                    _syncedPreferences.value = list
+                }
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                Log.w("IsaiConnect", "preferences listener cancelled: ${error.message}")
+            }
+        }
+        prefRef.addValueEventListener(preferencesListener!!)
+    }
+
+    fun syncHomeSongs(songs: List<com.saavn.music.data.model.YouTubeSong>) {
+        if (userId.isEmpty() || songs.isEmpty()) return
+        val clean = songs.take(60).map { s ->
+            mapOf(
+                "id" to s.videoId,
+                "title" to s.title,
+                "artist" to s.channelTitle,
+                "artwork" to s.thumbnailUrl,
+                "audioUrl" to (s.audioUrl ?: ""),
+                "durationFormatted" to s.durationFormatted,
+                "durationMs" to s.durationMs,
+                "playCount" to s.playCount
+            )
+        }
+        database.getReference("connect/$userId/homeSongs").setValue(clean)
+            .addOnFailureListener { e -> Log.w("IsaiConnect", "syncHomeSongs error: ${e.message}") }
+    }
+
+    private fun listenToHomeSongs() {
+        if (userId.isEmpty()) return
+        val homeRef = database.getReference("connect/$userId/homeSongs")
+        homeSongsListener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val list = mutableListOf<com.saavn.music.data.model.YouTubeSong>()
+                for (child in snapshot.children) {
+                    val id = child.child("id").getValue(String::class.java) ?: ""
+                    val title = child.child("title").getValue(String::class.java) ?: ""
+                    val artist = child.child("artist").getValue(String::class.java) ?: ""
+                    val artwork = child.child("artwork").getValue(String::class.java) ?: ""
+                    val audioUrl = child.child("audioUrl").getValue(String::class.java)
+                    val durFormatted = child.child("durationFormatted").getValue(String::class.java) ?: "3:30"
+                    val durMs = child.child("durationMs").getValue(Long::class.java) ?: 210000L
+                    val playCount = child.child("playCount").getValue(Long::class.java) ?: 0L
+
+                    if (id.isNotBlank() && title.isNotBlank()) {
+                        list.add(
+                            com.saavn.music.data.model.YouTubeSong(
+                                videoId = id,
+                                title = title,
+                                channelTitle = artist,
+                                thumbnailUrl = artwork,
+                                audioUrl = audioUrl,
+                                durationFormatted = durFormatted,
+                                durationMs = durMs,
+                                playCount = playCount
+                            )
+                        )
+                    }
+                }
+                if (list.isNotEmpty()) {
+                    _syncedHomeSongs.value = list
+                }
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                Log.w("IsaiConnect", "homeSongs listener cancelled: ${error.message}")
+            }
+        }
+        homeRef.addValueEventListener(homeSongsListener!!)
+    }
+
+    fun syncFavorites(songs: List<com.saavn.music.data.model.YouTubeSong>) {
+        if (userId.isEmpty()) return
+        val clean = songs.take(100).map { s ->
+            mapOf(
+                "id" to s.videoId,
+                "title" to s.title,
+                "artist" to s.channelTitle,
+                "artwork" to s.thumbnailUrl,
+                "audioUrl" to (s.audioUrl ?: ""),
+                "durationFormatted" to s.durationFormatted,
+                "durationMs" to s.durationMs
+            )
+        }
+        database.getReference("connect/$userId/favorites").setValue(clean)
+            .addOnFailureListener { e -> Log.w("IsaiConnect", "syncFavorites error: ${e.message}") }
+    }
+
+    private fun listenToFavorites() {
+        if (userId.isEmpty()) return
+        val favRef = database.getReference("connect/$userId/favorites")
+        favoritesListener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val list = mutableListOf<com.saavn.music.data.model.YouTubeSong>()
+                for (child in snapshot.children) {
+                    val id = child.child("id").getValue(String::class.java) ?: ""
+                    val title = child.child("title").getValue(String::class.java) ?: ""
+                    val artist = child.child("artist").getValue(String::class.java) ?: ""
+                    val artwork = child.child("artwork").getValue(String::class.java) ?: ""
+                    val audioUrl = child.child("audioUrl").getValue(String::class.java)
+                    val durFormatted = child.child("durationFormatted").getValue(String::class.java) ?: "3:30"
+                    val durMs = child.child("durationMs").getValue(Long::class.java) ?: 210000L
+
+                    if (id.isNotBlank() && title.isNotBlank()) {
+                        list.add(
+                            com.saavn.music.data.model.YouTubeSong(
+                                videoId = id,
+                                title = title,
+                                channelTitle = artist,
+                                thumbnailUrl = artwork,
+                                audioUrl = audioUrl,
+                                durationFormatted = durFormatted,
+                                durationMs = durMs
+                            )
+                        )
+                    }
+                }
+                if (list.isNotEmpty()) {
+                    _syncedFavorites.value = list
+                }
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                Log.w("IsaiConnect", "favorites listener cancelled: ${error.message}")
+            }
+        }
+        favRef.addValueEventListener(favoritesListener!!)
+    }
+
     fun isMyDeviceActive(): Boolean {
         val current = _playbackState.value
         return current != null && current.currentDeviceId == deviceId
@@ -477,6 +659,9 @@ class IsaiConnectManager(private val context: Context) {
             playbackEventListener?.let { database.getReference("connect/$userId/playbackState").removeEventListener(it) }
             commandEventListener?.let { database.getReference("connect/$userId/command").removeEventListener(it) }
             recentlyPlayedListener?.let { database.getReference("connect/$userId/recentlyPlayed").removeEventListener(it) }
+            preferencesListener?.let { database.getReference("connect/$userId/preferences/preferredLanguages").removeEventListener(it) }
+            homeSongsListener?.let { database.getReference("connect/$userId/homeSongs").removeEventListener(it) }
+            favoritesListener?.let { database.getReference("connect/$userId/favorites").removeEventListener(it) }
         }
         userId = ""
     }

@@ -83,14 +83,17 @@ fun MiniPlayer(
         !syncState!!.currentTitle.isNullOrBlank() && 
         (syncState!!.isPlaying || Math.abs(System.currentTimeMillis() - syncState!!.updatedAt) < 15 * 60_000L)
 
-    val activeSong = currentSongLocal ?: if (isRemoteActive) {
+    val activeSong = if (isRemoteActive && !syncState?.currentTitle.isNullOrBlank()) {
         YouTubeSong(
             videoId = syncState?.currentSongId ?: "",
             title = syncState?.currentTitle ?: "Remote Track",
             channelTitle = syncState?.currentArtist ?: "ISAI Connect",
-            thumbnailUrl = syncState?.currentArtwork ?: ""
+            thumbnailUrl = syncState?.currentArtwork ?: "",
+            audioUrl = syncState?.currentAudioUrl?.ifBlank { null }
         )
-    } else null
+    } else {
+        currentSongLocal
+    }
 
     val isPlaying = if (isRemoteActive) (syncState?.isPlaying == true) else isPlayingLocal
     val positionSec = if (isRemoteActive) ((syncState?.positionMs ?: 0L) / 1000f) else positionSecLocal

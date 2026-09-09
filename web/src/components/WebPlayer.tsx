@@ -1,6 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react'
 import type { Song } from '@shared/models/song'
 import { musicApi } from '@shared/api/music-api'
+import { cleanHtmlTitle } from '@shared/utils/formatters'
 import { DeviceInfo, IsaiConnectService, PlaybackStateSync } from '../services/IsaiConnectService'
 import { recommendationService } from '../services/RecommendationService'
 import { IsaiConnectModal } from './IsaiConnectModal'
@@ -18,7 +19,6 @@ import {
   Laptop,
   Maximize2,
   Minimize2,
-  FileText,
   GripVertical,
   Trash2
 } from 'lucide-react'
@@ -74,12 +74,12 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
   const [volume, setVolume] = useState(0.8)
   const [isMuted, setIsMuted] = useState(false)
   const [showQueuePanel, setShowQueuePanel] = useState(false)
-  const [showLyricsPanel, setShowLyricsPanel] = useState(false)
   const [isConnectModalOpen, setIsConnectModalOpen] = useState(false)
 
   // Drag and drop state for queue reordering
   const [draggedIdx, setDraggedIdx] = useState<number | null>(null)
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null)
+  const isDraggingRef = useRef<boolean>(false)
 
   const myDeviceId = IsaiConnectService.getMyDeviceId()
   const audioRef = useRef<HTMLAudioElement | null>(null)
@@ -102,12 +102,44 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
     (Date.now() - (remoteState.updatedAt || 0) < 15 * 60 * 1000)
   )
 
+  // Pre-resolve audioUrl for remote track so it is instantly playable on transfer
+  const [cachedRemoteAudioUrl, setCachedRemoteAudioUrl] = useState<string>('')
+  useEffect(() => {
+    if (!isRemoteActive || !remoteState?.currentTitle) return
+    if (remoteState.currentAudioUrl) {
+      setCachedRemoteAudioUrl(remoteState.currentAudioUrl)
+      return
+    }
+
+    let isMounted = true
+    const resolveRemoteAudio = async () => {
+      try {
+        const cleanQuery = cleanHtmlTitle(remoteState.currentTitle || '')
+          .replace(/\s*[\|\-\–\—].*$/, '')
+          .replace(/\s*\(.*?(official|video|audio|lyrics|hd|4k|song).*?\)/gi, '')
+          .replace(/\s*\[.*?(official|video|audio|lyrics|hd|4k|song).*?\]/gi, '')
+          .replace(/\.{2,}$/, '')
+          .trim()
+
+        const results = await musicApi.searchSongs(cleanQuery || remoteState.currentTitle)
+        if (isMounted && results && results.length > 0 && results[0].audioUrl) {
+          setCachedRemoteAudioUrl(results[0].audioUrl)
+          IsaiConnectService.updatePlaybackState({ currentAudioUrl: results[0].audioUrl })
+        }
+      } catch (err) {
+        console.warn('[WebPlayer] Pre-fetch remote audio error:', err)
+      }
+    }
+    resolveRemoteAudio()
+    return () => { isMounted = false }
+  }, [isRemoteActive, remoteState?.currentSongId, remoteState?.currentTitle, remoteState?.currentAudioUrl])
+
   const remoteAsSong: Song | null = (remoteState && remoteState.currentTitle) ? {
     videoId: remoteState.currentSongId || `transferred_${Date.now()}`,
     title: remoteState.currentTitle,
     channelTitle: remoteState.currentArtist || 'Artist',
     thumbnailUrl: remoteState.currentArtwork || '',
-    audioUrl: remoteState.currentAudioUrl || '',
+    audioUrl: remoteState.currentAudioUrl || cachedRemoteAudioUrl || '',
     durationFormatted: formatTime((remoteState.durationMs || 210000) / 1000),
     durationMs: remoteState.durationMs || 210000,
     viewCountFormatted: ''
@@ -176,6 +208,96 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
   const playingDevice = connectedDevices.find(d => d.deviceId === remoteState?.currentDeviceId)
   const remoteDeviceName = playingDevice?.deviceName || (remoteState?.currentDeviceId?.includes('android') ? "Jeeva's Phone" : "Mobile Device")
 
+  // Activate local playback on Web when user transfers or remote device hands off
+  const activateLocalPlayback = async (targetSong?: any, positionMs?: number) => {
+    const seekSec = (positionMs != null ? positionMs : (remoteState?.positionMs || 0)) / 1000
+    const rawTitle = targetSong?.title || remoteState?.currentTitle || song?.title || ''
+    const rawArtist = targetSong?.channelTitle || targetSong?.artist || remoteState?.currentArtist || song?.channelTitle || 'Artist'
+    const rawArtwork = targetSong?.thumbnailUrl || targetSong?.artwork || remoteState?.currentArtwork || song?.thumbnailUrl || ''
+    const rawId = targetSong?.videoId || targetSong?.id || remoteState?.currentSongId || song?.videoId || `transferred_${Date.now()}`
+    let targetAudio = targetSong?.audioUrl || cachedRemoteAudioUrl || remoteState?.currentAudioUrl || ''
+
+    if (seekSec > 0) {
+      pendingSeekTimeRef.current = seekSec
+      setCurrentTime(seekSec)
+    }
+
+    const transferred: Song = {
+      videoId: rawId,
+      title: rawTitle,
+      channelTitle: rawArtist,
+      thumbnailUrl: rawArtwork,
+      audioUrl: targetAudio,
+      durationFormatted: formatTime((remoteState?.durationMs || 210000) / 1000),
+      durationMs: remoteState?.durationMs || 210000,
+      viewCountFormatted: ''
+    }
+
+    setIsPlaying(true)
+
+    // Directly assign audio src and trigger play immediately
+    if (audioRef.current && targetAudio) {
+      if (audioRef.current.src !== targetAudio) {
+        audioRef.current.src = targetAudio
+      }
+      if (seekSec > 0) audioRef.current.currentTime = seekSec
+      audioRef.current.play().catch(e => {
+        console.warn('[WebPlayer] Transfer play catch (may need user gesture):', e)
+        const onFirstInteraction = () => {
+          audioRef.current?.play().catch(() => {})
+          window.removeEventListener('click', onFirstInteraction)
+          window.removeEventListener('keydown', onFirstInteraction)
+        }
+        window.addEventListener('click', onFirstInteraction, { once: true })
+        window.addEventListener('keydown', onFirstInteraction, { once: true })
+      })
+    }
+
+    IsaiConnectService.transferPlaybackToDevice(myDeviceId, transferred, (positionMs != null ? positionMs : (remoteState?.positionMs || 0)))
+    onTransferPlayback?.(transferred)
+
+    // If audio stream is not yet cached, resolve 320kbps stream via JioSaavn search
+    if (!targetAudio && rawTitle) {
+      try {
+        const cleanTitle = cleanHtmlTitle(rawTitle)
+          .replace(/\s*[\|\-\–\—].*$/, '')
+          .replace(/\s*\(.*?(official|video|audio|lyrics|hd|4k|song).*?\)/gi, '')
+          .replace(/\s*\[.*?(official|video|audio|lyrics|hd|4k|song).*?\]/gi, '')
+          .replace(/\.{2,}$/, '')
+          .trim()
+
+        const results = await musicApi.searchSongs(cleanTitle || rawTitle)
+        if (results && results.length > 0 && results[0].audioUrl) {
+          const resolvedUrl = results[0].audioUrl
+          setCachedRemoteAudioUrl(resolvedUrl)
+          targetAudio = resolvedUrl
+          if (audioRef.current) {
+            audioRef.current.src = resolvedUrl
+            if (seekSec > 0) audioRef.current.currentTime = seekSec
+            audioRef.current.play().catch(e => {
+              console.warn('[WebPlayer] Resolved async play catch:', e)
+              const onFirstInteraction = () => {
+                audioRef.current?.play().catch(() => {})
+                window.removeEventListener('click', onFirstInteraction)
+                window.removeEventListener('keydown', onFirstInteraction)
+              }
+              window.addEventListener('click', onFirstInteraction, { once: true })
+              window.addEventListener('keydown', onFirstInteraction, { once: true })
+            })
+          }
+          const updated = { ...transferred, audioUrl: resolvedUrl }
+          onTransferPlayback?.(updated)
+          IsaiConnectService.updatePlaybackState({ currentAudioUrl: resolvedUrl })
+        }
+      } catch (e) {
+        console.warn('[WebPlayer] Failed to resolve audio for transferred song:', e)
+      }
+    }
+  }
+
+  const activateLocalPlaybackRef = useRef(activateLocalPlayback)
+  activateLocalPlaybackRef.current = activateLocalPlayback
+
   // Initialize ISAI Connect service
   useEffect(() => {
     IsaiConnectService.initialize(userId)
@@ -191,13 +313,25 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
             setIsMuted(clamped === 0)
             if (audioRef.current) audioRef.current.volume = clamped
           }
+
+          // If playback was handed off to this Web device by another device (e.g. Android App):
+          if (syncState.currentTitle && (!activeSongRef.current || activeSongRef.current.title !== syncState.currentTitle || !isPlaying)) {
+            console.log('[WebPlayer] Playback handed off to Web in syncState:', syncState)
+            activateLocalPlaybackRef.current({
+              id: syncState.currentSongId,
+              title: syncState.currentTitle,
+              artist: syncState.currentArtist,
+              artwork: syncState.currentArtwork,
+              audioUrl: syncState.currentAudioUrl
+            }, syncState.positionMs)
+          }
         }
       }
     })
     return () => unsub()
-  }, [userId, myDeviceId])
+  }, [userId, myDeviceId, isPlaying])
 
-  // Listen to remote commands sent from Android or another device (when Web is active)
+  // Listen to remote commands sent from Android or another device
   useEffect(() => {
     const unsubCmd = IsaiConnectService.subscribeCommands((cmd) => {
       if (cmd.issuedByDeviceId === myDeviceId) return
@@ -232,14 +366,15 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
         setVolume(clamped)
         setIsMuted(clamped === 0)
       } else if (cmd.action === 'PLAY_SONG') {
-        // PLAY_SONG is primarily handled by App.tsx which orchestrates queue and state
-        IsaiConnectService.transferPlaybackToDevice(myDeviceId)
-        const seekSec = (cmd.positionMs || 0) / 1000
-        if (seekSec > 0) {
-          pendingSeekTimeRef.current = seekSec
-          setCurrentTime(seekSec)
-        }
-        setIsPlaying(true)
+        console.log('[WebPlayer] Remote command PLAY_SONG received:', cmd)
+        const incomingSong = cmd.song || (cmd.songId ? {
+          videoId: cmd.songId,
+          title: cmd.songTitle,
+          channelTitle: cmd.songArtist,
+          thumbnailUrl: cmd.songArtwork,
+          audioUrl: cmd.songAudioUrl
+        } : null)
+        activateLocalPlaybackRef.current(incomingSong, cmd.positionMs)
       }
     })
     return () => unsubCmd()
@@ -264,10 +399,11 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
         id: q.videoId || (q as any).id || '',
         title: q.title || '',
         artist: q.channelTitle || (q as any).artist || '',
-        artwork: q.thumbnailUrl || (q as any).artwork || ''
+        artwork: q.thumbnailUrl || (q as any).artwork || '',
+        audioUrl: (q as any).audioUrl || ''
       }))
     })
-  }, [song?.videoId, song?.audioUrl, isPlaying, isRemoteActive, remoteState?.currentDeviceId, myDeviceId])
+  }, [song?.videoId, song?.title, song?.thumbnailUrl, song?.audioUrl, isPlaying, isRemoteActive, remoteState?.currentDeviceId, myDeviceId])
 
   // Immediate auto-play and recommendation threshold session management when a new song is selected
   useEffect(() => {
@@ -296,14 +432,16 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
       pendingSeekTimeRef.current = null
       setCurrentTime(seekTarget)
       if (audioRef.current) {
-        audioRef.current.src = activeAudioUrl
-        audioRef.current.currentTime = seekTarget
+        if (audioRef.current.src !== activeAudioUrl) {
+          audioRef.current.src = activeAudioUrl
+          audioRef.current.currentTime = seekTarget
+        }
         audioRef.current.play().catch(err => {
           console.warn('[WebPlayer] Autoplay catch:', err)
         })
       }
     }
-  }, [displaySong?.videoId, displaySong?.audioUrl, isRemoteActive, remoteState?.currentAudioUrl])
+  }, [displaySong?.videoId, displaySong?.audioUrl, isRemoteActive])
 
   // Control audio element play/pause
   useEffect(() => {
@@ -324,8 +462,6 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
       }
     }
   }, [displaySong?.videoId, displaySong?.audioUrl, isPlaying, volume, isMuted, isRemoteActive, remoteState?.currentAudioUrl])
-
-  if (!displaySong && !isRemoteActive) return null
 
   const togglePlay = () => {
     if (isRemoteActive) {
@@ -369,74 +505,11 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
   }
 
   const handleTransferToWeb = async () => {
-    // 1. Prime the audio element in the user gesture
-    if (audioRef.current) {
-      audioRef.current.play().catch(() => {})
-    }
-
     const previousDeviceId = remoteState?.currentDeviceId || ''
     if (previousDeviceId && previousDeviceId !== myDeviceId) {
       IsaiConnectService.sendCommand('PAUSE', { targetDeviceId: previousDeviceId })
     }
-
-    IsaiConnectService.transferPlaybackToDevice(myDeviceId)
-
-    if (remoteState && (remoteState.currentSongId || remoteState.currentTitle)) {
-      const seekSec = (remoteState.positionMs || 0) / 1000
-      if (seekSec > 0) {
-        pendingSeekTimeRef.current = seekSec
-        setCurrentTime(seekSec)
-      }
-
-      let audioUrl = remoteState.currentAudioUrl
-
-      if (audioUrl && audioRef.current) {
-        audioRef.current.src = audioUrl
-        if (seekSec > 0) {
-          audioRef.current.currentTime = seekSec
-        }
-        audioRef.current.play().catch(e => console.warn('[WebPlayer] Direct transfer play catch:', e))
-      }
-
-      const transferred: Song = {
-        videoId: remoteState.currentSongId || `transferred_${Date.now()}`,
-        title: remoteState.currentTitle || 'Current Track',
-        channelTitle: remoteState.currentArtist || 'Artist',
-        thumbnailUrl: remoteState.currentArtwork || '',
-        audioUrl: audioUrl,
-        durationFormatted: formatTime((remoteState.durationMs || 210000) / 1000),
-        durationMs: remoteState.durationMs || 210000,
-        viewCountFormatted: ''
-      }
-
-      setIsPlaying(true)
-      onTransferPlayback?.(transferred)
-
-      if (!audioUrl) {
-        try {
-          const rawTitle = remoteState.currentTitle || ''
-          const cleanTitle = rawTitle
-            .replace(/\s*[\|\-\–\—].*$/, '')
-            .replace(/\s*\(.*?(official|video|audio|lyrics|hd|4k|song).*?\)/gi, '')
-            .replace(/\s*\[.*?(official|video|audio|lyrics|hd|4k|song).*?\]/gi, '')
-            .replace(/\.{2,}$/, '')
-            .trim()
-
-          const results = await musicApi.searchSongs(cleanTitle || rawTitle)
-          if (results && results.length > 0 && results[0].audioUrl) {
-            const resolvedUrl = results[0].audioUrl
-            if (audioRef.current) {
-              audioRef.current.src = resolvedUrl
-              if (seekSec > 0) audioRef.current.currentTime = seekSec
-              audioRef.current.play().catch(e => console.warn('[WebPlayer] Async resolved play catch:', e))
-            }
-            onTransferPlayback?.({ ...transferred, audioUrl: resolvedUrl })
-          }
-        } catch (e) {
-          console.warn('[WebPlayer] Failed to resolve audio for transferred song:', e)
-        }
-      }
-    }
+    await activateLocalPlayback()
   }
 
   const handleTransferToRemote = (_targetDeviceId: string) => {
@@ -547,17 +620,20 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
 
   return (
     <>
-      {song && !isRemoteActive && (
-        <audio
-          ref={audioRef}
-          src={song.audioUrl}
-          autoPlay
-          onTimeUpdate={handleTimeUpdate}
-          onLoadedMetadata={handleLoadedMetadata}
-          onCanPlay={handleLoadedMetadata}
-          onEnded={handleAudioEnded}
-        />
-      )}
+      <audio
+        ref={audioRef}
+        src={displaySong?.audioUrl || song?.audioUrl || cachedRemoteAudioUrl || undefined}
+        autoPlay
+        playsInline
+        onTimeUpdate={handleTimeUpdate}
+        onLoadedMetadata={handleLoadedMetadata}
+        onCanPlay={handleLoadedMetadata}
+        onEnded={handleAudioEnded}
+        onError={(e) => {
+          console.warn('[WebPlayer] Audio error on stream, skipping to next track:', e)
+          onNextSong?.()
+        }}
+      />
 
 
 
@@ -646,17 +722,6 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
 
         {/* Right Action Icons */}
         <div className="player-right-actions">
-          <button
-            className={`control-btn ${showLyricsPanel ? 'active' : ''}`}
-            onClick={() => {
-              setIsExpanded(true)
-              setShowLyricsPanel(true)
-            }}
-            title="Lyrics"
-          >
-            <FileText size={18} />
-          </button>
-
           <button
             className={`control-btn ${showQueuePanel ? 'active' : ''}`}
             onClick={() => {
@@ -780,29 +845,8 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
 
             <div style={{ display: 'flex', gap: '12px' }}>
               <button
-                className={`pill-button ${!showLyricsPanel && !showQueuePanel ? 'active' : ''}`}
-                onClick={() => {
-                  setShowLyricsPanel(false)
-                  setShowQueuePanel(false)
-                }}
-              >
-                Artwork
-              </button>
-              <button
-                className={`pill-button ${showLyricsPanel ? 'active' : ''}`}
-                onClick={() => {
-                  setShowLyricsPanel(true)
-                  setShowQueuePanel(false)
-                }}
-              >
-                Lyrics
-              </button>
-              <button
                 className={`pill-button ${showQueuePanel ? 'active' : ''}`}
-                onClick={() => {
-                  setShowQueuePanel(true)
-                  setShowLyricsPanel(false)
-                }}
+                onClick={() => setShowQueuePanel(!showQueuePanel)}
               >
                 Queue ({effectiveQueue.length})
               </button>
@@ -828,29 +872,8 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
               </p>
             </div>
 
-            {/* Right Panel (Lyrics or Queue) */}
-            {showLyricsPanel ? (
-              <div className="expanded-lyrics-panel">
-                <h3 style={{ fontSize: '18px', fontWeight: 800, marginBottom: '16px', color: 'var(--isai-purple-light)' }}>
-                  Lyrics • {activeTitle}
-                </h3>
-                <p style={{ fontSize: '15px', lineHeight: 2, color: 'var(--text-primary)', whiteSpace: 'pre-line' }}>
-                  {`[Intro Instrumental]
-                  
-                  Anirudh Ravichander Beats...
-                  
-                  Nallaru Po dude, feel the rhythm flow,
-                  Every beat in your soul starting to glow.
-                  
-                  [Chorus]
-                  ISAI Tamil music in 320kbps high definition,
-                  Listening to your favorite song is the highest emotion!
-                  
-                  [Outro]`
-                  }
-                </p>
-              </div>
-            ) : showQueuePanel ? (
+            {/* Right Panel (Queue or Song Details) */}
+            {showQueuePanel ? (
               <div className="expanded-lyrics-panel">
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
                   <div>
@@ -899,6 +922,7 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
                           key={`${songId}_${idx}`}
                           draggable={true}
                           onDragStart={(e) => {
+                            isDraggingRef.current = true
                             setDraggedIdx(idx)
                             e.dataTransfer.effectAllowed = 'move'
                             e.dataTransfer.setData('text/plain', `${idx}`)
@@ -908,25 +932,51 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
                             e.dataTransfer.dropEffect = 'move'
                             if (dragOverIdx !== idx) setDragOverIdx(idx)
                           }}
+                          onDragEnter={(e) => {
+                            e.preventDefault()
+                            if (dragOverIdx !== idx) setDragOverIdx(idx)
+                          }}
                           onDragEnd={() => {
                             setDraggedIdx(null)
                             setDragOverIdx(null)
+                            setTimeout(() => {
+                              isDraggingRef.current = false
+                            }, 150)
                           }}
                           onDrop={(e) => {
                             e.preventDefault()
-                            if (draggedIdx === null || draggedIdx === idx) {
+                            e.stopPropagation()
+                            const sourceIdx = draggedIdx !== null ? draggedIdx : parseInt(e.dataTransfer.getData('text/plain'), 10)
+                            if (isNaN(sourceIdx) || sourceIdx === idx) {
                               setDraggedIdx(null)
                               setDragOverIdx(null)
+                              setTimeout(() => { isDraggingRef.current = false }, 150)
                               return
                             }
                             const nextQueue = [...effectiveQueue]
-                            const [movedSong] = nextQueue.splice(draggedIdx, 1)
+                            const [movedSong] = nextQueue.splice(sourceIdx, 1)
                             nextQueue.splice(idx, 0, movedSong)
+                            if (isRemoteActive) {
+                              IsaiConnectService.updatePlaybackState({
+                                queue: nextQueue.map(item => ({
+                                  id: item.videoId || (item as any).id || '',
+                                  title: item.title || '',
+                                  artist: item.channelTitle || (item as any).artist || '',
+                                  artwork: item.thumbnailUrl || (item as any).artwork || ''
+                                }))
+                              })
+                            }
                             onReorderQueue?.(nextQueue)
                             setDraggedIdx(null)
                             setDragOverIdx(null)
+                            setTimeout(() => {
+                              isDraggingRef.current = false
+                            }, 150)
                           }}
-                          onClick={() => onSelectQueueItem?.(qSong)}
+                          onClick={() => {
+                            if (isDraggingRef.current) return
+                            onSelectQueueItem?.(qSong)
+                          }}
                           className={`queue-row-item ${isCurrent ? 'active' : ''} ${isDragging ? 'dragging' : ''} ${isDragOver ? 'drag-over' : ''}`}
                         >
                           {/* Drag Handle */}

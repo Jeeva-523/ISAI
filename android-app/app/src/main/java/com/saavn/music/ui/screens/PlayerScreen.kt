@@ -180,7 +180,7 @@ fun PlayerScreen(
     var dragPositionSec by remember { mutableFloatStateOf(0f) }
     var visualMode by remember { mutableStateOf(PlayerVisualMode.ALBUM_CARD) }
 
-    val currentSong = song ?: if (isRemoteActive) {
+    val currentSong = if (isRemoteActive && !syncState?.currentTitle.isNullOrBlank()) {
         com.saavn.music.data.model.YouTubeSong(
             videoId = syncState?.currentSongId ?: "",
             title = syncState?.currentTitle ?: "Remote Track",
@@ -188,7 +188,9 @@ fun PlayerScreen(
             thumbnailUrl = syncState?.currentArtwork ?: "",
             audioUrl = syncState?.currentAudioUrl?.ifBlank { null }
         )
-    } else null
+    } else {
+        song
+    }
 
     if (currentSong == null) {
         androidx.compose.runtime.LaunchedEffect(Unit) {
@@ -868,7 +870,7 @@ fun PlayerScreen(
                                 fontWeight = FontWeight.ExtraBold,
                                 letterSpacing = 1.sp
                             )
-                            val nextSong = queue.getOrNull(currentQueueIdx + 1)
+                            val nextSong = effectiveDisplayQueue.getOrNull(effectiveCurrentQueueIdx + 1)
                             if (nextSong != null) {
                                 Text(
                                     text = "Next: ${nextSong.title}",
@@ -892,7 +894,7 @@ fun PlayerScreen(
                                 .padding(horizontal = 8.dp, vertical = 2.dp)
                         ) {
                             Text(
-                                text = "${queue.size} Songs",
+                                text = "${effectiveDisplayQueue.size} Songs",
                                 color = NeonCyan,
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold
@@ -1012,6 +1014,13 @@ fun PlayerScreen(
                                                     action = "PLAY_SONG",
                                                     song = qSong,
                                                     targetDeviceId = syncState!!.currentDeviceId
+                                                )
+                                                viewModel.isaiConnectManager.updatePlaybackState(
+                                                    song = qSong,
+                                                    isPlaying = true,
+                                                    positionMs = 0L,
+                                                    currentDeviceId = syncState!!.currentDeviceId,
+                                                    queueIndex = idx
                                                 )
                                             } else {
                                                 viewModel.playSong(qSong, effectiveDisplayQueue)

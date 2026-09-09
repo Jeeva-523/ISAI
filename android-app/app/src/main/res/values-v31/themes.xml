@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.SaavnMusic" parent="android:Theme.Material.NoActionBar">
+        <item name="android:statusBarColor">#0D0E15</item>
+        <item name="android:navigationBarColor">#0D0E15</item>
+        <item name="android:windowBackground">#0D0E15</item>
+        <item name="android:windowSplashScreenBackground">#FFFFFF</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@android:color/transparent</item>
+    </style>
+</resources>

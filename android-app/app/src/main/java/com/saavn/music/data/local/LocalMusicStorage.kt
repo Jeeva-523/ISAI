@@ -121,6 +121,11 @@ class LocalMusicStorage(context: Context) {
         prefs.edit().putString(KEY_FAVORITES, gson.toJson(current)).apply()
     }
 
+    fun setFavorites(songs: List<YouTubeSong>) {
+        _favorites.value = songs
+        prefs.edit().putString(KEY_FAVORITES, gson.toJson(songs)).apply()
+    }
+
     // --- Recently Played (Strictly latest 20) ---
     fun addRecentlyPlayed(song: YouTubeSong) {
         val current = _recentlyPlayed.value.toMutableList()

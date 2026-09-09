@@ -13,9 +13,13 @@ import com.saavn.music.data.repository.YouTubeMusicRepository
 import com.saavn.music.player.YouTubePlayerController
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.isActive
 
@@ -34,6 +38,14 @@ enum class AppScreen {
     LIBRARY,
     PROFILE
 }
+
+data class SpotifyDailyMix(
+    val id: String,
+    val title: String,
+    val subtitle: String,
+    val coverUrl: String,
+    val songs: List<YouTubeSong>
+)
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -104,7 +116,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             durationFormatted = getFormattedDuration(),
             durationMs = durationSeconds * 1000L,
             viewCountFormatted = if (playCount > 0) "${java.text.NumberFormat.getInstance().format(playCount)} plays" else if (year.isNotBlank()) "Year $year" else "",
-            audioUrl = getStreamUrl(AudioQuality.VERY_HIGH)
+            audioUrl = getStreamUrl(AudioQuality.VERY_HIGH),
+            playCount = playCount
         )
     }
 
@@ -191,6 +204,51 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _isLoadingSuggestions = MutableStateFlow(false)
     val isLoadingSuggestions: StateFlow<Boolean> = _isLoadingSuggestions.asStateFlow()
 
+    // Spotify-Style Daily Mixes
+    val spotifyDailyMixes: StateFlow<List<SpotifyDailyMix>> = combine(_trendingSongs, _preferredLanguages) { songs, langs ->
+        val primaryLang = (langs.firstOrNull() ?: "Tamil").uppercase()
+        val anirudhSongs = songs.filter { 
+            it.title.contains("anirudh", ignoreCase = true) || it.channelTitle.contains("anirudh", ignoreCase = true) 
+        }
+        val arrSongs = songs.filter { 
+            it.title.contains("rahman", ignoreCase = true) || it.channelTitle.contains("rahman", ignoreCase = true) || it.channelTitle.contains("arr", ignoreCase = true) 
+        }
+        val yuvanSongs = songs.filter { 
+            it.title.contains("yuvan", ignoreCase = true) || it.channelTitle.contains("yuvan", ignoreCase = true) || it.channelTitle.contains("u1", ignoreCase = true) 
+        }
+
+        listOf(
+            SpotifyDailyMix(
+                id = "daily_mix_1",
+                title = "Daily Mix 1 • Anirudh Hits",
+                subtitle = "Anirudh, Dhanush, Vijay & club anthems",
+                coverUrl = anirudhSongs.firstOrNull()?.thumbnailUrl ?: "https://c.saavncdn.com/187/Jailer-Tamil-2023-20230728081443-500x500.jpg",
+                songs = if (anirudhSongs.isNotEmpty()) anirudhSongs else songs.take(8)
+            ),
+            SpotifyDailyMix(
+                id = "daily_mix_2",
+                title = "Daily Mix 2 • A.R. Rahman Soul",
+                subtitle = "A.R. Rahman, Bombay Jayashri & timeless melodies",
+                coverUrl = arrSongs.firstOrNull()?.thumbnailUrl ?: "https://c.saavncdn.com/420/Vendhu-Thanindhathu-Kaadu-Original-Motion-Picture-Soundtrack-Tamil-2022-20250905072731-500x500.jpg",
+                songs = if (arrSongs.isNotEmpty()) arrSongs else songs.drop(1).take(8)
+            ),
+            SpotifyDailyMix(
+                id = "daily_mix_3",
+                title = "Daily Mix 3 • Yuvan Drug Melodies",
+                subtitle = "Yuvan Shankar Raja, Harris & night drives",
+                coverUrl = yuvanSongs.firstOrNull()?.thumbnailUrl ?: "https://c.saavncdn.com/276/Maari-2-Tamil-2018-20260203193952-500x500.jpg",
+                songs = if (yuvanSongs.isNotEmpty()) yuvanSongs else songs.drop(2).take(8)
+            ),
+            SpotifyDailyMix(
+                id = "daily_mix_4",
+                title = "Top 50 • $primaryLang",
+                subtitle = "The most played and trending hits in $primaryLang",
+                coverUrl = songs.firstOrNull()?.thumbnailUrl ?: "https://c.saavncdn.com/510/Beast-Tamil-2022-20220504184736-500x500.jpg",
+                songs = songs
+            )
+        )
+    }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
     // Storage references
     val favorites: StateFlow<List<YouTubeSong>> = localStorage.favorites
     val playlists: StateFlow<List<UserPlaylist>> = localStorage.playlists
@@ -231,6 +289,42 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
+        viewModelScope.launch {
+            isaiConnectManager.syncedPreferences.collect { remoteLangs ->
+                if (remoteLangs.isNotEmpty() && remoteLangs != _preferredLanguages.value) {
+                    _preferredLanguages.value = remoteLangs
+                    val currentProfile = localStorage.userProfile.value
+                    if (currentProfile != null) {
+                        localStorage.saveUserProfile(currentProfile.copy(preferredLanguages = remoteLangs))
+                    }
+                    loadHomeData()
+                }
+            }
+        }
+
+        viewModelScope.launch {
+            isaiConnectManager.syncedHomeSongs.collect { remoteHome ->
+                if (remoteHome.isNotEmpty() && _trendingSongs.value.isEmpty()) {
+                    _trendingSongs.value = remoteHome
+                    _categorySongs.value = remoteHome
+                }
+            }
+        }
+
+        viewModelScope.launch {
+            isaiConnectManager.syncedFavorites.collect { remoteFavs ->
+                if (remoteFavs.isNotEmpty()) {
+                    val local = localStorage.favorites.value
+                    val remoteIds = remoteFavs.map { it.videoId }.toSet()
+                    val localIds = local.map { it.videoId }.toSet()
+                    if (remoteIds != localIds) {
+                        val merged = (remoteFavs + local).distinctBy { it.videoId }
+                        localStorage.setFavorites(merged)
+                    }
+                }
+            }
+        }
+
         // Initialize ISAI Connect with user profile
         viewModelScope.launch {
             userProfile.collect { profile ->
@@ -240,6 +334,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 isaiConnectManager.initialize(email)
                 if (localStorage.recentlyPlayed.value.isNotEmpty()) {
                     isaiConnectManager.syncRecentlyPlayed(localStorage.recentlyPlayed.value)
+                }
+                if (localStorage.favorites.value.isNotEmpty()) {
+                    isaiConnectManager.syncFavorites(localStorage.favorites.value)
+                }
+                if (_preferredLanguages.value.isNotEmpty()) {
+                    isaiConnectManager.syncPreferences(_preferredLanguages.value)
+                }
+                if (_trendingSongs.value.isNotEmpty()) {
+                    isaiConnectManager.syncHomeSongs(_trendingSongs.value)
                 }
             }
         }
@@ -307,10 +410,35 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         if (ytPlayerController.isPlaying.value) {
                             ytPlayerController.pause()
                         }
-                    } else if (syncState.currentDeviceId == isaiConnectManager.deviceId && syncState.updatedByDeviceId != isaiConnectManager.deviceId) {
+                    }
+
+                    val isRemoteActive = !isaiConnectManager.isMyDeviceActive() &&
+                        syncState.currentDeviceId.isNotBlank() &&
+                        !syncState.currentTitle.isNullOrBlank() &&
+                        (syncState.isPlaying || Math.abs(System.currentTimeMillis() - syncState.updatedAt) < 15 * 60_000L)
+
+                    if (isRemoteActive) {
+                        val remoteSong = YouTubeSong(
+                            videoId = syncState.currentSongId ?: "",
+                            title = syncState.currentTitle ?: "Remote Track",
+                            channelTitle = "${syncState.currentArtist ?: "ISAI"} • Web 💻",
+                            thumbnailUrl = syncState.currentArtwork ?: ""
+                        )
+                        com.saavn.music.service.MusicPlaybackService.startOrUpdate(
+                            context = application.applicationContext,
+                            song = remoteSong,
+                            isPlaying = syncState.isPlaying,
+                            durationSec = (syncState.durationMs / 1000f).coerceAtLeast(0f),
+                            positionSec = (syncState.positionMs / 1000f).coerceAtLeast(0f)
+                        )
+                    }
+
+                    if ((syncState.currentDeviceId == isaiConnectManager.deviceId || isaiConnectManager.isMyDeviceActive() || ytPlayerController.isPlaying.value) && syncState.updatedByDeviceId != isaiConnectManager.deviceId) {
                         if (!syncState.isPlaying && ytPlayerController.isPlaying.value) {
+                            android.util.Log.i("ISAI_CONNECT", "[MainViewModel] Pausing playback from remote syncState updated by ${syncState.updatedByDeviceId}")
                             ytPlayerController.pause()
-                        } else if (syncState.isPlaying && !ytPlayerController.isPlaying.value) {
+                        } else if (syncState.isPlaying && !ytPlayerController.isPlaying.value && syncState.currentDeviceId == isaiConnectManager.deviceId) {
+                            android.util.Log.i("ISAI_CONNECT", "[MainViewModel] Resuming playback from remote syncState updated by ${syncState.updatedByDeviceId}")
                             ytPlayerController.play()
                         }
                     } else if (isaiConnectManager.isMyDeviceActive() && syncState.updatedByDeviceId != isaiConnectManager.deviceId) {
@@ -340,14 +468,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             isaiConnectManager.remoteCommand.collect { cmd ->
                 if (cmd.issuedByDeviceId != isaiConnectManager.deviceId) {
                     val isTargetedToMe = cmd.targetDeviceId.isEmpty() || cmd.targetDeviceId == isaiConnectManager.deviceId
-                    val canExecute = if (cmd.action == "PLAY_SONG") {
-                        isTargetedToMe
-                    } else if (cmd.action == "PAUSE") {
-                        isTargetedToMe && (isaiConnectManager.isMyDeviceActive() || ytPlayerController.isPlaying.value)
-                    } else if (cmd.action == "PLAY") {
-                        isTargetedToMe && (isaiConnectManager.isMyDeviceActive() || !ytPlayerController.isPlaying.value)
-                    } else {
-                        isTargetedToMe && isaiConnectManager.isMyDeviceActive()
+                    val canExecute = when (cmd.action) {
+                        "PLAY_SONG", "ADD_TO_QUEUE", "PLAY_NEXT_IN_QUEUE" -> isTargetedToMe
+                        "PAUSE" -> isTargetedToMe || ytPlayerController.isPlaying.value || isaiConnectManager.isMyDeviceActive()
+                        "PLAY" -> isTargetedToMe && (isaiConnectManager.isMyDeviceActive() || !ytPlayerController.isPlaying.value)
+                        "NEXT", "PREV", "SEEK", "SET_VOLUME" -> isTargetedToMe && isaiConnectManager.isMyDeviceActive()
+                        else -> isTargetedToMe
                     }
                     if (!canExecute) return@collect
 
@@ -364,6 +490,41 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         "NEXT" -> playNext()
                         "PREV" -> playPrevious()
                         "SEEK" -> seekTo(cmd.positionMs / 1000f)
+                        "ADD_TO_QUEUE" -> {
+                            if (cmd.songId.isNotBlank()) {
+                                val song = YouTubeSong(
+                                    videoId = cmd.songId,
+                                    title = cmd.songTitle,
+                                    channelTitle = cmd.songArtist,
+                                    thumbnailUrl = cmd.songArtwork,
+                                    audioUrl = cmd.songAudioUrl.ifBlank { null }
+                                )
+                                ytPlayerController.addToQueue(song)
+                                isaiConnectManager.updatePlaybackState(
+                                    queue = ytPlayerController.playbackQueue.value,
+                                    queueIndex = ytPlayerController.currentQueueIndex.value
+                                )
+                                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                    android.widget.Toast.makeText(getApplication(), "Added to queue from Web 🌐", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
+                        "PLAY_NEXT_IN_QUEUE" -> {
+                            if (cmd.songId.isNotBlank()) {
+                                val song = YouTubeSong(
+                                    videoId = cmd.songId,
+                                    title = cmd.songTitle,
+                                    channelTitle = cmd.songArtist,
+                                    thumbnailUrl = cmd.songArtwork,
+                                    audioUrl = cmd.songAudioUrl.ifBlank { null }
+                                )
+                                ytPlayerController.playNextInQueue(song)
+                                isaiConnectManager.updatePlaybackState(
+                                    queue = ytPlayerController.playbackQueue.value,
+                                    queueIndex = ytPlayerController.currentQueueIndex.value
+                                )
+                            }
+                        }
                         "PLAY_SONG" -> {
                             if (cmd.songId.isNotBlank()) {
                                 val song = YouTubeSong(
@@ -439,7 +600,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _recommendedReason.value = "✨ Top Picks For You"
                 val langs = _preferredLanguages.value.ifEmpty { listOf("tamil") }
                 val defaultRec = musicRepo.getTrending(langs).getOrNull()?.map { it.toYouTubeSong() } ?: emptyList()
-                _personalizedRecommendations.value = defaultRec.take(12)
+                val dedupedRec = ytRepo.deduplicateSongs(defaultRec)
+                val heroExclude = _trendingSongs.value.take(4).map { it.videoId }.toSet()
+                val distinctRec = dedupedRec.filterNot { heroExclude.contains(it.videoId) }
+                _personalizedRecommendations.value = if (distinctRec.isNotEmpty()) distinctRec.take(12) else dedupedRec.take(12)
             } catch (_: Exception) {}
         }
     }
@@ -461,6 +625,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     val mostPlayed = trendingService.getMostPlayedSongs(deduped)
                     _trendingSongs.value = mostPlayed
                     _categorySongs.value = mostPlayed
+                    isaiConnectManager.syncHomeSongs(mostPlayed)
                 } else {
                     val trending = ytRepo.getTrendingSongs(langs).filterNot { s ->
                         val t = s.title.lowercase()
@@ -470,6 +635,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     val mostPlayed = trendingService.getMostPlayedSongs(deduped)
                     _trendingSongs.value = mostPlayed
                     _categorySongs.value = mostPlayed
+                    isaiConnectManager.syncHomeSongs(mostPlayed)
                 }
 
                 // Compute / Populate Popular Singers & Artists
@@ -825,22 +991,102 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun addToQueue(song: YouTubeSong) {
-        ytPlayerController.addToQueue(song)
-        if (isaiConnectManager.isMyDeviceActive()) {
-            isaiConnectManager.updatePlaybackState(
-                queue = ytPlayerController.playbackQueue.value,
-                queueIndex = ytPlayerController.currentQueueIndex.value
+        val remoteState = isaiConnectManager.playbackState.value
+        val isRemoteActive = remoteState != null &&
+                remoteState.currentDeviceId.isNotBlank() &&
+                remoteState.currentDeviceId != isaiConnectManager.deviceId &&
+                remoteState.currentTitle.isNotBlank() &&
+                (remoteState.isPlaying || Math.abs(System.currentTimeMillis() - remoteState.updatedAt) < 15 * 60_000L)
+
+        if (remoteState != null && isRemoteActive) {
+            isaiConnectManager.sendCommand(
+                action = "ADD_TO_QUEUE",
+                song = song,
+                targetDeviceId = remoteState.currentDeviceId
             )
+            val currentRemoteSongs = remoteState.queue.map { syncSong ->
+                YouTubeSong(
+                    videoId = syncSong.id,
+                    title = syncSong.title,
+                    channelTitle = syncSong.artist,
+                    thumbnailUrl = syncSong.artwork,
+                    audioUrl = syncSong.audioUrl.ifBlank { null }
+                )
+            }.toMutableList()
+            if (currentRemoteSongs.none { it.videoId == song.videoId }) {
+                currentRemoteSongs.add(song)
+                isaiConnectManager.updatePlaybackState(queue = currentRemoteSongs)
+            }
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                android.widget.Toast.makeText(getApplication(), "Added to Remote Queue 📱", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        } else {
+            if (ytPlayerController.currentSong.value == null) {
+                playSong(song, listOf(song))
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    android.widget.Toast.makeText(getApplication(), "Playing ${song.title.take(20)}... 🎵", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                val currentQueue = ytPlayerController.playbackQueue.value
+                val isAlreadyInQueue = currentQueue.any { it.videoId == song.videoId }
+                ytPlayerController.addToQueue(song)
+                isaiConnectManager.updatePlaybackState(
+                    currentDeviceId = isaiConnectManager.deviceId,
+                    queue = ytPlayerController.playbackQueue.value,
+                    queueIndex = ytPlayerController.currentQueueIndex.value
+                )
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    if (isAlreadyInQueue) {
+                        android.widget.Toast.makeText(getApplication(), "Song already in queue ℹ️", android.widget.Toast.LENGTH_SHORT).show()
+                    } else {
+                        android.widget.Toast.makeText(getApplication(), "Added to queue 🎵", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
         }
     }
 
     fun playNextInQueue(song: YouTubeSong) {
-        ytPlayerController.playNextInQueue(song)
-        if (isaiConnectManager.isMyDeviceActive()) {
-            isaiConnectManager.updatePlaybackState(
-                queue = ytPlayerController.playbackQueue.value,
-                queueIndex = ytPlayerController.currentQueueIndex.value
+        val remoteState = isaiConnectManager.playbackState.value
+        val isRemoteActive = remoteState != null &&
+                remoteState.currentDeviceId.isNotBlank() &&
+                remoteState.currentDeviceId != isaiConnectManager.deviceId &&
+                remoteState.currentTitle.isNotBlank() &&
+                (remoteState.isPlaying || Math.abs(System.currentTimeMillis() - remoteState.updatedAt) < 15 * 60_000L)
+
+        if (remoteState != null && isRemoteActive) {
+            isaiConnectManager.sendCommand(
+                action = "PLAY_NEXT_IN_QUEUE",
+                song = song,
+                targetDeviceId = remoteState.currentDeviceId
             )
+            val currentRemoteSongs = remoteState.queue.map { syncSong ->
+                YouTubeSong(
+                    videoId = syncSong.id,
+                    title = syncSong.title,
+                    channelTitle = syncSong.artist,
+                    thumbnailUrl = syncSong.artwork,
+                    audioUrl = syncSong.audioUrl.ifBlank { null }
+                )
+            }.toMutableList()
+            currentRemoteSongs.removeAll { it.videoId == song.videoId }
+            val insertPos = (remoteState.queueIndex + 1).coerceAtMost(currentRemoteSongs.size)
+            currentRemoteSongs.add(insertPos, song)
+            isaiConnectManager.updatePlaybackState(queue = currentRemoteSongs)
+        } else {
+            if (ytPlayerController.currentSong.value == null) {
+                playSong(song, listOf(song))
+            } else {
+                ytPlayerController.playNextInQueue(song)
+                isaiConnectManager.updatePlaybackState(
+                    currentDeviceId = isaiConnectManager.deviceId,
+                    queue = ytPlayerController.playbackQueue.value,
+                    queueIndex = ytPlayerController.currentQueueIndex.value
+                )
+            }
+        }
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            android.widget.Toast.makeText(getApplication(), "Playing next in queue ⏭️", android.widget.Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -921,18 +1167,40 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 if (remainingInQueue <= 4 && song != null) {
                     val activeLangs = _preferredLanguages.value.ifEmpty { listOf("tamil") }
                     val primaryLang = activeLangs.first()
-                    val candidateSongs = if (_suggestions.value.isNotEmpty()) {
-                        _suggestions.value
-                    } else {
-                        val query = com.saavn.music.util.RelevanceEngine.getRelevantSearchQuery(song, primaryLang)
-                        val searchHits = musicRepo.search(query).getOrNull()?.map { it.toYouTubeSong() } ?: emptyList()
-                        com.saavn.music.util.RelevanceEngine.buildRelevantQueue(song, searchHits, activeLangs, 20).filter { it.videoId != song.videoId }
+
+                    val query = com.saavn.music.util.RelevanceEngine.getRelevantSearchQuery(song, primaryLang)
+                    val primaryArtist = com.saavn.music.util.RelevanceEngine.extractPrimaryArtist(song.channelTitle)
+                    val artistQuery = if (primaryArtist.isNotBlank()) "$primaryArtist $primaryLang hit songs" else "$primaryLang top trending songs"
+
+                    val searchHits = async {
+                        musicRepo.search(query).getOrNull()?.map { it.toYouTubeSong() } ?: emptyList()
                     }
-                    val newSongs = candidateSongs.filter { c -> currentQueue.none { it.videoId == c.videoId } }
+                    val artistHits = async {
+                        musicRepo.search(artistQuery).getOrNull()?.map { it.toYouTubeSong() } ?: emptyList()
+                    }
+                    val combinedHits = (searchHits.await() + artistHits.await())
+
+                    val existingVideoIds = currentQueue.map { it.videoId }.toSet()
+                    val existingNormTitles = currentQueue.map { 
+                        it.title.lowercase().filter { ch: Char -> ch.isLetterOrDigit() }.take(15) 
+                    }.toSet()
+
+                    val newSongs = mutableListOf<YouTubeSong>()
+                    val seenInBatch = mutableSetOf<String>()
+
+                    for (candidate in combinedHits) {
+                        if (candidate.videoId == song.videoId) continue
+                        if (existingVideoIds.contains(candidate.videoId)) continue
+                        val norm = candidate.title.lowercase().filter { ch: Char -> ch.isLetterOrDigit() }.take(15)
+                        if (existingNormTitles.contains(norm) || seenInBatch.contains(norm)) continue
+                        seenInBatch.add(norm)
+                        newSongs.add(candidate)
+                        if (newSongs.size >= 8) break
+                    }
 
                     if (newSongs.isNotEmpty()) {
                         android.util.Log.i("ISAI_PLAYER", "[MainViewModel] Appending ${newSongs.size} candidate songs to endless queue")
-                        ytPlayerController.appendQueue(newSongs.take(8))
+                        ytPlayerController.appendQueue(newSongs)
                         if (isaiConnectManager.isMyDeviceActive()) {
                             isaiConnectManager.updatePlaybackState(
                                 queue = ytPlayerController.playbackQueue.value,
@@ -1065,6 +1333,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun toggleFavorite(song: YouTubeSong) {
         localStorage.toggleFavorite(song)
+        isaiConnectManager.syncFavorites(localStorage.favorites.value)
     }
 
     fun createPlaylist(name: String) {
@@ -1146,6 +1415,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 )
             )
         }
+        isaiConnectManager.syncPreferences(languages)
         loadHomeData()
     }
 
@@ -1157,6 +1427,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             openLanguageDialog()
         } else {
             _preferredLanguages.value = withLogin.preferredLanguages
+            isaiConnectManager.syncPreferences(withLogin.preferredLanguages)
             loadHomeData()
         }
     }

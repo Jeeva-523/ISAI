@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useMemo } from 'react'
 
 import { musicApi } from '@shared/api/music-api'
 import { storageService } from '@shared/services/storageService'
 import type { Song, UserPlaylist } from '@shared/models/song'
+import { cleanHtmlTitle, isSameSongOrDuplicate, deduplicateSongs } from '@shared/utils/formatters'
 
 import { WebPlayer } from './components/WebPlayer'
+import { logoutFirebaseUser } from './firebase'
 import { type UserProfile } from './components/LoginModal'
 import { MainLayout, type PageTab } from './layouts/MainLayout'
 import { HomePage } from './pages/HomePage'
@@ -131,6 +133,7 @@ export function App() {
     subtitle: string
     songs: Song[]
     coverUrl?: string
+    gradient?: string
   } | null>(null)
 
   // Modals & Toast State
@@ -158,6 +161,11 @@ export function App() {
     }
   }, [])
 
+  // Ref to handlePlaySong to avoid circular useEffect dependencies
+  const handlePlaySongRef = useRef<(song: Song, queue?: Song[], forceLocal?: boolean) => Promise<void>>()
+  const playbackQueueRef = useRef<Song[]>([])
+  playbackQueueRef.current = playbackQueue
+
   // Initialize ISAI Connect service
   useEffect(() => {
     const activeUserId = user.email || 'user_jeeva_default'
@@ -169,23 +177,183 @@ export function App() {
 
     const unsubState = IsaiConnectService.subscribePlaybackState((state) => {
       setRemotePlaybackState(state)
+      // When another device transfers playback to this Web instance
+      if (state && state.currentDeviceId === myDeviceId && state.updatedByDeviceId && state.updatedByDeviceId !== myDeviceId) {
+        if (state.currentTitle) {
+          const targetSong: Song = {
+            videoId: state.currentSongId || `transfer_${Date.now()}`,
+            title: state.currentTitle,
+            channelTitle: state.currentArtist || 'Artist',
+            thumbnailUrl: state.currentArtwork || '',
+            audioUrl: state.currentAudioUrl || '',
+            durationFormatted: '3:30',
+            durationMs: state.durationMs || 210000,
+            viewCountFormatted: ''
+          }
+          const currentQ = playbackQueueRef.current || []
+          const queueToUse = currentQ.length > 0 ? currentQ : [targetSong]
+          handlePlaySongRef.current?.(targetSong, queueToUse, true)
+        }
+      }
+    })
+
+    const unsubPrefs = IsaiConnectService.subscribePreferences((prefs) => {
+      if (prefs.preferredLanguages && prefs.preferredLanguages.length > 0) {
+        setUser((prev) => {
+          const updated = { ...prev, preferredLanguages: prefs.preferredLanguages }
+          storageService.setUserProfile(updated)
+          return updated
+        })
+        loadTrending(prefs.preferredLanguages)
+      }
+    })
+
+    const unsubCmd = IsaiConnectService.subscribeCommands((cmd) => {
+      if (cmd.issuedByDeviceId === myDeviceId) return
+      const isTargetedToMe = !cmd.targetDeviceId ||
+        cmd.targetDeviceId === myDeviceId ||
+        cmd.targetDeviceId.includes('web') ||
+        (!remotePlaybackState?.currentDeviceId || remotePlaybackState?.currentDeviceId === myDeviceId)
+      if (!isTargetedToMe) return
+
+      if (cmd.action === 'PLAY_SONG') {
+        const s = (cmd.song || {}) as any
+        const songId = s.videoId || s.id || cmd.songId
+        const songTitle = s.title || cmd.songTitle
+        if (songId || songTitle) {
+          const currentQ = playbackQueueRef.current || []
+          const existingSong = currentQ.find(
+            item => (songId && item.videoId === songId) || (songTitle && isSameSongOrDuplicate(item, { title: songTitle, videoId: songId }))
+          )
+
+          const targetSong: Song = {
+            videoId: songId || existingSong?.videoId || `remote_${Date.now()}`,
+            title: songTitle || existingSong?.title || 'ISAI Track',
+            channelTitle: s.channelTitle || s.artist || cmd.songArtist || existingSong?.channelTitle || 'ISAI Artist',
+            thumbnailUrl: s.thumbnailUrl || s.artwork || cmd.songArtwork || existingSong?.thumbnailUrl || '',
+            audioUrl: s.audioUrl || cmd.songAudioUrl || existingSong?.audioUrl || '',
+            durationFormatted: s.durationFormatted || existingSong?.durationFormatted || '3:30',
+            durationMs: s.durationMs || existingSong?.durationMs || 210000,
+            viewCountFormatted: ''
+          }
+          const queueToUse = currentQ.length > 0 ? currentQ : [targetSong]
+          handlePlaySongRef.current?.(targetSong, queueToUse, true)
+        }
+      } else if (cmd.action === 'ADD_TO_QUEUE') {
+        const targetSong: Song | null = cmd.song ? cmd.song : (cmd.songId ? {
+          videoId: cmd.songId,
+          title: cmd.songTitle || 'ISAI Track',
+          channelTitle: cmd.songArtist || 'ISAI Artist',
+          thumbnailUrl: cmd.songArtwork || '',
+          audioUrl: cmd.songAudioUrl || '',
+          durationFormatted: '3:30',
+          durationMs: 210000,
+          viewCountFormatted: ''
+        } : null)
+
+        if (targetSong) {
+          setPlaybackQueue(prev => {
+            if (prev.some(s => s.videoId === targetSong.videoId)) return prev
+            const updated = [...prev, targetSong]
+            IsaiConnectService.updatePlaybackState({
+              queue: updated.map(item => ({
+                id: item.videoId,
+                title: item.title,
+                artist: item.channelTitle,
+                artwork: item.thumbnailUrl
+              }))
+            })
+            return updated
+          })
+          showToast(`Added "${targetSong.title.slice(0, 20)}..." to Queue 🎵`)
+        }
+      } else if (cmd.action === 'PLAY_NEXT_IN_QUEUE') {
+        const s = cmd.song as any
+        const targetSong: Song | null = s ? {
+          videoId: s.videoId || s.id || cmd.songId || `remote_${Date.now()}`,
+          title: s.title || cmd.songTitle || 'ISAI Track',
+          channelTitle: s.channelTitle || s.artist || cmd.songArtist || 'ISAI Artist',
+          thumbnailUrl: s.thumbnailUrl || s.artwork || cmd.songArtwork || '',
+          audioUrl: s.audioUrl || cmd.songAudioUrl || '',
+          durationFormatted: s.durationFormatted || '3:30',
+          durationMs: s.durationMs || 210000,
+          viewCountFormatted: ''
+        } : (cmd.songId ? {
+          videoId: cmd.songId,
+          title: cmd.songTitle || 'ISAI Track',
+          channelTitle: cmd.songArtist || 'ISAI Artist',
+          thumbnailUrl: cmd.songArtwork || '',
+          audioUrl: cmd.songAudioUrl || '',
+          durationFormatted: '3:30',
+          durationMs: 210000,
+          viewCountFormatted: ''
+        } : null)
+
+        if (targetSong) {
+          setPlaybackQueue(prev => {
+            const filtered = prev.filter(item => item.videoId !== targetSong.videoId)
+            const curIdx = currentPlayingSong ? filtered.findIndex(item => item.videoId === currentPlayingSong.videoId) : -1
+            const insertIdx = curIdx >= 0 ? curIdx + 1 : (currentQueueIndex >= 0 ? currentQueueIndex + 1 : 0)
+            const updated = [...filtered]
+            updated.splice(insertIdx, 0, targetSong)
+
+            IsaiConnectService.updatePlaybackState({
+              queue: updated.map(item => ({
+                id: item.videoId,
+                title: item.title,
+                artist: item.channelTitle,
+                artwork: item.thumbnailUrl
+              }))
+            })
+            return updated
+          })
+          showToast(`Mobile added "${targetSong.title.slice(0, 20)}..." to Play Next ⏭️`)
+        }
+      }
+    })
+
+    const unsubHome = IsaiConnectService.subscribeHomeSongs((syncedSongs) => {
+      if (syncedSongs && syncedSongs.length > 0) {
+        console.log('[App] Received synced home songs from mobile account:', syncedSongs.length)
+        setTrendingSongs(syncedSongs)
+      }
+    })
+
+    const unsubFavs = IsaiConnectService.subscribeFavorites((syncedFavs) => {
+      if (syncedFavs && syncedFavs.length > 0) {
+        setFavorites(prev => {
+          const remoteIds = new Set(syncedFavs.map(s => s.videoId))
+          const localOnly = prev.filter(s => !remoteIds.has(s.videoId))
+          const merged = [...syncedFavs, ...localOnly]
+          storageService.setFavorites(merged)
+          return merged
+        })
+      }
     })
 
     return () => {
       unsubDevices()
       unsubState()
+      unsubPrefs()
+      unsubCmd()
+      unsubHome()
+      unsubFavs()
     }
   }, [user.email])
 
   // Load trending music
-  const loadTrending = async () => {
+  const loadTrending = async (languages?: string[]) => {
     setIsTrendingLoading(true)
     setTrendingError(null)
 
     try {
-      const data = await musicApi.getTrending()
+      const activeLangs = (languages && languages.length > 0)
+        ? languages
+        : (user.preferredLanguages && user.preferredLanguages.length > 0 ? user.preferredLanguages : ['tamil'])
+      const data = await musicApi.getTrending(activeLangs)
       if (data && data.length > 0) {
         setTrendingSongs(data)
+        IsaiConnectService.syncHomeSongs(data)
       } else {
         setTrendingSongs(INITIAL_CURATED_SONGS)
       }
@@ -198,8 +366,8 @@ export function App() {
   }
 
   useEffect(() => {
-    loadTrending()
-  }, [])
+    loadTrending(user.preferredLanguages)
+  }, [user.email])
 
   // User Authentication handlers
   const handleUpdateProfile = (userData: Partial<UserProfile>) => {
@@ -211,6 +379,10 @@ export function App() {
     }
     setUser(updatedUser)
     storageService.setUserProfile(updatedUser)
+    if (updatedUser.preferredLanguages) {
+      IsaiConnectService.syncPreferences({ preferredLanguages: updatedUser.preferredLanguages })
+      loadTrending(updatedUser.preferredLanguages)
+    }
     showToast('Profile updated successfully!')
   }
 
@@ -220,25 +392,170 @@ export function App() {
       name: newUser.name || user.name || 'JEEVA ⚡',
       email: newUser.email || user.email || 'kongujeeva523@gmail.com',
       avatar: newUser.avatar || (newUser.name ? newUser.name.charAt(0).toUpperCase() : 'J'),
-      isPremium: true
+      isPremium: true,
+      preferredLanguages: newUser.preferredLanguages || user.preferredLanguages || ['tamil']
     }
     setUser(updatedUser)
     storageService.setUserProfile(updatedUser)
+    if (updatedUser.preferredLanguages) {
+      IsaiConnectService.syncPreferences({ preferredLanguages: updatedUser.preferredLanguages })
+    }
+    loadTrending(updatedUser.preferredLanguages)
     showToast(`Welcome back, ${updatedUser.name}!`)
   }
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await logoutFirebaseUser()
+    } catch (err) {
+      console.warn('Firebase logout notice:', err)
+    }
     const defaultUser: UserProfile = {
       isLoggedIn: false,
-      name: 'JEEVA ⚡',
-      email: 'kongujeeva523@gmail.com',
-      avatar: 'J',
-      isPremium: true
+      name: 'Guest Listener',
+      email: '',
+      avatar: 'G',
+      isPremium: false
     }
     setUser(defaultUser)
     storageService.setUserProfile(defaultUser)
     showToast('Signed out successfully', 'info')
+    setCurrentTab('login')
   }
+
+  // Extract clean primary artist name for search queries
+  const extractCleanArtist = (channelOrArtist?: string): string => {
+    if (!channelOrArtist) return ''
+    const cleaned = channelOrArtist
+      .replace(/ - Topic|VEVO|Official|Channel|Sun TV|Sony Music South|Think Music India|Wunderbar Films|Saregama/gi, '')
+      .trim()
+    const lower = cleaned.toLowerCase()
+    if (lower.includes('anirudh')) return 'Anirudh Ravichander'
+    if (lower.includes('rahman') || lower.includes('arr')) return 'A.R. Rahman'
+    if (lower.includes('yuvan') || lower.includes('u1')) return 'Yuvan Shankar Raja'
+    if (lower.includes('harris')) return 'Harris Jayaraj'
+    if (lower.includes('santhosh') || lower.includes('sana')) return 'Santhosh Narayanan'
+    if (lower.includes('g v') || lower.includes('gv prakash')) return 'G.V. Prakash'
+    if (lower.includes('ilayaraja') || lower.includes('ilaiyaraaja')) return 'Ilaiyaraaja'
+    if (lower.includes('sid sriram')) return 'Sid Sriram'
+    if (lower.includes('deva')) return 'Deva'
+    if (lower.includes('hiphop tamizha')) return 'Hiphop Tamizha'
+    return cleaned.split(/[•,&|-]/)[0]?.trim() || ''
+  }
+
+  // Auto-replenish queue based on currently playing song and login language preferences
+  const isFetchingQueueRef = useRef(false)
+  const ensureEndlessQueue = async (seedSong: Song, currentQueue: Song[], currentIndex: number) => {
+    if (isFetchingQueueRef.current) return
+    const remaining = currentQueue.length - 1 - currentIndex
+    if (remaining > 4) return
+
+    isFetchingQueueRef.current = true
+    try {
+      const primaryLang = (user.preferredLanguages && user.preferredLanguages[0])
+        ? user.preferredLanguages[0].toLowerCase()
+        : 'tamil'
+      const artist = extractCleanArtist(seedSong.channelTitle)
+
+      const queries = [
+        artist ? `${artist} ${primaryLang} hit songs` : `${primaryLang} top trending hit songs`,
+        `${primaryLang} top trending melody kuthu hits`
+      ]
+
+      const fetchedResults = await Promise.all(
+        queries.map(q => musicApi.searchSongs(q).catch(() => []))
+      )
+      const combined = fetchedResults.flat()
+
+      const existingIds = new Set(currentQueue.map(s => s.videoId))
+
+      const newSongs: Song[] = []
+      for (const s of combined) {
+        if (!s || !s.videoId || existingIds.has(s.videoId)) continue
+        if (isSameSongOrDuplicate(seedSong, s)) continue
+        if (currentQueue.some(item => isSameSongOrDuplicate(item, s))) continue
+
+        existingIds.add(s.videoId)
+        newSongs.push(s)
+        if (newSongs.length >= 10) break
+      }
+
+      if (newSongs.length > 0) {
+        setPlaybackQueue(prevQueue => {
+          const prevIds = new Set(prevQueue.map(item => item.videoId))
+          const toAdd = newSongs.filter(item => !prevIds.has(item.videoId) && !isSameSongOrDuplicate(seedSong, item))
+          if (toAdd.length === 0) return prevQueue
+          const updated = deduplicateSongs([...prevQueue, ...toAdd])
+          IsaiConnectService.updatePlaybackState({
+            queue: updated.map(item => ({
+              id: item.videoId,
+              title: item.title,
+              artist: item.channelTitle,
+              artwork: item.thumbnailUrl,
+              audioUrl: item.audioUrl || ''
+            }))
+          })
+          return updated
+        })
+      }
+    } catch (err) {
+      console.warn('[App] ensureEndlessQueue error:', err)
+    } finally {
+      isFetchingQueueRef.current = false
+    }
+  }
+
+  // Spotify-style Daily Mixes computed from trending songs and user's preferred languages
+  const spotifyDailyMixes = useMemo(() => {
+    const primaryLang = (user.preferredLanguages && user.preferredLanguages[0])
+      ? user.preferredLanguages[0].toUpperCase()
+      : 'TAMIL'
+
+    const anirudhSongs = trendingSongs.filter(s =>
+      s.title?.toLowerCase().includes('anirudh') || s.channelTitle?.toLowerCase().includes('anirudh')
+    )
+    const arrSongs = trendingSongs.filter(s =>
+      s.title?.toLowerCase().includes('rahman') || s.channelTitle?.toLowerCase().includes('rahman') || s.channelTitle?.toLowerCase().includes('arr')
+    )
+    const yuvanSongs = trendingSongs.filter(s =>
+      s.title?.toLowerCase().includes('yuvan') || s.channelTitle?.toLowerCase().includes('yuvan') || s.channelTitle?.toLowerCase().includes('u1')
+    )
+
+    return [
+      {
+        id: 'daily_mix_1',
+        title: 'Daily Mix 1 • Anirudh Hits',
+        subtitle: 'Anirudh, Dhanush, Vijay & club chartbusters',
+        gradient: 'linear-gradient(135deg, #1DB954 0%, #121212 100%)',
+        coverUrl: anirudhSongs[0]?.thumbnailUrl || 'https://c.saavncdn.com/187/Jailer-Tamil-2023-20230728081443-500x500.jpg',
+        songs: anirudhSongs.length > 0 ? anirudhSongs : trendingSongs.slice(0, 8)
+      },
+      {
+        id: 'daily_mix_2',
+        title: 'Daily Mix 2 • A.R. Rahman Soul',
+        subtitle: 'A.R. Rahman, Bombay Jayashri & timeless melodies',
+        gradient: 'linear-gradient(135deg, #7C3AED 0%, #0F0C20 100%)',
+        coverUrl: arrSongs[0]?.thumbnailUrl || 'https://c.saavncdn.com/420/Vendhu-Thanindhathu-Kaadu-Original-Motion-Picture-Soundtrack-Tamil-2022-20250905072731-500x500.jpg',
+        songs: arrSongs.length > 0 ? arrSongs : trendingSongs.slice(1, 9)
+      },
+      {
+        id: 'daily_mix_3',
+        title: 'Daily Mix 3 • Yuvan Drug Melodies',
+        subtitle: 'Yuvan Shankar Raja, Harris & night drives',
+        gradient: 'linear-gradient(135deg, #2563EB 0%, #080D1A 100%)',
+        coverUrl: yuvanSongs[0]?.thumbnailUrl || 'https://c.saavncdn.com/276/Maari-2-Tamil-2018-20260203193952-500x500.jpg',
+        songs: yuvanSongs.length > 0 ? yuvanSongs : trendingSongs.slice(2, 10)
+      },
+      {
+        id: 'daily_mix_4',
+        title: `Top 50 • ${primaryLang}`,
+        subtitle: `The most played and trending hits in ${primaryLang}`,
+        gradient: 'linear-gradient(135deg, #E11D48 0%, #190A12 100%)',
+        coverUrl: trendingSongs[0]?.thumbnailUrl || 'https://c.saavncdn.com/510/Beast-Tamil-2022-20220504184736-500x500.jpg',
+        songs: trendingSongs
+      }
+    ]
+  }, [trendingSongs, user.preferredLanguages])
 
   // Playback control handlers
   const handlePlaySong = async (song: Song, queue: Song[] = [], forceLocal: boolean = false) => {
@@ -259,18 +576,32 @@ export function App() {
     }
 
     setCurrentPlayingSong(song)
+    let nextQueue = queue
+    let activeIdx = 0
     if (queue.length > 0) {
       setPlaybackQueue(queue)
       const idx = queue.findIndex((s) => s.videoId === song.videoId)
-      setCurrentQueueIndex(idx >= 0 ? idx : 0)
+      activeIdx = idx >= 0 ? idx : 0
+      setCurrentQueueIndex(activeIdx)
     } else {
+      nextQueue = [song]
       setPlaybackQueue([song])
       setCurrentQueueIndex(0)
     }
 
+    // Auto replenish queue endlessly
+    ensureEndlessQueue(song, nextQueue, activeIdx)
+
     if (!song.audioUrl) {
       try {
-        const results = await musicApi.searchSongs(song.title)
+        const cleanTitle = cleanHtmlTitle(song.title)
+          .replace(/\s*[\|\-\–\—].*$/, '')
+          .replace(/\s*\(.*?(official|video|audio|lyrics|hd|4k|song).*?\)/gi, '')
+          .replace(/\s*\[.*?(official|video|audio|lyrics|hd|4k|song).*?\]/gi, '')
+          .replace(/\.{2,}$/, '')
+          .trim()
+
+        const results = await musicApi.searchSongs(cleanTitle || song.title)
         if (results && results.length > 0 && results[0].audioUrl) {
           const resolvedUrl = results[0].audioUrl
           const updated = { ...song, audioUrl: resolvedUrl }
@@ -280,6 +611,33 @@ export function App() {
         console.warn('[App] AudioUrl resolution error:', e)
       }
     }
+  }
+  handlePlaySongRef.current = handlePlaySong
+
+  // Handle playing song selected from search results:
+  // Starts playback of this song and builds a context-aware radio queue (artist matches + trending)
+  // instead of filling the queue with repetitive search variations of the same name.
+  const handlePlaySongFromSearch = (song: Song) => {
+    const pool = trendingSongs.length > 0 ? trendingSongs : INITIAL_CURATED_SONGS
+    const artistMatches: Song[] = []
+    const otherSongs: Song[] = []
+
+    const seedArtist = extractCleanArtist(song.channelTitle)
+
+    for (const cand of pool) {
+      if (isSameSongOrDuplicate(song, cand)) continue
+      const candArtist = extractCleanArtist(cand.channelTitle)
+      if (seedArtist && candArtist && (candArtist.includes(seedArtist) || seedArtist.includes(candArtist))) {
+        artistMatches.push(cand)
+      } else {
+        otherSongs.push(cand)
+      }
+    }
+
+    const candidatePool = [song, ...artistMatches, ...otherSongs]
+    const radioQueue = deduplicateSongs(candidatePool)
+
+    handlePlaySong(song, radioQueue)
   }
 
   const handleNextSong = async () => {
@@ -295,17 +653,18 @@ export function App() {
     }
 
     if (!currentPlayingSong) return
-    if (playbackQueue.length > 0 && currentQueueIndex >= 0 && currentQueueIndex < playbackQueue.length - 1) {
-      const nextIdx = currentQueueIndex + 1
-      setCurrentQueueIndex(nextIdx)
-      setCurrentPlayingSong(playbackQueue[nextIdx])
-      return
+    const activeQueue = playbackQueue.length > 0 ? playbackQueue : (trendingSongs.length > 0 ? trendingSongs : INITIAL_CURATED_SONGS)
+    let curIdx = activeQueue.findIndex((s) => s.videoId === currentPlayingSong.videoId)
+    if (curIdx === -1) curIdx = currentQueueIndex
+
+    let nextIdx = curIdx + 1
+    if (nextIdx >= activeQueue.length) {
+      nextIdx = 0
     }
 
-    if (trendingSongs.length > 0) {
-      const curIdx = trendingSongs.findIndex((s) => s.videoId === currentPlayingSong.videoId)
-      const nextIdx = (curIdx + 1) % trendingSongs.length
-      setCurrentPlayingSong(trendingSongs[nextIdx])
+    const nextSong = activeQueue[nextIdx]
+    if (nextSong) {
+      handlePlaySong(nextSong, activeQueue, true)
     }
   }
 
@@ -321,11 +680,113 @@ export function App() {
       return
     }
 
-    if (playbackQueue.length > 0 && currentQueueIndex > 0) {
-      const prevIdx = currentQueueIndex - 1
-      setCurrentQueueIndex(prevIdx)
-      setCurrentPlayingSong(playbackQueue[prevIdx])
+    if (!currentPlayingSong) return
+    const activeQueue = playbackQueue.length > 0 ? playbackQueue : (trendingSongs.length > 0 ? trendingSongs : INITIAL_CURATED_SONGS)
+    let curIdx = activeQueue.findIndex((s) => s.videoId === currentPlayingSong.videoId)
+    if (curIdx === -1) curIdx = currentQueueIndex
+
+    const prevIdx = curIdx > 0 ? curIdx - 1 : activeQueue.length - 1
+    const prevSong = activeQueue[prevIdx]
+    if (prevSong) {
+      handlePlaySong(prevSong, activeQueue, true)
     }
+  }
+
+  // Add to Queue Handler
+  const handleAddToQueue = (song: Song) => {
+    const isRemoteActive = Boolean(
+      remotePlaybackState &&
+      remotePlaybackState.currentDeviceId &&
+      remotePlaybackState.currentDeviceId !== myDeviceId &&
+      remotePlaybackState.currentTitle
+    )
+
+    if (isRemoteActive) {
+      IsaiConnectService.sendCommand('ADD_TO_QUEUE', {
+        songId: song.videoId,
+        songTitle: song.title,
+        songArtist: song.channelTitle,
+        songArtwork: song.thumbnailUrl,
+        songAudioUrl: song.audioUrl,
+        song
+      })
+      showToast(`Added to Mobile Queue 📱`)
+      return
+    }
+
+    if (!currentPlayingSong) {
+      handlePlaySong(song, [song])
+      showToast(`Playing "${song.title.slice(0, 25)}..." 🎵`)
+      return
+    }
+
+    setPlaybackQueue((prev) => {
+      if (prev.some((s) => s.videoId === song.videoId)) {
+        showToast('Song already in queue ℹ️', 'info')
+        return prev
+      }
+      const updated = [...prev, song]
+      IsaiConnectService.updatePlaybackState({
+        queue: updated.map(item => ({
+          id: item.videoId,
+          title: item.title,
+          artist: item.channelTitle,
+          artwork: item.thumbnailUrl,
+          audioUrl: item.audioUrl || ''
+        }))
+      })
+      showToast(`Added to Queue 🎵`)
+      return updated
+    })
+  }
+
+  // Play Next in Queue Handler
+  const handlePlayNext = (song: Song) => {
+    const isRemoteActive = Boolean(
+      remotePlaybackState &&
+      remotePlaybackState.currentDeviceId &&
+      remotePlaybackState.currentDeviceId !== myDeviceId &&
+      remotePlaybackState.currentTitle
+    )
+
+    if (isRemoteActive) {
+      IsaiConnectService.sendCommand('PLAY_NEXT_IN_QUEUE', {
+        songId: song.videoId,
+        songTitle: song.title,
+        songArtist: song.channelTitle,
+        songArtwork: song.thumbnailUrl,
+        songAudioUrl: song.audioUrl,
+        song
+      })
+      showToast(`Will play next on Mobile 📱`)
+      return
+    }
+
+    if (!currentPlayingSong) {
+      handlePlaySong(song, [song])
+      showToast(`Playing "${song.title.slice(0, 25)}..." 🎵`)
+      return
+    }
+
+    setPlaybackQueue((prev) => {
+      const filtered = prev.filter((s) => s.videoId !== song.videoId)
+      const curIdx = filtered.findIndex((s) => s.videoId === currentPlayingSong.videoId)
+      const insertIdx = curIdx >= 0 ? curIdx + 1 : (currentQueueIndex >= 0 ? currentQueueIndex + 1 : 0)
+      const updated = [...filtered]
+      updated.splice(insertIdx, 0, song)
+
+      IsaiConnectService.updatePlaybackState({
+        queue: updated.map(item => ({
+          id: item.videoId,
+          title: item.title,
+          artist: item.channelTitle,
+          artwork: item.thumbnailUrl,
+          audioUrl: item.audioUrl || ''
+        }))
+      })
+      showToast(`Will play next: "${song.title.slice(0, 25)}..." ⏭️`)
+      return updated
+    })
   }
 
   // Search handler
@@ -367,8 +828,9 @@ export function App() {
     storageService.toggleFavorite(song)
     const updated = storageService.getFavorites()
     setFavorites(updated)
-    const isFav = updated.some(s => s.videoId === song.videoId)
-    showToast(isFav ? 'Added to Liked Songs 💖' : 'Removed from Liked Songs', 'info')
+    IsaiConnectService.syncFavorites(updated)
+    const isFav = updated.some((s) => s.videoId === song.videoId)
+    showToast(isFav ? `Added "${song.title.slice(0, 20)}..." to Favorites ❤️` : `Removed from Favorites 💔`, 'info')
   }
 
   const isFavorite = (videoId: string) => {
@@ -398,8 +860,8 @@ export function App() {
     setCurrentTab('artist-detail')
   }
 
-  const handleSelectPlaylistDetail = (title: string, subtitle: string, songs: Song[], coverUrl?: string) => {
-    setSelectedPlaylistDetail({ title, subtitle, songs, coverUrl })
+  const handleSelectPlaylistDetail = (title: string, subtitle: string, songs: Song[], coverUrl?: string, gradient?: string) => {
+    setSelectedPlaylistDetail({ title, subtitle, songs, coverUrl, gradient })
     setCurrentTab('playlist-detail')
   }
 
@@ -428,6 +890,7 @@ export function App() {
       }}
       onSelectPlaylist={(pl) => handleSelectPlaylistDetail(pl.name, 'Custom Playlist', pl.songs || [])}
       hasPlayer={Boolean(currentPlayingSong)}
+      isLoggedIn={user.isLoggedIn}
     >
       {/* 1. Home View */}
       {currentTab === 'home' && (
@@ -439,11 +902,15 @@ export function App() {
           onRetry={loadTrending}
           isFavorite={isFavorite}
           onToggleFavorite={handleToggleFavorite}
-          onPlaySong={(song) => handlePlaySong(song, trendingSongs)}
+          onPlaySong={(song, queue) => handlePlaySong(song, queue || trendingSongs)}
           onAddToPlaylist={handleOpenAddToPlaylistModal}
+          onAddToQueue={handleAddToQueue}
+          onPlayNext={handlePlayNext}
           onSelectArtist={handleSelectArtist}
           currentSong={currentPlayingSong}
           isPlaying={!!currentPlayingSong}
+          dailyMixes={spotifyDailyMixes}
+          onSelectPlaylistDetail={handleSelectPlaylistDetail}
         />
       )}
 
@@ -457,8 +924,10 @@ export function App() {
           isSearching={isSearching}
           isFavorite={isFavorite}
           onToggleFavorite={handleToggleFavorite}
-          onPlaySong={(song) => handlePlaySong(song, searchResults)}
+          onPlaySong={(song) => handlePlaySongFromSearch(song)}
           onAddToPlaylist={handleOpenAddToPlaylistModal}
+          onAddToQueue={handleAddToQueue}
+          onPlayNext={handlePlayNext}
           onSelectCategory={handleCategorySelect}
           onSelectArtist={handleSelectArtist}
           currentSong={currentPlayingSong}
@@ -477,6 +946,8 @@ export function App() {
           onToggleFavorite={handleToggleFavorite}
           onPlaySong={(song) => handlePlaySong(song, favorites)}
           onAddToPlaylist={handleOpenAddToPlaylistModal}
+          onAddToQueue={handleAddToQueue}
+          onPlayNext={handlePlayNext}
           onCreatePlaylist={() => {
             setSongToAddToPlaylist(null)
             setIsPlaylistModalOpen(true)
@@ -502,11 +973,12 @@ export function App() {
       {/* 5. Full Sign In & Register Page */}
       {currentTab === 'login' && (
         <LoginPage
+          allowBack={true}
           onLogin={(res) => {
             handleLogin(res)
-            setCurrentTab('profile')
+            setCurrentTab('home')
           }}
-          onNavigateBack={() => setCurrentTab('profile')}
+          onNavigateBack={() => setCurrentTab(user.isLoggedIn ? 'profile' : 'home')}
         />
       )}
 
@@ -521,6 +993,8 @@ export function App() {
           onToggleFavorite={handleToggleFavorite}
           onPlaySong={(song) => handlePlaySong(song, trendingSongs)}
           onAddToPlaylist={handleOpenAddToPlaylistModal}
+          onAddToQueue={handleAddToQueue}
+          onPlayNext={handlePlayNext}
           onBack={() => setCurrentTab('home')}
         />
       )}
@@ -532,13 +1006,17 @@ export function App() {
           subtitle={selectedPlaylistDetail.subtitle}
           songs={selectedPlaylistDetail.songs}
           coverUrl={selectedPlaylistDetail.coverUrl}
+          gradient={selectedPlaylistDetail.gradient}
           currentSong={currentPlayingSong}
           isPlaying={!!currentPlayingSong}
           isFavorite={isFavorite}
           onToggleFavorite={handleToggleFavorite}
-          onPlaySong={(song) => handlePlaySong(song, selectedPlaylistDetail.songs)}
+          onPlaySong={(song, queue) => handlePlaySong(song, queue || selectedPlaylistDetail.songs)}
           onAddToPlaylist={handleOpenAddToPlaylistModal}
+          onAddToQueue={handleAddToQueue}
+          onPlayNext={handlePlayNext}
           onBack={() => setCurrentTab('library')}
+          userPreferredLanguages={user.preferredLanguages}
         />
       )}
 
@@ -568,6 +1046,50 @@ export function App() {
         onPrevSong={handlePrevSong}
         queue={playbackQueue.length > 0 ? playbackQueue : trendingSongs}
         onSelectQueueItem={(s) => handlePlaySong(s, playbackQueue.length > 0 ? playbackQueue : trendingSongs)}
+        onReorderQueue={(newQueue) => {
+          setPlaybackQueue(newQueue)
+          IsaiConnectService.updatePlaybackState({
+            queue: newQueue.map(item => ({
+              id: item.videoId,
+              title: item.title,
+              artist: item.channelTitle,
+              artwork: item.thumbnailUrl,
+              audioUrl: item.audioUrl || ''
+            }))
+          })
+        }}
+        onRemoveQueueItem={(indexToRemove) => {
+          setPlaybackQueue((prev) => {
+            const updated = prev.filter((_, i) => i !== indexToRemove)
+            IsaiConnectService.updatePlaybackState({
+              queue: updated.map(item => ({
+                id: item.videoId,
+                title: item.title,
+                artist: item.channelTitle,
+                artwork: item.thumbnailUrl,
+                audioUrl: item.audioUrl || ''
+              }))
+            })
+            return updated
+          })
+        }}
+        onClearQueue={() => {
+          if (currentPlayingSong) {
+            setPlaybackQueue([currentPlayingSong])
+            IsaiConnectService.updatePlaybackState({
+              queue: [{
+                id: currentPlayingSong.videoId,
+                title: currentPlayingSong.title,
+                artist: currentPlayingSong.channelTitle,
+                artwork: currentPlayingSong.thumbnailUrl
+              }]
+            })
+          } else {
+            setPlaybackQueue([])
+            IsaiConnectService.updatePlaybackState({ queue: [] })
+          }
+          showToast('Queue cleared 🗑️')
+        }}
         userId={user.email || 'user_jeeva_default'}
         onTransferPlayback={(s) => handlePlaySong(s, [], true)}
       />

@@ -53,6 +53,7 @@ import com.saavn.music.R
 import com.saavn.music.data.model.YouTubeSong
 import com.saavn.music.ui.AppScreen
 import com.saavn.music.ui.MainViewModel
+import com.saavn.music.ui.SpotifyDailyMix
 import com.saavn.music.ui.theme.DarkBackground
 import com.saavn.music.ui.theme.DarkSurface
 import com.saavn.music.ui.theme.DarkSurfaceGlass
@@ -82,6 +83,7 @@ fun HomeScreen(
     val personalizedRecs by viewModel.personalizedRecommendations.collectAsState()
     val recommendedReason by viewModel.recommendedReason.collectAsState()
     val latestReleases by viewModel.latestReleases.collectAsState()
+    val dailyMixes by viewModel.spotifyDailyMixes.collectAsState()
 
     val categories = listOf(
         "Most Played", "Tamil Songs", "Melody", "Love Songs",
@@ -89,6 +91,16 @@ fun HomeScreen(
     )
 
     val heroIds = remember(trendingSongs) { trendingSongs.take(4).map { it.videoId }.toSet() }
+    val displayPersonalizedRecs = remember(personalizedRecs, heroIds) {
+        val filtered = personalizedRecs.filterNot { heroIds.contains(it.videoId) }
+        if (filtered.isNotEmpty()) filtered else personalizedRecs
+    }
+    val personalizedIds = remember(displayPersonalizedRecs) { displayPersonalizedRecs.map { it.videoId }.toSet() }
+    val displayNewReleases = remember(latestReleases, trendingSongs, heroIds, personalizedIds) {
+        val baseList = if (latestReleases.isNotEmpty()) latestReleases else trendingSongs.drop(4)
+        val filtered = baseList.filterNot { heroIds.contains(it.videoId) || personalizedIds.contains(it.videoId) }
+        if (filtered.isNotEmpty()) filtered.take(10) else baseList.take(10)
+    }
     val displayCategorySongs = remember(categorySongs, selectedCategory, heroIds) {
         if ((selectedCategory == "Most Played" || selectedCategory == "Trending") && heroIds.isNotEmpty()) {
             val filtered = categorySongs.filterNot { heroIds.contains(it.videoId) }
@@ -289,8 +301,54 @@ fun HomeScreen(
             }
         }
 
+        // 3.2 🎧 Made For You • Spotify Daily Mixes
+        if (dailyMixes.isNotEmpty()) {
+            item {
+                Spacer(modifier = Modifier.height(14.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "🎧 Made For You • Daily Mixes",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary
+                        )
+                        Text(
+                            text = "Spotify-style curated mixes based on your taste",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color(0xFF1DB954)
+                        )
+                    }
+                }
+
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    items(dailyMixes.size) { index ->
+                        val mix = dailyMixes[index]
+                        SpotifyMixCard(
+                            mix = mix,
+                            onClick = {
+                                if (mix.songs.isNotEmpty()) {
+                                    viewModel.playSong(mix.songs.first(), mix.songs)
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+        }
+
         // 3.5 ✨ Recommended For You (Personalized Suggestions Based on Listening History)
-        if (personalizedRecs.isNotEmpty()) {
+        if (displayPersonalizedRecs.isNotEmpty()) {
             item {
                 Spacer(modifier = Modifier.height(10.dp))
                 Row(
@@ -330,11 +388,11 @@ fun HomeScreen(
                     contentPadding = PaddingValues(horizontal = 20.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    items(personalizedRecs.size) { index ->
-                        val song = personalizedRecs[index]
+                    items(displayPersonalizedRecs.size) { index ->
+                        val song = displayPersonalizedRecs[index]
                         YouTubeQuickHitCard(
                             song = song,
-                            onClick = { viewModel.playSong(song, personalizedRecs) }
+                            onClick = { viewModel.playSong(song, displayPersonalizedRecs) }
                         )
                     }
                 }
@@ -440,7 +498,6 @@ fun HomeScreen(
         }
 
         // 4. Last 30 Days Popular New Releases
-        val displayNewReleases = if (latestReleases.isNotEmpty()) latestReleases else trendingSongs.drop(4).take(10)
         if (displayNewReleases.isNotEmpty()) {
             item {
                 Spacer(modifier = Modifier.height(24.dp))
@@ -788,6 +845,108 @@ fun YouTubeQuickHitCard(
             color = TextMuted,
             fontSize = 11.sp,
             maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+fun SpotifyMixCard(
+    mix: SpotifyDailyMix,
+    onClick: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .width(155.dp)
+            .clickable { onClick() }
+    ) {
+        Box(
+            modifier = Modifier
+                .size(155.dp)
+                .shadow(
+                    elevation = 12.dp,
+                    shape = RoundedCornerShape(16.dp),
+                    spotColor = Color(0xFF1DB954).copy(alpha = 0.35f)
+                )
+                .clip(RoundedCornerShape(16.dp))
+                .border(1.dp, GlassBorder, RoundedCornerShape(16.dp))
+        ) {
+            AsyncImage(
+                model = mix.coverUrl,
+                contentDescription = mix.title,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+
+            // Spotify-style gradient overlay
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color.Transparent,
+                                Color.Black.copy(alpha = 0.4f),
+                                Color.Black.copy(alpha = 0.85f)
+                            )
+                        )
+                    )
+            )
+
+            // Spotify Green Play Circle Badge at bottom right
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(10.dp)
+                    .size(38.dp)
+                    .shadow(8.dp, CircleShape, spotColor = Color(0xFF1DB954))
+                    .clip(CircleShape)
+                    .background(Color(0xFF1DB954)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.PlayArrow,
+                    contentDescription = "Play Mix",
+                    tint = Color.Black,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+
+            // Spotify Daily Mix tag at top left
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(8.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(Color(0xFF1DB954).copy(alpha = 0.9f))
+                    .padding(horizontal = 6.dp, vertical = 2.dp)
+            ) {
+                Text(
+                    text = "MIX",
+                    color = Color.Black,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.ExtraBold
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Text(
+            text = mix.title,
+            color = TextPrimary,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+
+        Text(
+            text = mix.subtitle,
+            color = TextSecondary,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Normal,
+            maxLines = 2,
             overflow = TextOverflow.Ellipsis
         )
     }

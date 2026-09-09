@@ -313,11 +313,16 @@ class YouTubePlayerController(
     }
 
     fun pause() {
-        Log.i("ISAI_PLAYER", "[YouTubePlayerController] pause() requested")
-        if (isUsingExoPlayer) {
+        Log.i("ISAI_PLAYER", "[YouTubePlayerController] pause() requested (isUsingExoPlayer=$isUsingExoPlayer)")
+        try {
             exoPlayer.pause()
-        } else {
+        } catch (e: Exception) {
+            Log.w("ISAI_PLAYER", "ExoPlayer pause warning: ${e.message}")
+        }
+        try {
             activeYouTubePlayer?.pause()
+        } catch (e: Exception) {
+            Log.w("ISAI_PLAYER", "activeYouTubePlayer pause warning: ${e.message}")
         }
         _isPlaying.value = false
         notifyService(false)

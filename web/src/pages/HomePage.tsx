@@ -7,7 +7,7 @@ import { GenreTile, type Genre } from '../components/GenreTile'
 import { SkeletonSongCard } from '../components/SkeletonLoader'
 import { ErrorBanner } from '../components/ErrorBanner'
 import { trendingService } from '../services/TrendingService'
-import { ChevronLeft, ChevronRight, Play, Sparkles, Flame, Radio } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Play, Sparkles, ListPlus, ListStart, Heart, Plus, ChevronDown } from 'lucide-react'
 
 interface HomePageProps {
   trendingSongs: Song[]
@@ -17,21 +17,34 @@ interface HomePageProps {
   onRetry: () => void
   isFavorite: (videoId: string) => boolean
   onToggleFavorite: (song: Song) => void
-  onPlaySong?: (song: Song) => void
+  onPlaySong?: (song: Song, queue?: Song[]) => void
   onAddToPlaylist?: (song: Song) => void
+  onAddToQueue?: (song: Song) => void
+  onPlayNext?: (song: Song) => void
   onSelectArtist?: (artist: Artist) => void
   currentSong?: Song | null
   isPlaying?: boolean
+  dailyMixes?: {
+    id: string
+    title: string
+    subtitle: string
+    coverUrl?: string
+    gradient: string
+    songs: Song[]
+  }[]
+  onSelectPlaylistDetail?: (title: string, subtitle: string, songs: Song[], coverUrl?: string, gradient?: string) => void
 }
 
-const CATEGORY_PILLS = [
-  { label: 'Most Played', query: 'Tamil hits 2025' },
-  { label: 'Melody', query: 'Tamil feel good melody hit songs' },
-  { label: 'Love Songs', query: 'Tamil love romantic hit songs' },
-  { label: 'Party & Kuthu', query: 'Tamil party kuthu mass songs' },
-  { label: 'Folk', query: 'Tamil folk village songs' },
-  { label: 'Workout & Beats', query: 'Tamil energetic gym workout bgm beats' },
-  { label: 'New Releases', query: 'Latest Tamil movie songs 2025 2026' }
+const YTM_ACTIVITY_CHIPS = [
+  { id: 'energize', label: 'Energize', query: 'Tamil energetic gym workout bgm beats' },
+  { id: 'workout', label: 'Workout', query: 'Tamil gym workout motivational hit songs' },
+  { id: 'relax', label: 'Relax', query: 'Tamil lo-fi chill rain songs' },
+  { id: 'focus', label: 'Focus', query: 'Tamil instrumental violin flute melody' },
+  { id: 'commute', label: 'Commute', query: 'Tamil road trip travel songs' },
+  { id: 'party', label: 'Party', query: 'Tamil party kuthu mass songs' },
+  { id: 'romance', label: 'Romance', query: 'Tamil love romantic hit songs' },
+  { id: 'feelgood', label: 'Feel Good', query: 'Tamil feel good melody hit songs' },
+  { id: 'trending', label: 'Trending Hits', query: 'Tamil hits 2025 2026' }
 ]
 
 const POPULAR_ARTISTS: Artist[] = [
@@ -105,15 +118,26 @@ export const HomePage: React.FC<HomePageProps> = ({
   onToggleFavorite,
   onPlaySong,
   onAddToPlaylist,
+  onAddToQueue,
+  onPlayNext,
   onSelectArtist,
   currentSong,
-  isPlaying = false
+  isPlaying = false,
+  dailyMixes = [],
+  onSelectPlaylistDetail
 }) => {
-  const [selectedCategory, setSelectedCategory] = useState('Most Played')
+  const [activeChip, setActiveChip] = useState<string | null>(null)
 
+  const [gridLimit, setGridLimit] = useState(24)
+
+  const quickPicksRef = useRef<HTMLDivElement | null>(null)
+  const mixesRef = useRef<HTMLDivElement | null>(null)
   const trendingRef = useRef<HTMLDivElement | null>(null)
   const recsRef = useRef<HTMLDivElement | null>(null)
   const artistsRef = useRef<HTMLDivElement | null>(null)
+  const melodiesRef = useRef<HTMLDivElement | null>(null)
+  const partyRef = useRef<HTMLDivElement | null>(null)
+  const retroRef = useRef<HTMLDivElement | null>(null)
 
   const scrollRow = (ref: React.RefObject<HTMLDivElement>, direction: 'left' | 'right') => {
     if (ref.current) {
@@ -125,9 +149,50 @@ export const HomePage: React.FC<HomePageProps> = ({
   const deduplicated = deduplicateSongs(trendingSongs)
   const rankedTrending = trendingService.rankTrendingSongs(deduplicated, 'today')
 
-  const quickAccessTiles = rankedTrending.slice(0, 6)
-  const carouselTrending = deduplicated.length > 0 ? deduplicated : rankedTrending
-  const recommendedSongs = deduplicated.length > 3 ? [...deduplicated.slice(3), ...deduplicated.slice(0, 3)] : deduplicated
+  // 1. YouTube Music Quick picks: 24 songs (6 columns x 4 rows)
+  const quickPickSongs = rankedTrending.slice(0, 24)
+  const quickPickColumns: Song[][] = []
+  for (let i = 0; i < quickPickSongs.length; i += 4) {
+    quickPickColumns.push(quickPickSongs.slice(i, i + 4))
+  }
+
+  // 2. Trending Viral Hits (20 songs)
+  const displayTrending = rankedTrending.slice(24, 44).length >= 6
+    ? rankedTrending.slice(24, 44)
+    : rankedTrending.slice(0, 20)
+
+  // 3. Soulful Melodies & Romance (20 songs)
+  const melodyFiltered = rankedTrending.filter(s => {
+    const t = (s.title + ' ' + s.channelTitle).toLowerCase()
+    return t.includes('melody') || t.includes('love') || t.includes('kadhal') || t.includes('rahman') ||
+           t.includes('harris') || t.includes('sid sriram') || t.includes('feel good') || t.includes('soul') ||
+           t.includes('romance') || t.includes('nenj') || t.includes('kanave')
+  })
+  const melodySongs = melodyFiltered.length >= 6 ? melodyFiltered.slice(0, 20) : rankedTrending.slice(10, 30)
+
+  // 4. Party & Mass Kuthu Beats (20 songs)
+  const partyFiltered = rankedTrending.filter(s => {
+    const t = (s.title + ' ' + s.channelTitle).toLowerCase()
+    return t.includes('kuthu') || t.includes('party') || t.includes('dance') || t.includes('mass') ||
+           t.includes('anirudh') || t.includes('sana') || t.includes('beat') || t.includes('energy') ||
+           t.includes('fast') || t.includes('thara') || t.includes('local')
+  })
+  const partySongs = partyFiltered.length >= 6 ? partyFiltered.slice(0, 20) : rankedTrending.slice(20, 40)
+
+  // 5. Retro & 90s Evergreens (20 songs)
+  const retroFiltered = rankedTrending.filter(s => {
+    const t = (s.title + ' ' + s.channelTitle).toLowerCase()
+    return t.includes('ilayaraja') || t.includes('ilaiyaraaja') || t.includes('spb') || t.includes('90s') ||
+           t.includes('golden') || t.includes('classic') || t.includes('evergreen') || t.includes('deva') ||
+           t.includes('chitra') || t.includes('hariharan') || t.includes('swarnalatha')
+  })
+  const retroSongs = retroFiltered.length >= 6 ? retroFiltered.slice(0, 20) : rankedTrending.slice(30, 50)
+
+  // 6. Recommended For You: 20 songs
+  const recommendedSongs = rankedTrending.slice(12, 32).length > 0 ? rankedTrending.slice(12, 32) : displayTrending
+
+  // 7. Discover All Songs Grid: 24 to 100+ songs
+  const gridSongs = rankedTrending.slice(0, gridLimit)
 
   const getDynamicGreeting = () => {
     const hour = new Date().getHours()
@@ -137,35 +202,36 @@ export const HomePage: React.FC<HomePageProps> = ({
     return 'Night Vibes'
   }
 
-  const handleCategoryClick = (cat: typeof CATEGORY_PILLS[0]) => {
-    setSelectedCategory(cat.label)
-    if (cat.label !== 'Most Played') {
-      onSelectCategory(cat.query)
+  const handleActivityChipClick = (chip: typeof YTM_ACTIVITY_CHIPS[0]) => {
+    if (activeChip === chip.id) {
+      setActiveChip(null)
+      onSelectCategory('')
+    } else {
+      setActiveChip(chip.id)
+      onSelectCategory(chip.query)
     }
   }
 
   return (
     <div style={{ paddingBottom: '8px' }}>
-      {/* Category Pills Header */}
-      <div style={{ marginBottom: '20px', overflowX: 'auto', paddingBottom: '4px' }}>
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          {CATEGORY_PILLS.map((pill) => {
-            const isSelected = selectedCategory === pill.label
-            return (
-              <button
-                key={pill.label}
-                className={`pill-button ${isSelected ? 'active' : ''}`}
-                onClick={() => handleCategoryClick(pill)}
-              >
-                {pill.label}
-              </button>
-            )
-          })}
-        </div>
+      {/* 1. YouTube Music Activity Mood Chips Bar */}
+      <div className="ytm-activity-chips-bar">
+        {YTM_ACTIVITY_CHIPS.map((chip) => {
+          const isSelected = activeChip === chip.id
+          return (
+            <button
+              key={chip.id}
+              className={`ytm-activity-chip ${isSelected ? 'active' : ''}`}
+              onClick={() => handleActivityChipClick(chip)}
+            >
+              {chip.label}
+            </button>
+          )
+        })}
       </div>
 
       {/* Hero Greeting Header */}
-      <div style={{ marginBottom: '22px' }}>
+      <div style={{ marginBottom: '24px' }}>
         <span style={{ fontSize: '11px', fontWeight: 900, color: 'var(--isai-purple-light)', textTransform: 'uppercase', letterSpacing: '0.12em', display: 'flex', alignItems: 'center', gap: '6px' }}>
           <Sparkles size={14} /> LISTEN • FEEL • LIVE 🎧
         </span>
@@ -174,22 +240,116 @@ export const HomePage: React.FC<HomePageProps> = ({
         </h1>
       </div>
 
-      {/* Quick Access 2x3 Grid Tiles */}
-      {quickAccessTiles.length > 0 && (
-        <div className="quick-access-grid">
-          {quickAccessTiles.map((song) => (
-            <div
-              key={song.videoId}
-              className="quick-tile"
-              onClick={() => onPlaySong?.(song)}
-            >
-              <img src={song.thumbnailUrl} alt={song.title} className="quick-tile-art" />
-              <div className="quick-tile-title">{song.title}</div>
-              <div className="quick-tile-play-btn">
-                <Play size={18} fill="#ffffff" style={{ marginLeft: '2px' }} />
+      {/* 2. YouTube Music Signature: Quick picks (4-Row Vertical Stack, Horizontal Scrolling) */}
+      {quickPickSongs.length > 0 && (
+        <div style={{ marginBottom: '40px' }}>
+          <div className="ytm-section-header">
+            <div className="ytm-section-subtitle">START RADIO FROM A SONG</div>
+            <div className="ytm-section-title-row">
+              <h2 className="ytm-section-title">Quick picks</h2>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button className="control-btn" onClick={() => scrollRow(quickPicksRef, 'left')} title="Previous">
+                  <ChevronLeft size={22} />
+                </button>
+                <button className="control-btn" onClick={() => scrollRow(quickPicksRef, 'right')} title="Next">
+                  <ChevronRight size={22} />
+                </button>
               </div>
             </div>
-          ))}
+          </div>
+
+          <div ref={quickPicksRef} className="ytm-quick-picks-container">
+            {quickPickColumns.map((col, colIdx) => (
+              <div key={colIdx} className="ytm-quick-picks-column">
+                {col.map((song) => {
+                  const isThisPlaying = currentSong?.videoId === song.videoId && isPlaying
+                  const isFav = isFavorite(song.videoId)
+                  return (
+                    <div
+                      key={song.videoId}
+                      className={`ytm-quick-pick-item ${isThisPlaying ? 'playing' : ''}`}
+                      onClick={() => onPlaySong?.(song, rankedTrending)}
+                      title={`Play ${song.title}`}
+                    >
+                      <div className="ytm-qp-thumb-wrap">
+                        <img
+                          src={song.thumbnailUrl || 'https://c.saavncdn.com/187/Jailer-Tamil-2023-20230728081443-500x500.jpg'}
+                          alt={song.title}
+                          className="ytm-qp-thumb"
+                          loading="lazy"
+                          onError={(e) => {
+                            const target = e.currentTarget
+                            if (!target.src.includes('Jailer-Tamil-2023')) {
+                              target.src = 'https://c.saavncdn.com/187/Jailer-Tamil-2023-20230728081443-500x500.jpg'
+                            }
+                          }}
+                        />
+                        <div className={`ytm-qp-play-overlay ${isThisPlaying ? 'active' : ''}`}>
+                          {isThisPlaying ? (
+                            <div className="equalizer-wave compact">
+                              <div className="equalizer-bar" />
+                              <div className="equalizer-bar" />
+                              <div className="equalizer-bar" />
+                            </div>
+                          ) : (
+                            <Play size={16} fill="#ffffff" color="#ffffff" style={{ marginLeft: '2px' }} />
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="ytm-qp-info">
+                        <div className="ytm-qp-title">{song.title}</div>
+                        <div className="ytm-qp-artist">
+                          {song.channelTitle} • {song.durationFormatted || 'Audio'}
+                        </div>
+                      </div>
+
+                      <div className="ytm-qp-actions" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          className={`ytm-qp-btn ${isFav ? 'liked' : ''}`}
+                          onClick={() => onToggleFavorite(song)}
+                          title={isFav ? 'Remove Favorite' : 'Save to Favorites'}
+                        >
+                          <Heart
+                            size={16}
+                            color={isFav ? '#EC4899' : 'currentColor'}
+                            fill={isFav ? '#EC4899' : 'none'}
+                          />
+                        </button>
+                        {onPlayNext && (
+                          <button
+                            className="ytm-qp-btn"
+                            onClick={() => onPlayNext(song)}
+                            title="Play next"
+                          >
+                            <ListStart size={16} />
+                          </button>
+                        )}
+                        {onAddToQueue && (
+                          <button
+                            className="ytm-qp-btn"
+                            onClick={() => onAddToQueue(song)}
+                            title="Add to queue"
+                          >
+                            <ListPlus size={16} />
+                          </button>
+                        )}
+                        {onAddToPlaylist && (
+                          <button
+                            className="ytm-qp-btn"
+                            onClick={() => onAddToPlaylist(song)}
+                            title="Add to playlist"
+                          >
+                            <Plus size={16} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -203,52 +363,119 @@ export const HomePage: React.FC<HomePageProps> = ({
         <ErrorBanner title="Failed to Load Music Feed" message={error} onRetry={onRetry} />
       ) : (
         <div>
-          {/* Section 1: Trending Now Carousel */}
-          <div style={{ marginBottom: '36px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Flame color="var(--isai-pink)" size={20} />
-                <h2 style={{ fontSize: '20px', fontWeight: 900 }}>Trending Now</h2>
+          {/* Section: Mixed For You */}
+          {dailyMixes.length > 0 && (
+            <div style={{ marginBottom: '38px' }}>
+              <div className="ytm-section-header">
+                <div className="ytm-section-subtitle">COMMUNITY PLAYLISTS & MIXES</div>
+                <div className="ytm-section-title-row">
+                  <h2 className="ytm-section-title">Mixed for you</h2>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button className="control-btn" onClick={() => scrollRow(mixesRef, 'left')} title="Previous">
+                      <ChevronLeft size={22} />
+                    </button>
+                    <button className="control-btn" onClick={() => scrollRow(mixesRef, 'right')} title="Next">
+                      <ChevronRight size={22} />
+                    </button>
+                  </div>
+                </div>
               </div>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button className="control-btn" onClick={() => scrollRow(trendingRef, 'left')}>
-                  <ChevronLeft size={22} />
-                </button>
-                <button className="control-btn" onClick={() => scrollRow(trendingRef, 'right')}>
-                  <ChevronRight size={22} />
-                </button>
+
+              <div className="carousel-row" ref={mixesRef}>
+                {dailyMixes.map((mix) => (
+                  <div
+                    key={mix.id}
+                    className="song-card"
+                    style={{ flex: '0 0 185px', cursor: 'pointer' }}
+                    onClick={() => onSelectPlaylistDetail?.(mix.title, mix.subtitle, mix.songs, mix.coverUrl, mix.gradient)}
+                  >
+                    <div
+                      className="song-thumbnail-wrap"
+                      style={{
+                        background: mix.gradient,
+                        aspectRatio: '1',
+                        borderRadius: 'var(--radius-lg)',
+                        boxShadow: '0 8px 24px rgba(0, 0, 0, 0.45)',
+                        position: 'relative',
+                        overflow: 'hidden'
+                      }}
+                    >
+                      {mix.coverUrl ? (
+                        <img src={mix.coverUrl} alt={mix.title} className="song-thumbnail" loading="lazy" />
+                      ) : (
+                        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '36px' }}>
+                          🎧
+                        </div>
+                      )}
+                      <div className="play-hover-overlay">
+                        <div
+                          className="play-icon-circle"
+                          style={{ background: 'var(--isai-purple)', width: '46px', height: '46px' }}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            if (mix.songs.length > 0) onPlaySong?.(mix.songs[0], mix.songs)
+                          }}
+                        >
+                          <Play size={20} fill="#ffffff" color="#ffffff" style={{ marginLeft: '2px' }} />
+                        </div>
+                      </div>
+                    </div>
+                    <h3 className="song-title" style={{ marginTop: '10px', fontSize: '14.5px', fontWeight: 700 }}>{mix.title}</h3>
+                    <p className="song-artist" style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{mix.subtitle}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Section 1: Trending Songs Carousel (Pure Audio) */}
+          <div style={{ marginBottom: '38px' }}>
+            <div className="ytm-section-header">
+              <div className="ytm-section-subtitle">LISTEN AGAIN & VIRAL HITS</div>
+              <div className="ytm-section-title-row">
+                <h2 className="ytm-section-title">Trending songs</h2>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button className="control-btn" onClick={() => scrollRow(trendingRef, 'left')} title="Previous">
+                    <ChevronLeft size={22} />
+                  </button>
+                  <button className="control-btn" onClick={() => scrollRow(trendingRef, 'right')} title="Next">
+                    <ChevronRight size={22} />
+                  </button>
+                </div>
               </div>
             </div>
 
             <div ref={trendingRef} className="carousel-row">
-              {carouselTrending.map((song) => (
+              {displayTrending.map((song) => (
                 <SongCard
                   key={song.videoId}
                   song={song}
                   isPlaying={currentSong?.videoId === song.videoId && isPlaying}
                   isFavorite={isFavorite(song.videoId)}
                   onToggleFavorite={onToggleFavorite}
-                  onPlay={onPlaySong}
+                  onPlay={(s) => onPlaySong?.(s, rankedTrending)}
                   onAddToPlaylist={onAddToPlaylist}
+                  onAddToQueue={onAddToQueue}
+                  onPlayNext={onPlayNext}
                 />
               ))}
             </div>
           </div>
 
           {/* Section 2: Popular Artists Carousel */}
-          <div style={{ marginBottom: '36px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Radio color="var(--isai-purple-light)" size={20} />
-                <h2 style={{ fontSize: '20px', fontWeight: 900 }}>Popular Artists</h2>
-              </div>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button className="control-btn" onClick={() => scrollRow(artistsRef, 'left')}>
-                  <ChevronLeft size={22} />
-                </button>
-                <button className="control-btn" onClick={() => scrollRow(artistsRef, 'right')}>
-                  <ChevronRight size={22} />
-                </button>
+          <div style={{ marginBottom: '38px' }}>
+            <div className="ytm-section-header">
+              <div className="ytm-section-subtitle">SIMILAR TO YOUR FAVORITES</div>
+              <div className="ytm-section-title-row">
+                <h2 className="ytm-section-title">Popular artists</h2>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button className="control-btn" onClick={() => scrollRow(artistsRef, 'left')} title="Previous">
+                    <ChevronLeft size={22} />
+                  </button>
+                  <button className="control-btn" onClick={() => scrollRow(artistsRef, 'right')} title="Next">
+                    <ChevronRight size={22} />
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -263,20 +490,20 @@ export const HomePage: React.FC<HomePageProps> = ({
             </div>
           </div>
 
-          {/* Section 3: Recommended For You Carousel */}
-          <div style={{ marginBottom: '36px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Sparkles color="var(--isai-cyan)" size={20} />
-                <h2 style={{ fontSize: '20px', fontWeight: 900 }}>Made For You</h2>
-              </div>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button className="control-btn" onClick={() => scrollRow(recsRef, 'left')}>
-                  <ChevronLeft size={22} />
-                </button>
-                <button className="control-btn" onClick={() => scrollRow(recsRef, 'right')}>
-                  <ChevronRight size={22} />
-                </button>
+          {/* Section 3: Recommended Music Carousel */}
+          <div style={{ marginBottom: '38px' }}>
+            <div className="ytm-section-header">
+              <div className="ytm-section-subtitle">RECOMMENDED FOR YOU</div>
+              <div className="ytm-section-title-row">
+                <h2 className="ytm-section-title">Recommended music</h2>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button className="control-btn" onClick={() => scrollRow(recsRef, 'left')} title="Previous">
+                    <ChevronLeft size={22} />
+                  </button>
+                  <button className="control-btn" onClick={() => scrollRow(recsRef, 'right')} title="Next">
+                    <ChevronRight size={22} />
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -288,18 +515,182 @@ export const HomePage: React.FC<HomePageProps> = ({
                   isPlaying={currentSong?.videoId === song.videoId && isPlaying}
                   isFavorite={isFavorite(song.videoId)}
                   onToggleFavorite={onToggleFavorite}
-                  onPlay={onPlaySong}
+                  onPlay={(s) => onPlaySong?.(s, rankedTrending)}
                   onAddToPlaylist={onAddToPlaylist}
+                  onAddToQueue={onAddToQueue}
+                  onPlayNext={onPlayNext}
                 />
               ))}
             </div>
           </div>
 
-          {/* Section 4: Genre / Mood Grid */}
+          {/* Section: Soulful Melodies & Romance */}
+          {melodySongs.length > 0 && (
+            <div style={{ marginBottom: '38px' }}>
+              <div className="ytm-section-header">
+                <div className="ytm-section-subtitle">FEEL-GOOD ROMANTIC VIBES</div>
+                <div className="ytm-section-title-row">
+                  <h2 className="ytm-section-title">Soulful Melodies & Romance 💖</h2>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button className="control-btn" onClick={() => scrollRow(melodiesRef, 'left')} title="Previous">
+                      <ChevronLeft size={22} />
+                    </button>
+                    <button className="control-btn" onClick={() => scrollRow(melodiesRef, 'right')} title="Next">
+                      <ChevronRight size={22} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div ref={melodiesRef} className="carousel-row">
+                {melodySongs.map((song) => (
+                  <SongCard
+                    key={song.videoId}
+                    song={song}
+                    isPlaying={currentSong?.videoId === song.videoId && isPlaying}
+                    isFavorite={isFavorite(song.videoId)}
+                    onToggleFavorite={onToggleFavorite}
+                    onPlay={(s) => onPlaySong?.(s, rankedTrending)}
+                    onAddToPlaylist={onAddToPlaylist}
+                    onAddToQueue={onAddToQueue}
+                    onPlayNext={onPlayNext}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Section: Party & Mass Kuthu Beats */}
+          {partySongs.length > 0 && (
+            <div style={{ marginBottom: '38px' }}>
+              <div className="ytm-section-header">
+                <div className="ytm-section-subtitle">HIGH ENERGY CLUB & FAST BEATS</div>
+                <div className="ytm-section-title-row">
+                  <h2 className="ytm-section-title">Party & Mass Kuthu Beats 🔥</h2>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button className="control-btn" onClick={() => scrollRow(partyRef, 'left')} title="Previous">
+                      <ChevronLeft size={22} />
+                    </button>
+                    <button className="control-btn" onClick={() => scrollRow(partyRef, 'right')} title="Next">
+                      <ChevronRight size={22} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div ref={partyRef} className="carousel-row">
+                {partySongs.map((song) => (
+                  <SongCard
+                    key={song.videoId}
+                    song={song}
+                    isPlaying={currentSong?.videoId === song.videoId && isPlaying}
+                    isFavorite={isFavorite(song.videoId)}
+                    onToggleFavorite={onToggleFavorite}
+                    onPlay={(s) => onPlaySong?.(s, rankedTrending)}
+                    onAddToPlaylist={onAddToPlaylist}
+                    onAddToQueue={onAddToQueue}
+                    onPlayNext={onPlayNext}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Section: Retro & 90s Golden Era */}
+          {retroSongs.length > 0 && (
+            <div style={{ marginBottom: '38px' }}>
+              <div className="ytm-section-header">
+                <div className="ytm-section-subtitle">TIMELESS EVERGREEN HITS</div>
+                <div className="ytm-section-title-row">
+                  <h2 className="ytm-section-title">Retro & 90s Evergreens 📻</h2>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button className="control-btn" onClick={() => scrollRow(retroRef, 'left')} title="Previous">
+                      <ChevronLeft size={22} />
+                    </button>
+                    <button className="control-btn" onClick={() => scrollRow(retroRef, 'right')} title="Next">
+                      <ChevronRight size={22} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div ref={retroRef} className="carousel-row">
+                {retroSongs.map((song) => (
+                  <SongCard
+                    key={song.videoId}
+                    song={song}
+                    isPlaying={currentSong?.videoId === song.videoId && isPlaying}
+                    isFavorite={isFavorite(song.videoId)}
+                    onToggleFavorite={onToggleFavorite}
+                    onPlay={(s) => onPlaySong?.(s, rankedTrending)}
+                    onAddToPlaylist={onAddToPlaylist}
+                    onAddToQueue={onAddToQueue}
+                    onPlayNext={onPlayNext}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Section: Discover All Chartbusters Grid (Continuous Browser Feed) */}
+          {gridSongs.length > 0 && (
+            <div style={{ marginBottom: '45px' }}>
+              <div className="ytm-section-header">
+                <div className="ytm-section-subtitle">UNLIMITED PLAYLIST EXPLORER</div>
+                <div className="ytm-section-title-row">
+                  <h2 className="ytm-section-title">All Trending Chartbusters ({rankedTrending.length} Songs)</h2>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '20px' }}>
+                {gridSongs.map((song) => (
+                  <SongCard
+                    key={song.videoId}
+                    song={song}
+                    isPlaying={currentSong?.videoId === song.videoId && isPlaying}
+                    isFavorite={isFavorite(song.videoId)}
+                    onToggleFavorite={onToggleFavorite}
+                    onPlay={(s) => onPlaySong?.(s, rankedTrending)}
+                    onAddToPlaylist={onAddToPlaylist}
+                    onAddToQueue={onAddToQueue}
+                    onPlayNext={onPlayNext}
+                  />
+                ))}
+              </div>
+
+              {gridLimit < rankedTrending.length && (
+                <div style={{ display: 'flex', justifyContent: 'center', marginTop: '28px' }}>
+                  <button
+                    className="pill-button active"
+                    style={{
+                      padding: '12px 32px',
+                      fontSize: '15px',
+                      fontWeight: 700,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      borderRadius: '50px',
+                      background: 'linear-gradient(135deg, var(--isai-purple), var(--isai-purple-dark))',
+                      boxShadow: '0 6px 20px rgba(124, 58, 237, 0.4)'
+                    }}
+                    onClick={() => setGridLimit((prev) => Math.min(rankedTrending.length, prev + 24))}
+                  >
+                    <ChevronDown size={18} />
+                    Load More Hits ({rankedTrending.length - gridLimit} remaining)
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Section: Genre / Mood Grid */}
           <div style={{ marginBottom: '40px' }}>
-            <h2 style={{ fontSize: '22px', fontWeight: 900, marginBottom: '16px' }}>
-              Browse by Mood
-            </h2>
+            <div className="ytm-section-header">
+              <div className="ytm-section-subtitle">EXPLORE GENRES & MOODS</div>
+              <h2 className="ytm-section-title" style={{ marginBottom: '16px' }}>
+                Browse by mood
+              </h2>
+            </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '16px' }}>
               {GENRE_TILES.map((genre) => (
                 <GenreTile

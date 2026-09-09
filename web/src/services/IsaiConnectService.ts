@@ -38,7 +38,7 @@ export interface PlaybackStateSync {
 }
 
 export interface RemoteCommand {
-  action: 'PLAY' | 'PAUSE' | 'NEXT' | 'PREV' | 'SEEK' | 'PLAY_SONG' | 'SET_VOLUME'
+  action: 'PLAY' | 'PAUSE' | 'NEXT' | 'PREV' | 'SEEK' | 'PLAY_SONG' | 'SET_VOLUME' | 'ADD_TO_QUEUE' | 'PLAY_NEXT_IN_QUEUE'
   targetDeviceId?: string
   positionMs?: number
   songId?: string
@@ -47,8 +47,9 @@ export interface RemoteCommand {
   songArtwork?: string
   songAudioUrl?: string
   volume?: number
+  song?: any
   timestamp: number
-  issuedByDeviceId: string
+  issuedByDeviceId?: string
 }
 
 class IsaiConnectServiceManager {
@@ -295,8 +296,8 @@ class IsaiConnectServiceManager {
     this.commandListener = onValue(cmdRef, (snapshot) => {
       const val = snapshot.val()
       if (val && val.timestamp && val.issuedByDeviceId !== this.deviceId) {
-        // Only process fresh commands (less than 60 seconds old, clock skew tolerant)
-        if (Math.abs(Date.now() - val.timestamp) < 60000) {
+        // Only process fresh commands (generous clock skew tolerant 10 mins window)
+        if (Math.abs(Date.now() - val.timestamp) < 600000) {
           this.commandCallbacks.forEach(cb => cb(val))
         }
       }
@@ -311,8 +312,8 @@ class IsaiConnectServiceManager {
   }
 
   public sendCommand(
-    action: 'PLAY' | 'PAUSE' | 'NEXT' | 'PREV' | 'SEEK' | 'PLAY_SONG' | 'SET_VOLUME',
-    data?: { positionMs?: number; song?: any; targetDeviceId?: string; volume?: number }
+    action: RemoteCommand['action'],
+    data?: { positionMs?: number; song?: any; targetDeviceId?: string; volume?: number; [key: string]: any }
   ) {
     if (!this.userId) return
     const cmdRef = ref(rtdb, `connect/${this.userId}/command`)
@@ -437,6 +438,108 @@ class IsaiConnectServiceManager {
     return () => off(historyRef)
   }
 
+  public syncPreferences(prefs: { preferredLanguages?: string[] }) {
+    if (!this.userId) return
+    const prefRef = ref(rtdb, `connect/${this.userId}/preferences`)
+    update(prefRef, prefs).catch(e => console.warn('[ISAI Connect] syncPreferences warning:', e))
+  }
+
+  public subscribePreferences(callback: (prefs: { preferredLanguages?: string[] }) => void): () => void {
+    if (!this.userId) return () => {}
+    const prefRef = ref(rtdb, `connect/${this.userId}/preferences`)
+    onValue(prefRef, (snapshot) => {
+      const data = snapshot.val()
+      if (data && typeof data === 'object') {
+        const preferredLanguages = Array.isArray(data.preferredLanguages)
+          ? data.preferredLanguages
+          : (typeof data.preferredLanguages === 'string' ? [data.preferredLanguages] : undefined)
+        callback({ preferredLanguages })
+      }
+    })
+    return () => off(prefRef)
+  }
+
+  public syncHomeSongs(songs: any[]) {
+    if (!this.userId || !songs || songs.length === 0) return
+    const clean = songs.slice(0, 60).map(s => ({
+      id: s.videoId || s.id || '',
+      title: s.title || '',
+      artist: s.channelTitle || s.artist || '',
+      artwork: s.thumbnailUrl || s.artwork || '',
+      audioUrl: s.audioUrl || '',
+      durationFormatted: s.durationFormatted || '3:30',
+      durationMs: s.durationMs || 210000,
+      playCount: s.playCountNumber || 0
+    }))
+    const homeRef = ref(rtdb, `connect/${this.userId}/homeSongs`)
+    set(homeRef, clean).catch(e => console.warn('[ISAI Connect] syncHomeSongs warning:', e))
+  }
+
+  public subscribeHomeSongs(callback: (songs: any[]) => void): () => void {
+    if (!this.userId) return () => {}
+    const homeRef = ref(rtdb, `connect/${this.userId}/homeSongs`)
+    onValue(homeRef, (snapshot) => {
+      const data = snapshot.val()
+      if (data) {
+        const raw = Array.isArray(data) ? data : (typeof data === 'object' ? Object.values(data) : [])
+        const clean = (raw || []).filter(Boolean).map((s: any) => ({
+          videoId: s.id || s.videoId || '',
+          title: s.title || '',
+          channelTitle: s.artist || s.channelTitle || '',
+          thumbnailUrl: s.artwork || s.thumbnailUrl || '',
+          audioUrl: s.audioUrl || '',
+          durationFormatted: s.durationFormatted || '3:30',
+          durationMs: s.durationMs || 210000,
+          viewCountFormatted: s.playCount ? `${s.playCount.toLocaleString()} plays` : ''
+        }))
+        if (clean.length > 0) {
+          callback(clean)
+        }
+      }
+    })
+    return () => off(homeRef)
+  }
+
+  public syncFavorites(songs: any[]) {
+    if (!this.userId || !songs) return
+    const clean = songs.slice(0, 100).map(s => ({
+      id: s.videoId || s.id || '',
+      title: s.title || '',
+      artist: s.channelTitle || s.artist || '',
+      artwork: s.thumbnailUrl || s.artwork || '',
+      audioUrl: s.audioUrl || '',
+      durationFormatted: s.durationFormatted || '3:30',
+      durationMs: s.durationMs || 210000
+    }))
+    const favRef = ref(rtdb, `connect/${this.userId}/favorites`)
+    set(favRef, clean).catch(e => console.warn('[ISAI Connect] syncFavorites warning:', e))
+  }
+
+  public subscribeFavorites(callback: (songs: any[]) => void): () => void {
+    if (!this.userId) return () => {}
+    const favRef = ref(rtdb, `connect/${this.userId}/favorites`)
+    onValue(favRef, (snapshot) => {
+      const data = snapshot.val()
+      if (data) {
+        const raw = Array.isArray(data) ? data : (typeof data === 'object' ? Object.values(data) : [])
+        const clean = (raw || []).filter(Boolean).map((s: any) => ({
+          videoId: s.id || s.videoId || '',
+          title: s.title || '',
+          channelTitle: s.artist || s.channelTitle || '',
+          thumbnailUrl: s.artwork || s.thumbnailUrl || '',
+          audioUrl: s.audioUrl || '',
+          durationFormatted: s.durationFormatted || '3:30',
+          durationMs: s.durationMs || 210000,
+          viewCountFormatted: ''
+        }))
+        if (clean.length > 0) {
+          callback(clean)
+        }
+      }
+    })
+    return () => off(favRef)
+  }
+
   public disconnect() {
     if (this.heartbeatTimer) {
       clearInterval(this.heartbeatTimer)
@@ -465,10 +568,16 @@ class IsaiConnectServiceManager {
       const stateRef = ref(rtdb, `connect/${this.userId}/playbackState`)
       const cmdRef = ref(rtdb, `connect/${this.userId}/command`)
       const historyRef = ref(rtdb, `connect/${this.userId}/recentlyPlayed`)
+      const prefRef = ref(rtdb, `connect/${this.userId}/preferences`)
+      const homeRef = ref(rtdb, `connect/${this.userId}/homeSongs`)
+      const favRef = ref(rtdb, `connect/${this.userId}/favorites`)
       off(devicesRef)
       off(stateRef)
       off(cmdRef)
       off(historyRef)
+      off(prefRef)
+      off(homeRef)
+      off(favRef)
     }
     this.userId = ''
   }

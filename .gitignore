@@ -113,3 +113,5 @@ android-app/local.properties
 android-app/.idea/
 .idea/
 *.iml
+.firebase/
+

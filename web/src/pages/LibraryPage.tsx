@@ -14,6 +14,8 @@ interface LibraryPageProps {
   onToggleFavorite: (song: Song) => void
   onPlaySong: (song: Song) => void
   onAddToPlaylist: (song: Song) => void
+  onAddToQueue?: (song: Song) => void
+  onPlayNext?: (song: Song) => void
   onCreatePlaylist: () => void
   onSelectPlaylistDetail?: (title: string, subtitle: string, songs: Song[], coverUrl?: string) => void
   onNavigateToSearch?: () => void
@@ -29,6 +31,8 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
   onToggleFavorite,
   onPlaySong,
   onAddToPlaylist,
+  onAddToQueue,
+  onPlayNext,
   onCreatePlaylist,
   onSelectPlaylistDetail,
   onNavigateToSearch
@@ -119,6 +123,8 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
                 onToggleFavorite={onToggleFavorite}
                 onPlay={onPlaySong}
                 onAddToPlaylist={onAddToPlaylist}
+                onAddToQueue={onAddToQueue}
+                onPlayNext={onPlayNext}
               />
             ))}
           </div>
@@ -134,6 +140,8 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
                 onPlay={onPlaySong}
                 onToggleFavorite={onToggleFavorite}
                 onAddToPlaylist={onAddToPlaylist}
+                onAddToQueue={onAddToQueue}
+                onPlayNext={onPlayNext}
               />
             ))}
           </div>

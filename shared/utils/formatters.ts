@@ -69,16 +69,7 @@ export function formatViewCount(rawCount?: string | number): string {
   return `${num} views`
 }
 
-/**
- * Extract YouTube video ID from thumbnail URL if present
- */
-function getThumbnailKey(url?: string, videoId?: string): string {
-  if (videoId && videoId.length === 11) return videoId
-  if (!url) return ''
-  const match = url.match(/\/vi\/([a-zA-Z0-9_-]{11})\//)
-  if (match && match[1]) return match[1]
-  return url.trim()
-}
+
 
 /**
  * Phonetic normalization for Tamil transliterated song titles
@@ -103,17 +94,16 @@ function phoneticNormalize(text: string): string {
 }
 
 /**
- * Deduplicate songs by videoId, thumbnail URL key, primary title key, and cleaned full title key
+ * Deduplicate songs by videoId, primary title key, and cleaned full title key
  */
 export function deduplicateSongs(songs: Song[]): Song[] {
   if (!Array.isArray(songs) || songs.length === 0) return []
   const seenIds = new Set<string>()
-  const seenThumbKeys = new Set<string>()
   const seenPrimaryKeys = new Set<string>()
   const seenFullKeys = new Set<string>()
   const result: Song[] = []
 
-  const noiseRegex = /\b(official|video|lyric|lyrics|full|audio|hd|4k|song|songs|trending|version|remix|bgm|theme|track|singles|teaser|trailer|lyrical|visualizer|jukebox|compilation|all time hits|tamil|telugu|hindi|dj|mix|prod|feat|ft)\b/gi
+  const noiseRegex = /\b(official|video|lyric|lyrics|full|audio|hd|4k|song|songs|trending|version|remix|bgm|theme|track|singles|single|teaser|trailer|lyrical|visualizer|jukebox|compilation|all time hits|tamil|telugu|hindi|dj|mix|prod|feat|ft|instrumental|reprise)\b/gi
 
   for (const song of songs) {
     if (!song || !song.title) continue
@@ -121,39 +111,79 @@ export function deduplicateSongs(songs: Song[]): Song[] {
     const vid = song.videoId ? song.videoId.trim() : ''
     if (vid && seenIds.has(vid)) continue
 
-    const thumbKey = getThumbnailKey(song.thumbnailUrl, vid)
-    if (thumbKey && seenThumbKeys.has(thumbKey)) continue
-
     const rawTitle = cleanHtmlTitle(song.title)
 
-    // Primary Title Key (first segment before separators like |, -, :, ~, /)
-    const firstSegment = rawTitle.split(/[|\-:~–—]/)[0] || rawTitle
-    const primaryCleaned = firstSegment
-      .replace(/\(.*?\)|\[.*?\]/g, '')
-      .replace(noiseRegex, '')
+    // 1. Strip complete bracketed content first, e.g. (From "Movie - Name") or [Tamil]
+    let titleWithoutBrackets = rawTitle.replace(/\([^)]*\)/g, ' ').replace(/\[[^\]]*\]/g, ' ')
+
+    // 2. Strip "From ..." clauses even if without brackets
+    titleWithoutBrackets = titleWithoutBrackets.replace(/\bfrom\s+["'].*?["']/gi, ' ')
+    titleWithoutBrackets = titleWithoutBrackets.replace(/\bfrom\s+[A-Za-z0-9\s:]+/gi, ' ')
+
+    // 3. Strip version/reprise/mix clauses
+    titleWithoutBrackets = titleWithoutBrackets.replace(/\bversion[.\s0-9]+/gi, ' ')
+
+    // 4. Primary Title Key (first segment before separators like |, -, :, ~, /)
+    const firstSegment = titleWithoutBrackets.split(/[|\-:~–—]/)[0] || titleWithoutBrackets
+    const primaryCleaned = firstSegment.replace(noiseRegex, ' ')
     const primaryTitle = phoneticNormalize(primaryCleaned)
 
-    // Full Title Key
-    const fullCleaned = rawTitle
-      .replace(/\(.*?\)|\[.*?\]/g, '')
-      .replace(noiseRegex, '')
+    // 5. Full Title Key
+    const fullCleaned = titleWithoutBrackets.replace(noiseRegex, ' ')
     const fullTitle = phoneticNormalize(fullCleaned)
 
     if (primaryTitle.length >= 3 && seenPrimaryKeys.has(primaryTitle)) {
       continue
     }
 
-    if (fullTitle.length >= 4 && seenFullKeys.has(fullTitle)) {
+    if (fullTitle.length >= 3 && seenFullKeys.has(fullTitle)) {
       continue
     }
 
     if (vid) seenIds.add(vid)
-    if (thumbKey) seenThumbKeys.add(thumbKey)
     if (primaryTitle.length >= 3) seenPrimaryKeys.add(primaryTitle)
-    if (fullTitle.length >= 4) seenFullKeys.add(fullTitle)
+    if (fullTitle.length >= 3) seenFullKeys.add(fullTitle)
 
     result.push(song)
   }
 
   return result
+}
+
+/**
+ * Clean base title for cross-song comparison and deduplication
+ */
+export function cleanBaseTitle(rawTitle: string): string {
+  if (!rawTitle) return ''
+  const cleaned = cleanHtmlTitle(rawTitle)
+  return cleaned
+    .toLowerCase()
+    .replace(/^(official\s*(video|audio|lyric(al)?\s*video)?|lyric(al)?\s*video|video\s*song|full\s*song|audio\s*song)\s*[:|-]\s*/i, '')
+    .replace(/\(.*?\)/g, '')
+    .replace(/\[.*?\]/g, '')
+    .replace(/\s*[\|\-\–\—\:].*$/, '')
+    .replace(/[^a-z0-9]/g, '')
+    .trim()
+}
+
+/**
+ * Checks if two songs are the same song or repetitive title variations (covers, remixes, lyrics)
+ */
+export function isSameSongOrDuplicate(
+  songA: { title?: string; videoId?: string },
+  songB: { title?: string; videoId?: string }
+): boolean {
+  if (!songA || !songB) return false
+  if (songA.videoId && songB.videoId && songA.videoId === songB.videoId) return true
+
+  const baseA = cleanBaseTitle(songA.title || '')
+  const baseB = cleanBaseTitle(songB.title || '')
+
+  if (!baseA || !baseB) return false
+  if (baseA === baseB) return true
+
+  if (baseA.length >= 5 && baseB.includes(baseA)) return true
+  if (baseB.length >= 5 && baseA.includes(baseB)) return true
+
+  return false
 }

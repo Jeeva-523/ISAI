@@ -69,5 +69,6 @@ data class YouTubeSong(
     val durationMs: Long = 210000L,
     val viewCountFormatted: String = "",
     val audioUrl: String? = null,
-    val addedAtTimestamp: Long = System.currentTimeMillis()
+    val addedAtTimestamp: Long = System.currentTimeMillis(),
+    val playCount: Long = 0L
 )

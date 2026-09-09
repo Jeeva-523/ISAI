@@ -1,6 +1,6 @@
 import React from 'react'
 import type { Song } from '@shared/models/song'
-import { Play, Heart, Plus } from 'lucide-react'
+import { Play, Heart, Plus, ListPlus, ListStart } from 'lucide-react'
 
 interface SongCardProps {
   song: Song
@@ -9,6 +9,8 @@ interface SongCardProps {
   onToggleFavorite?: (song: Song) => void
   onPlay?: (song: Song) => void
   onAddToPlaylist?: (song: Song) => void
+  onAddToQueue?: (song: Song) => void
+  onPlayNext?: (song: Song) => void
   variant?: 'square' | 'landscape'
 }
 
@@ -19,6 +21,8 @@ export const SongCard: React.FC<SongCardProps> = ({
   onToggleFavorite,
   onPlay,
   onAddToPlaylist,
+  onAddToQueue,
+  onPlayNext,
   variant = 'square'
 }) => {
   const isLandscape = variant === 'landscape'
@@ -99,6 +103,34 @@ export const SongCard: React.FC<SongCardProps> = ({
                     transition: 'all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
                   }}
                 />
+              </button>
+            )}
+
+            {onPlayNext && (
+              <button
+                className="control-btn"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onPlayNext(song)
+                }}
+                style={{ color: 'var(--text-muted)', padding: '4px' }}
+                title="Play Next"
+              >
+                <ListStart size={16} />
+              </button>
+            )}
+
+            {onAddToQueue && (
+              <button
+                className="control-btn"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onAddToQueue(song)
+                }}
+                style={{ color: 'var(--text-muted)', padding: '4px' }}
+                title="Add to Queue"
+              >
+                <ListPlus size={16} />
               </button>
             )}
 

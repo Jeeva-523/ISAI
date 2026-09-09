@@ -396,12 +396,12 @@ fun SearchScreen(
                             song = song,
                             isCurrent = isThisPlaying,
                             isPlaying = isThisPlaying && isPlaying,
-                            onClick = { viewModel.playSong(song, results) },
+                            onClick = { viewModel.playSong(song) },
                             onPlayPauseClick = {
                                 if (isThisPlaying) {
                                     viewModel.togglePlayPause()
                                 } else {
-                                    viewModel.playSong(song, results)
+                                    viewModel.playSong(song)
                                 }
                             },
                             isFav = isFav,

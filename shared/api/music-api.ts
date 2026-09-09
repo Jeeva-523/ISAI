@@ -403,15 +403,22 @@ export class MusicApiClient implements MusicProvider {
   /**
    * Get rich feed of songs tailored to the user's preferred languages
    */
-  async getTrending(preferredLanguages?: string[], maxResults = 80): Promise<Song[]> {
+  async getTrending(preferredLanguages?: string[], maxResults = 120): Promise<Song[]> {
     const languageQueryMap: Record<string, string[]> = {
       tamil: [
-        'Latest Tamil Hits',
-        'Tamil Top Hits',
-        'Sai Abhyankkar Hits',
+        'Latest Tamil Hits 2025',
+        'Tamil Top Chartbusters',
+        'Tamil Feel Good Melodies',
+        'Tamil Party Kuthu Songs',
+        'Anirudh Ravichander Hit Songs',
+        'A.R. Rahman Tamil Hits',
+        'Yuvan Shankar Raja Melodies',
+        'Harris Jayaraj Hit Songs',
+        'Sid Sriram Tamil Hits',
+        'Tamil 90s Golden Melodies',
         'Amaran Tamil Songs',
-        'The Greatest Of All Time Tamil Songs',
-        'Anirudh Ravichander Hits'
+        'Vettaiyan Tamil Songs',
+        'GOAT Tamil Songs'
       ],
       telugu: [
         'Latest Telugu Hits 2025',
@@ -462,18 +469,12 @@ export class MusicApiClient implements MusicProvider {
     }
 
     if (trendingQueries.length === 0) {
-      trendingQueries = [
-        'Latest Tamil Hits',
-        'Tamil Top Hits',
-        'Sai Abhyankkar Hits',
-        'Amaran Tamil Songs',
-        'Anirudh Ravichander Hits'
-      ]
+      trendingQueries = languageQueryMap.tamil
     }
 
     try {
       const resultsArray = await Promise.all(
-        trendingQueries.map((q) => this.searchSongs(q, 15).catch(() => []))
+        trendingQueries.map((q) => this.searchSongs(q, 20).catch(() => []))
       )
       const combined = resultsArray.flat()
       const deduplicated = deduplicateSongs(combined)
@@ -483,8 +484,8 @@ export class MusicApiClient implements MusicProvider {
         if (title.includes('trending') || title.includes('jukebox') || title.includes('full album') || title.includes('non stop') || title.includes('compilation') || title.includes('remaster')) {
           return false
         }
-        // Discard obscure self-published tracks with low play counts
-        if (song.playCountNumber !== undefined && song.playCountNumber < 10000) {
+        // Discard obscure spam tracks with extremely low play counts
+        if (song.playCountNumber !== undefined && song.playCountNumber > 0 && song.playCountNumber < 500) {
           return false
         }
         return true

@@ -63,6 +63,15 @@ export class LocalMusicStorageService {
     }
   }
 
+  setFavorites(songs: Song[]) {
+    if (typeof window === 'undefined' || !window.localStorage) return
+    try {
+      localStorage.setItem(FAVORITES_KEY, JSON.stringify(songs))
+    } catch (e) {
+      console.error('Failed to save favorites', e)
+    }
+  }
+
   isFavorite(videoId: string): boolean {
     const favs = this.getFavorites()
     return favs.some(s => s.videoId === videoId)

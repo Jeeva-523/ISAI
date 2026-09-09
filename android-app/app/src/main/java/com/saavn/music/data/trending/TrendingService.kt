@@ -137,9 +137,11 @@ class TrendingService private constructor(private val context: Context) {
      */
     fun getMostPlayedSongs(songs: List<YouTubeSong>): List<YouTubeSong> {
         if (songs.isEmpty()) return emptyList()
-        return songs.sortedByDescending { song ->
-            analytics.getEventCount(song.videoId, "play", 30 * DAY_MS)
-        }
+        return songs.sortedWith(
+            compareByDescending<YouTubeSong> { song ->
+                analytics.getEventCount(song.videoId, "play", 30 * DAY_MS)
+            }.thenByDescending { it.playCount }
+        )
     }
 
     /**

@@ -16,6 +16,8 @@ interface SearchPageProps {
   onToggleFavorite: (song: Song) => void
   onPlaySong: (song: Song) => void
   onAddToPlaylist?: (song: Song) => void
+  onAddToQueue?: (song: Song) => void
+  onPlayNext?: (song: Song) => void
   onSelectCategory: (q: string) => void
   onSelectArtist?: (artist: Artist) => void
   currentSong?: Song | null
@@ -44,6 +46,8 @@ export const SearchPage: React.FC<SearchPageProps> = ({
   onToggleFavorite,
   onPlaySong,
   onAddToPlaylist,
+  onAddToQueue,
+  onPlayNext,
   onSelectCategory,
   currentSong,
   isPlaying = false
@@ -117,6 +121,8 @@ export const SearchPage: React.FC<SearchPageProps> = ({
                 onPlay={onPlaySong}
                 onToggleFavorite={onToggleFavorite}
                 onAddToPlaylist={onAddToPlaylist}
+                onAddToQueue={onAddToQueue}
+                onPlayNext={onPlayNext}
               />
             ))}
           </div>
