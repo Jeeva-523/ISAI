@@ -15,6 +15,7 @@ export interface SyncSong {
   artist: string
   artwork: string
   duration?: string
+  audioUrl?: string
 }
 
 export interface PlaybackStateSync {
@@ -37,7 +38,7 @@ export interface PlaybackStateSync {
 }
 
 export interface RemoteCommand {
-  action: 'PLAY' | 'PAUSE' | 'NEXT' | 'PREV' | 'SEEK' | 'PLAY_SONG'
+  action: 'PLAY' | 'PAUSE' | 'NEXT' | 'PREV' | 'SEEK' | 'PLAY_SONG' | 'SET_VOLUME'
   targetDeviceId?: string
   positionMs?: number
   songId?: string
@@ -45,6 +46,7 @@ export interface RemoteCommand {
   songArtist?: string
   songArtwork?: string
   songAudioUrl?: string
+  volume?: number
   timestamp: number
   issuedByDeviceId: string
 }
@@ -95,9 +97,14 @@ class IsaiConnectServiceManager {
   }
 
   public isDeviceOnline(device: DeviceInfo): boolean {
-    if (!device || !device.isActive) return false
+    return this.isDeviceAvailable(device)
+  }
+
+  public isDeviceAvailable(device: DeviceInfo): boolean {
+    if (!device) return false
     const diffMs = Date.now() - (device.lastActiveAt || 0)
-    return diffMs < 35000
+    // Device must be actively running (isActive is true AND heartbeat received within 40 seconds)
+    return Boolean(device.isActive) && diffMs <= 40000
   }
 
   public sendHeartbeat() {
@@ -210,6 +217,25 @@ class IsaiConnectServiceManager {
     }, 10000)
   }
 
+  private deduplicateDevices(list: DeviceInfo[]): DeviceInfo[] {
+    const activePlayerId = this.currentPlaybackState?.currentDeviceId || ''
+    const map = new Map<string, DeviceInfo>()
+    for (const d of list) {
+      const key = d.deviceName?.trim() || d.deviceId
+      const existing = map.get(key)
+      if (!existing) {
+        map.set(key, d)
+      } else {
+        if (d.deviceId === activePlayerId) {
+          map.set(key, d)
+        } else if (existing.deviceId !== activePlayerId && (d.lastActiveAt || 0) > (existing.lastActiveAt || 0)) {
+          map.set(key, d)
+        }
+      }
+    }
+    return Array.from(map.values())
+  }
+
   private listenToDevices() {
     if (!this.userId) return
     const devicesRef = ref(rtdb, `connect/${this.userId}/devices`)
@@ -221,9 +247,11 @@ class IsaiConnectServiceManager {
       } else {
         const list: DeviceInfo[] = Object.values(val)
         this.rawDevices = list
-        this.currentDevices = list
-          .filter(d => this.isDeviceOnline(d) || d.deviceId === this.deviceId)
-          .sort((a, b) => (b.lastActiveAt || 0) - (a.lastActiveAt || 0))
+        this.currentDevices = this.deduplicateDevices(
+          list
+            .filter(d => this.isDeviceAvailable(d) || d.deviceId === this.deviceId)
+            .sort((a, b) => (b.lastActiveAt || 0) - (a.lastActiveAt || 0))
+        )
       }
       this.devicesChangeCallbacks.forEach(cb => cb(this.currentDevices))
     })
@@ -232,9 +260,11 @@ class IsaiConnectServiceManager {
     if (this.livenessTimer) clearInterval(this.livenessTimer)
     this.livenessTimer = setInterval(() => {
       if (this.rawDevices.length > 0) {
-        const activeList = this.rawDevices
-          .filter(d => this.isDeviceOnline(d) || d.deviceId === this.deviceId)
-          .sort((a, b) => (b.lastActiveAt || 0) - (a.lastActiveAt || 0))
+        const activeList = this.deduplicateDevices(
+          this.rawDevices
+            .filter(d => this.isDeviceAvailable(d) || d.deviceId === this.deviceId)
+            .sort((a, b) => (b.lastActiveAt || 0) - (a.lastActiveAt || 0))
+        )
 
         const changed = activeList.length !== this.currentDevices.length ||
           activeList.some((d, idx) => d.deviceId !== this.currentDevices[idx]?.deviceId)
@@ -265,8 +295,8 @@ class IsaiConnectServiceManager {
     this.commandListener = onValue(cmdRef, (snapshot) => {
       const val = snapshot.val()
       if (val && val.timestamp && val.issuedByDeviceId !== this.deviceId) {
-        // Only process fresh commands (less than 15 seconds old)
-        if (Date.now() - val.timestamp < 15000) {
+        // Only process fresh commands (less than 60 seconds old, clock skew tolerant)
+        if (Math.abs(Date.now() - val.timestamp) < 60000) {
           this.commandCallbacks.forEach(cb => cb(val))
         }
       }
@@ -281,8 +311,8 @@ class IsaiConnectServiceManager {
   }
 
   public sendCommand(
-    action: 'PLAY' | 'PAUSE' | 'NEXT' | 'PREV' | 'SEEK' | 'PLAY_SONG',
-    data?: { positionMs?: number; song?: any; targetDeviceId?: string }
+    action: 'PLAY' | 'PAUSE' | 'NEXT' | 'PREV' | 'SEEK' | 'PLAY_SONG' | 'SET_VOLUME',
+    data?: { positionMs?: number; song?: any; targetDeviceId?: string; volume?: number }
   ) {
     if (!this.userId) return
     const cmdRef = ref(rtdb, `connect/${this.userId}/command`)
@@ -290,6 +320,7 @@ class IsaiConnectServiceManager {
       action,
       targetDeviceId: data?.targetDeviceId || '',
       positionMs: data?.positionMs || 0,
+      volume: data?.volume,
       songId: data?.song?.videoId || data?.song?.id || '',
       songTitle: data?.song?.title || '',
       songArtist: data?.song?.channelTitle || data?.song?.artist || '',
@@ -331,21 +362,79 @@ class IsaiConnectServiceManager {
       updatedAt: Date.now(),
       updatedByDeviceId: this.deviceId
     }
-    // If no active device was set yet, claim ownership
-    if (!this.currentPlaybackState?.currentDeviceId) {
+    // If no active device was set yet and none was specified, claim ownership
+    if (!this.currentPlaybackState?.currentDeviceId && !partial.currentDeviceId) {
       updated.currentDeviceId = this.deviceId
     }
+
+    // Optimistically update cached playback state and notify subscribers immediately
+    this.currentPlaybackState = {
+      ...(this.currentPlaybackState || {}),
+      ...updated
+    } as PlaybackStateSync
+    this.stateChangeCallbacks.forEach(cb => cb(this.currentPlaybackState))
+
     update(stateRef, updated).catch(err => {
       console.warn('[ISAI Connect] State update error:', err)
     })
   }
 
-  public transferPlaybackToDevice(targetDeviceId: string) {
+  public transferPlaybackToDevice(targetDeviceId: string, song?: any, positionMs?: number) {
     if (!this.userId) return
     console.log(`[ISAI Connect] Handoff playback to device: ${targetDeviceId}`)
-    this.updatePlaybackState({
-      currentDeviceId: targetDeviceId
+    const updatePayload: Partial<PlaybackStateSync> = {
+      currentDeviceId: targetDeviceId,
+      isPlaying: true
+    }
+    if (song) {
+      updatePayload.currentSongId = song.videoId || song.id || ''
+      updatePayload.currentTitle = song.title || ''
+      updatePayload.currentArtist = song.channelTitle || song.artist || ''
+      updatePayload.currentArtwork = song.thumbnailUrl || song.artwork || ''
+      updatePayload.currentAudioUrl = song.audioUrl || ''
+    }
+    if (positionMs !== undefined) {
+      updatePayload.positionMs = positionMs
+    }
+    this.updatePlaybackState(updatePayload)
+  }
+
+  public syncRecentlyPlayed(songs: any[]) {
+    if (!this.userId || !songs || songs.length === 0) return
+    const clean = songs.slice(0, 20).map(s => ({
+      id: s.videoId || s.id || '',
+      title: s.title || '',
+      artist: s.channelTitle || s.artist || '',
+      artwork: s.thumbnailUrl || s.artwork || '',
+      audioUrl: s.audioUrl || ''
+    }))
+    const historyRef = ref(rtdb, `connect/${this.userId}/recentlyPlayed`)
+    set(historyRef, clean).catch(e => console.warn('[ISAI Connect] syncRecentlyPlayed warning:', e))
+  }
+
+  public subscribeRecentlyPlayed(callback: (songs: any[]) => void): () => void {
+    if (!this.userId) return () => {}
+    const historyRef = ref(rtdb, `connect/${this.userId}/recentlyPlayed`)
+    onValue(historyRef, (snapshot) => {
+      const data = snapshot.val()
+      if (data) {
+        const raw = Array.isArray(data) ? data : (typeof data === 'object' ? Object.values(data) : [])
+        const clean = (raw || []).filter(Boolean).map((s: any) => ({
+          videoId: s.id || s.videoId || '',
+          title: s.title || '',
+          channelTitle: s.artist || s.channelTitle || '',
+          thumbnailUrl: s.artwork || s.thumbnailUrl || '',
+          audioUrl: s.audioUrl || '',
+          durationFormatted: '3:30',
+          durationMs: 210000,
+          viewCountFormatted: ''
+        }))
+        if (clean.length > 0) {
+          callback(clean)
+        }
+      }
     })
+    return () => off(historyRef)
   }
 
   public disconnect() {
@@ -375,9 +464,11 @@ class IsaiConnectServiceManager {
       const devicesRef = ref(rtdb, `connect/${this.userId}/devices`)
       const stateRef = ref(rtdb, `connect/${this.userId}/playbackState`)
       const cmdRef = ref(rtdb, `connect/${this.userId}/command`)
+      const historyRef = ref(rtdb, `connect/${this.userId}/recentlyPlayed`)
       off(devicesRef)
       off(stateRef)
       off(cmdRef)
+      off(historyRef)
     }
     this.userId = ''
   }

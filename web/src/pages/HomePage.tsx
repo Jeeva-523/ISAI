@@ -2,13 +2,12 @@ import React, { useRef, useState } from 'react'
 import type { Song } from '@shared/models/song'
 import { deduplicateSongs } from '@shared/utils/formatters'
 import { SongCard } from '../components/SongCard'
-import { SongListItem } from '../components/SongListItem'
 import { ArtistCard, type Artist } from '../components/ArtistCard'
 import { GenreTile, type Genre } from '../components/GenreTile'
 import { SkeletonSongCard } from '../components/SkeletonLoader'
 import { ErrorBanner } from '../components/ErrorBanner'
 import { trendingService } from '../services/TrendingService'
-import { ChevronLeft, ChevronRight, Play, Sparkles, Flame, Radio, Trophy, RefreshCw } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Play, Sparkles, Flame, Radio } from 'lucide-react'
 
 interface HomePageProps {
   trendingSongs: Song[]
@@ -26,13 +25,13 @@ interface HomePageProps {
 }
 
 const CATEGORY_PILLS = [
-  { label: 'Most Played', query: 'Latest Tamil hits' },
+  { label: 'Most Played', query: 'Tamil hits 2025' },
   { label: 'Melody', query: 'Tamil feel good melody hit songs' },
   { label: 'Love Songs', query: 'Tamil love romantic hit songs' },
   { label: 'Party & Kuthu', query: 'Tamil party kuthu mass songs' },
   { label: 'Folk', query: 'Tamil folk village songs' },
   { label: 'Workout & Beats', query: 'Tamil energetic gym workout bgm beats' },
-  { label: 'New Releases', query: 'Latest Tamil movie songs 2024' }
+  { label: 'New Releases', query: 'Latest Tamil movie songs 2025 2026' }
 ]
 
 const POPULAR_ARTISTS: Artist[] = [
@@ -111,7 +110,6 @@ export const HomePage: React.FC<HomePageProps> = ({
   isPlaying = false
 }) => {
   const [selectedCategory, setSelectedCategory] = useState('Most Played')
-  const [mostPlayedPage, setMostPlayedPage] = useState(0)
 
   const trendingRef = useRef<HTMLDivElement | null>(null)
   const recsRef = useRef<HTMLDivElement | null>(null)
@@ -311,41 +309,6 @@ export const HomePage: React.FC<HomePageProps> = ({
                 />
               ))}
             </div>
-          </div>
-
-          {/* Section 5: Most Played List */}
-          <div style={{ marginBottom: '40px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
-              <Trophy color="#F59E0B" size={22} />
-              <h2 style={{ fontSize: '22px', fontWeight: 900 }}>Most Played</h2>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {rankedTrending.slice(mostPlayedPage * 25, (mostPlayedPage + 1) * 25).map((song, index) => (
-                <SongListItem
-                  key={song.videoId}
-                  song={song}
-                  index={mostPlayedPage * 25 + index}
-                  isPlaying={currentSong?.videoId === song.videoId && isPlaying}
-                  isFavorite={isFavorite(song.videoId)}
-                  onToggleFavorite={onToggleFavorite}
-                  onPlay={onPlaySong}
-                  onAddToPlaylist={onAddToPlaylist}
-                />
-              ))}
-            </div>
-            
-            {rankedTrending.length > 25 && (
-              <div style={{ display: 'flex', justifyContent: 'center', marginTop: '24px' }}>
-                <button 
-                  className="pill-button active" 
-                  onClick={() => setMostPlayedPage(p => (p + 1) % Math.ceil(rankedTrending.length / 25))}
-                  style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 24px', fontWeight: 700 }}
-                >
-                  <RefreshCw size={18} />
-                  Refresh List
-                </button>
-              </div>
-            )}
           </div>
         </div>
       )}

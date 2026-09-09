@@ -1,6 +1,5 @@
 import React, { useState } from 'react'
 import type { Song } from '@shared/models/song'
-import { SearchBar } from '../components/SearchBar'
 import { SongListItem } from '../components/SongListItem'
 import { GenreTile, type Genre } from '../components/GenreTile'
 import { type Artist } from '../components/ArtistCard'
@@ -10,7 +9,7 @@ import { Compass, Music } from 'lucide-react'
 interface SearchPageProps {
   searchQuery: string
   onSearchChange: (q: string) => void
-  onSearchClear: () => void
+  onSearchClear?: () => void
   searchResults: Song[]
   isSearching: boolean
   isFavorite: (videoId: string) => boolean
@@ -29,7 +28,7 @@ const SEARCH_GENRES: Genre[] = [
   { id: 'g3', name: 'Love Hits', query: 'Tamil love romantic hit songs', gradient: 'linear-gradient(135deg, #8B5CF6, #3B82F6)', icon: '🌹' },
   { id: 'g4', name: 'Workout Beats', query: 'Tamil energetic gym workout bgm beats', gradient: 'linear-gradient(135deg, #10B981, #06B6D4)', icon: '⚡' },
   { id: 'g5', name: 'Classical & Devotional', query: 'Tamil god devotional songs', gradient: 'linear-gradient(135deg, #F97316, #EAB308)', icon: '🪔' },
-  { id: 'g6', name: 'Gaana & Folk', query: 'Tamil gaana hit songs', gradient: 'linear-gradient(135deg, #84CC16, #10B981)', icon: '🥁' },
+  { id: 'g6', name: 'Gaana & Folk', query: 'Tamil gana songs', gradient: 'linear-gradient(135deg, #84CC16, #10B981)', icon: '🥁' },
   { id: 'g7', name: 'Sad & Emotional', query: 'Tamil sad heartbreak songs', gradient: 'linear-gradient(135deg, #3B82F6, #1E40AF)', icon: '🌧️' },
   { id: 'g8', name: 'Retro & 90s Hits', query: '90s Tamil hit songs Ilaiyaraaja AR Rahman', gradient: 'linear-gradient(135deg, #A855F7, #EC4899)', icon: '📻' }
 ]
@@ -39,7 +38,6 @@ type FilterType = 'all' | 'songs' | 'artists' | 'playlists'
 export const SearchPage: React.FC<SearchPageProps> = ({
   searchQuery,
   onSearchChange,
-  onSearchClear,
   searchResults,
   isSearching,
   isFavorite,
@@ -54,16 +52,6 @@ export const SearchPage: React.FC<SearchPageProps> = ({
 
   return (
     <div style={{ maxWidth: '1300px', margin: '0 auto', paddingBottom: '8px' }}>
-      {/* Prominent Search Bar Header */}
-      <div style={{ marginBottom: '24px' }}>
-        <SearchBar
-          value={searchQuery}
-          onChange={onSearchChange}
-          onClear={onSearchClear}
-          placeholder="Search songs, artists, playlists, albums..."
-        />
-      </div>
-
       {/* Filter Chips */}
       {searchQuery && (
         <div style={{ display: 'flex', gap: '10px', marginBottom: '24px' }}>

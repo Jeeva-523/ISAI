@@ -13,6 +13,7 @@ export interface UserProfile {
   avatar: string
   isLoggedIn: boolean
   isPremium: boolean
+  preferredLanguages?: string[]
 }
 
 interface LoginModalProps {
@@ -178,7 +179,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
               <img src="/logo.png" alt="ISAI Logo" className="ytm-logo-img" />
             </div>
             <span className="isai-brand-font">ISAI</span>
-            <span className="ytm-logo-text">Music</span>
+            <span className="ytm-logo-text">HUB</span>
           </div>
         </div>
 

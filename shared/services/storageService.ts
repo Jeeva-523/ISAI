@@ -10,6 +10,7 @@ export interface UserProfileData {
   email: string
   avatar: string
   isPremium: boolean
+  preferredLanguages?: string[]
 }
 
 export class LocalMusicStorageService {
@@ -136,6 +137,16 @@ export class LocalMusicStorageService {
       localStorage.setItem('isai_recently_played', JSON.stringify(trimmed))
     } catch (e) {
       console.error('Failed to save recently played song', e)
+    }
+  }
+
+  setRecentlyPlayed(songs: Song[]) {
+    if (typeof window === 'undefined' || !window.localStorage) return
+    const trimmed = songs.slice(0, 20)
+    try {
+      localStorage.setItem('isai_recently_played', JSON.stringify(trimmed))
+    } catch (e) {
+      console.error('Failed to set recently played songs', e)
     }
   }
 

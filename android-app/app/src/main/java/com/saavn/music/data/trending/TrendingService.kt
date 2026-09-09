@@ -30,55 +30,55 @@ class TrendingService private constructor(private val context: Context) {
             TopArtistData(
                 name = "Anirudh Ravichander",
                 role = "Rockstar",
-                imageUrl = "https://c.saavncdn.com/artists/Anirudh_Ravichander_002_20230222074343_500x500.jpg",
+                imageUrl = "https://c.saavncdn.com/artists/Anirudh_Ravichander_003_20260121134149_500x500.jpg",
                 playCount = 98500
             ),
             TopArtistData(
                 name = "A. R. Rahman",
                 role = "Isai Puyal",
-                imageUrl = "https://c.saavncdn.com/artists/A_R_Rahman_002_20210201083627_500x500.jpg",
+                imageUrl = "https://c.saavncdn.com/artists/AR_Rahman_002_20210120084455_500x500.jpg",
                 playCount = 94200
             ),
             TopArtistData(
                 name = "Yuvan Shankar Raja",
                 role = "Youth Icon",
-                imageUrl = "https://c.saavncdn.com/artists/Yuvan_Shankar_Raja_002_20220613093202_500x500.jpg",
+                imageUrl = "https://c.saavncdn.com/artists/Yuvan_Shankar_Raja_002_20180802174245_500x500.jpg",
                 playCount = 89100
             ),
             TopArtistData(
                 name = "Harris Jayaraj",
                 role = "Melody King",
-                imageUrl = "https://c.saavncdn.com/artists/Harris_Jayaraj_500x500.jpg",
+                imageUrl = "https://c.saavncdn.com/artists/Harris_Jayaraj_002_20230718071330_500x500.jpg",
                 playCount = 81400
             ),
             TopArtistData(
                 name = "Sid Sriram",
                 role = "Soulful Singer",
-                imageUrl = "https://c.saavncdn.com/artists/Sid_Sriram_003_20230222074403_500x500.jpg",
+                imageUrl = "https://c.saavncdn.com/artists/Sid_Sriram_005_20240425180600_500x500.jpg",
                 playCount = 76300
             ),
             TopArtistData(
                 name = "G. V. Prakash Kumar",
                 role = "Composer & Singer",
-                imageUrl = "https://c.saavncdn.com/artists/G_V_Prakash_Kumar_500x500.jpg",
+                imageUrl = "https://c.saavncdn.com/artists/G_V__Prakash_Kumar_003_20251113063655_500x500.jpg",
                 playCount = 72000
             ),
             TopArtistData(
                 name = "Santhosh Narayanan",
                 role = "SaNa",
-                imageUrl = "https://c.saavncdn.com/artists/Santhosh_Narayanan_500x500.jpg",
+                imageUrl = "https://c.saavncdn.com/artists/Santhosh_Narayanan_002_20250527101718_500x500.jpg",
                 playCount = 68900
             ),
             TopArtistData(
                 name = "Pradeep Kumar",
                 role = "Vocal Maestro",
-                imageUrl = "https://c.saavncdn.com/artists/Pradeep_Kumar_500x500.jpg",
+                imageUrl = "https://c.saavncdn.com/artists/Pradeep_Kumar_002_20250807084559_500x500.jpg",
                 playCount = 64500
             ),
             TopArtistData(
                 name = "Shreya Ghoshal",
                 role = "Melody Queen",
-                imageUrl = "https://c.saavncdn.com/artists/Shreya_Ghoshal_004_20230222074347_500x500.jpg",
+                imageUrl = "https://c.saavncdn.com/artists/Shreya_Ghoshal_007_20241101074144_500x500.jpg",
                 playCount = 61200
             ),
             TopArtistData(
@@ -90,7 +90,7 @@ class TrendingService private constructor(private val context: Context) {
             TopArtistData(
                 name = "Ilaiyaraaja",
                 role = "Isaignani",
-                imageUrl = "https://c.saavncdn.com/artists/Ilaiyaraaja_002_20220613093155_500x500.jpg",
+                imageUrl = "https://c.saavncdn.com/artists/Ilaiyaraaja_001_20251020081419_500x500.jpg",
                 playCount = 55100
             ),
             TopArtistData(
@@ -98,6 +98,36 @@ class TrendingService private constructor(private val context: Context) {
                 role = "Legend SPB",
                 imageUrl = "https://c.saavncdn.com/artists/S_P_Balasubrahmanyam_500x500.jpg",
                 playCount = 53000
+            ),
+            TopArtistData(
+                name = "Dhee",
+                role = "Indie Icon",
+                imageUrl = "https://c.saavncdn.com/artists/Dhee_20180510121326_500x500.jpg",
+                playCount = 51000
+            ),
+            TopArtistData(
+                name = "Jonita Gandhi",
+                role = "Playback Singer",
+                imageUrl = "https://c.saavncdn.com/artists/Jonita_Gandhi_003_20180507091741_500x500.jpg",
+                playCount = 49000
+            ),
+            TopArtistData(
+                name = "Sean Roldan",
+                role = "Composer & Singer",
+                imageUrl = "https://c.saavncdn.com/artists/Sean_Roldan_002_20240319071510_500x500.jpg",
+                playCount = 47500
+            ),
+            TopArtistData(
+                name = "K. S. Chithra",
+                role = "Chinnakuyil",
+                imageUrl = "https://c.saavncdn.com/artists/K_S_Chithra_002_20190906071921_500x500.jpg",
+                playCount = 46000
+            ),
+            TopArtistData(
+                name = "Arijit Singh",
+                role = "Soul of Melody",
+                imageUrl = "https://c.saavncdn.com/artists/Arijit_Singh_004_20241118063717_500x500.jpg",
+                playCount = 45000
             )
         )
     }

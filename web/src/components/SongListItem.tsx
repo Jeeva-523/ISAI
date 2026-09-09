@@ -76,15 +76,23 @@ export const SongListItem: React.FC<SongListItemProps> = ({
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'flex-end' }}>
         {onToggleFavorite && (
           <button
-            className="control-btn"
+            className={`control-btn like-btn ${isFavorite ? 'liked active' : ''}`}
             onClick={(e) => {
               e.stopPropagation()
               onToggleFavorite(song)
             }}
-            style={{ color: isFavorite ? 'var(--isai-pink)' : 'var(--text-muted)' }}
+            style={{ color: isFavorite ? '#EC4899' : 'var(--text-muted)' }}
             title={isFavorite ? 'Remove Favorite' : 'Save to Favorites'}
           >
-            <Heart size={16} fill={isFavorite ? 'var(--isai-pink)' : 'none'} />
+            <Heart
+              size={16}
+              color={isFavorite ? '#EC4899' : 'currentColor'}
+              fill={isFavorite ? '#EC4899' : 'none'}
+              style={{
+                filter: isFavorite ? 'drop-shadow(0 0 5px rgba(236, 72, 153, 0.75))' : 'none',
+                transition: 'all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
+              }}
+            />
           </button>
         )}
 

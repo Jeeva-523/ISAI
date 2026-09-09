@@ -10,27 +10,36 @@ import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
 import com.saavn.music.data.model.YouTubeSong
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.util.UUID
+import com.google.firebase.database.PropertyName
+import com.google.firebase.database.IgnoreExtraProperties
 
+@IgnoreExtraProperties
 data class DeviceInfo(
     val deviceId: String = "",
     val deviceName: String = "",
     val platform: String = "android",
     val lastActiveAt: Long = 0L,
-    val isActive: Boolean = true
+    @get:PropertyName("isActive") @set:PropertyName("isActive") var isActive: Boolean = true
 )
 
+@IgnoreExtraProperties
 data class SyncSong(
     val id: String = "",
     val title: String = "",
     val artist: String = "",
     val artwork: String = "",
-    val duration: String = ""
+    val duration: String = "",
+    val audioUrl: String = ""
 )
 
+@IgnoreExtraProperties
 data class PlaybackStateSync(
     val currentDeviceId: String = "",
     val currentSongId: String = "",
@@ -40,11 +49,12 @@ data class PlaybackStateSync(
     val currentAudioUrl: String = "",
     val durationMs: Long = 0L,
     val positionMs: Long = 0L,
-    val isPlaying: Boolean = false,
+    @get:PropertyName("isPlaying") @set:PropertyName("isPlaying") var isPlaying: Boolean = false,
     val volume: Float = 1.0f,
     val shuffle: Boolean = false,
     val repeatMode: String = "OFF",
     val queueIndex: Int = 0,
+    val queue: List<SyncSong> = emptyList(),
     val updatedAt: Long = 0L,
     val updatedByDeviceId: String = ""
 )
@@ -59,7 +69,8 @@ data class RemoteCommand(
     val songArtwork: String = "",
     val songAudioUrl: String = "",
     val timestamp: Long = 0L,
-    val issuedByDeviceId: String = ""
+    val issuedByDeviceId: String = "",
+    val volume: Float = 1.0f
 )
 
 class IsaiConnectManager(private val context: Context) {
@@ -81,12 +92,17 @@ class IsaiConnectManager(private val context: Context) {
     private val _playbackState = MutableStateFlow<PlaybackStateSync?>(null)
     val playbackState: StateFlow<PlaybackStateSync?> = _playbackState.asStateFlow()
 
-    private val _remoteCommand = MutableStateFlow<RemoteCommand?>(null)
-    val remoteCommand: StateFlow<RemoteCommand?> = _remoteCommand.asStateFlow()
+    private val _remoteCommand = MutableSharedFlow<RemoteCommand>(extraBufferCapacity = 64)
+    val remoteCommand: SharedFlow<RemoteCommand> = _remoteCommand.asSharedFlow()
+    private var lastHandledCommandTimestamp = 0L
+
+    private val _syncedRecentlyPlayed = MutableStateFlow<List<com.saavn.music.data.model.YouTubeSong>>(emptyList())
+    val syncedRecentlyPlayed: StateFlow<List<com.saavn.music.data.model.YouTubeSong>> = _syncedRecentlyPlayed.asStateFlow()
 
     private var devicesEventListener: ValueEventListener? = null
     private var playbackEventListener: ValueEventListener? = null
     private var commandEventListener: ValueEventListener? = null
+    private var recentlyPlayedListener: ValueEventListener? = null
 
     private fun getOrCreateDeviceId(): String {
         val existing = prefs.getString("device_id", null)
@@ -132,6 +148,7 @@ class IsaiConnectManager(private val context: Context) {
         listenToDevices()
         listenToPlaybackState()
         listenToCommands()
+        listenToRecentlyPlayed()
     }
 
     private fun registerDevice() {
@@ -149,9 +166,13 @@ class IsaiConnectManager(private val context: Context) {
     }
 
     fun isDeviceOnline(device: DeviceInfo): Boolean {
+        return isDeviceAvailable(device)
+    }
+
+    fun isDeviceAvailable(device: DeviceInfo): Boolean {
         if (!device.isActive) return false
         val diffMs = System.currentTimeMillis() - device.lastActiveAt
-        return diffMs < 35_000L
+        return diffMs <= 40_000L
     }
 
     private var rawDevicesList = listOf<DeviceInfo>()
@@ -173,6 +194,24 @@ class IsaiConnectManager(private val context: Context) {
         }
     }
 
+    fun deduplicateDevices(list: List<DeviceInfo>, activeDeviceId: String = ""): List<DeviceInfo> {
+        val map = linkedMapOf<String, DeviceInfo>()
+        for (device in list) {
+            val key = device.deviceName.trim()
+            val existing = map[key]
+            if (existing == null) {
+                map[key] = device
+            } else {
+                if (device.deviceId == activeDeviceId) {
+                    map[key] = device
+                } else if (existing.deviceId != activeDeviceId && device.lastActiveAt > existing.lastActiveAt) {
+                    map[key] = device
+                }
+            }
+        }
+        return map.values.toList()
+    }
+
     private fun listenToDevices() {
         if (userId.isEmpty()) return
         val devicesRef = database.getReference("connect/$userId/devices")
@@ -183,9 +222,12 @@ class IsaiConnectManager(private val context: Context) {
                     child.getValue(DeviceInfo::class.java)?.let { list.add(it) }
                 }
                 rawDevicesList = list
-                _devices.value = list
-                    .filter { isDeviceOnline(it) || it.deviceId == deviceId }
-                    .sortedByDescending { it.lastActiveAt }
+                val activePlayerId = _playbackState.value?.currentDeviceId ?: ""
+                _devices.value = deduplicateDevices(
+                    list.filter { isDeviceAvailable(it) || it.deviceId == deviceId }
+                        .sortedByDescending { it.lastActiveAt },
+                    activePlayerId
+                )
             }
 
             override fun onCancelled(error: DatabaseError) {
@@ -200,9 +242,12 @@ class IsaiConnectManager(private val context: Context) {
             while (isActive) {
                 delay(5000)
                 if (rawDevicesList.isNotEmpty()) {
-                    val active = rawDevicesList
-                        .filter { isDeviceOnline(it) || it.deviceId == deviceId }
-                        .sortedByDescending { it.lastActiveAt }
+                    val activePlayerId = _playbackState.value?.currentDeviceId ?: ""
+                    val active = deduplicateDevices(
+                        rawDevicesList.filter { isDeviceAvailable(it) || it.deviceId == deviceId }
+                            .sortedByDescending { it.lastActiveAt },
+                        activePlayerId
+                    )
                     if (active.size != _devices.value.size) {
                         _devices.value = active
                     }
@@ -247,18 +292,23 @@ class IsaiConnectManager(private val context: Context) {
                         val issuedByDeviceId = snapshot.child("issuedByDeviceId").getValue(String::class.java) ?: ""
 
                         if (issuedByDeviceId.isNotEmpty() && issuedByDeviceId != deviceId) {
-                            if (System.currentTimeMillis() - timestamp < 15000L) {
-                                _remoteCommand.value = RemoteCommand(
-                                    action = action,
-                                    targetDeviceId = targetDeviceId,
-                                    positionMs = positionMs,
-                                    songId = songId,
-                                    songTitle = songTitle,
-                                    songArtist = songArtist,
-                                    songArtwork = songArtwork,
-                                    songAudioUrl = songAudioUrl,
-                                    timestamp = timestamp,
-                                    issuedByDeviceId = issuedByDeviceId
+                            val timeDiff = Math.abs(System.currentTimeMillis() - timestamp)
+                            if (timeDiff < 60_000L && timestamp != lastHandledCommandTimestamp) {
+                                lastHandledCommandTimestamp = timestamp
+                                android.util.Log.i("IsaiConnect", "Received command: $action for target: $targetDeviceId")
+                                _remoteCommand.tryEmit(
+                                    RemoteCommand(
+                                        action = action,
+                                        targetDeviceId = targetDeviceId,
+                                        positionMs = positionMs,
+                                        songId = songId,
+                                        songTitle = songTitle,
+                                        songArtist = songArtist,
+                                        songArtwork = songArtwork,
+                                        songAudioUrl = songAudioUrl,
+                                        timestamp = timestamp,
+                                        issuedByDeviceId = issuedByDeviceId
+                                    )
                                 )
                             }
                         }
@@ -279,7 +329,8 @@ class IsaiConnectManager(private val context: Context) {
         action: String,
         positionMs: Long = 0L,
         song: YouTubeSong? = null,
-        targetDeviceId: String = ""
+        targetDeviceId: String = "",
+        volume: Float? = null
     ) {
         if (userId.isEmpty()) return
         val cmdRef = database.getReference("connect/$userId/command")
@@ -290,6 +341,7 @@ class IsaiConnectManager(private val context: Context) {
             "issuedByDeviceId" to deviceId,
             "targetDeviceId" to targetDeviceId
         )
+        volume?.let { map["volume"] = it }
         song?.let {
             map["songId"] = it.videoId
             map["songTitle"] = it.title
@@ -305,7 +357,10 @@ class IsaiConnectManager(private val context: Context) {
         isPlaying: Boolean? = null,
         positionMs: Long? = null,
         durationMs: Long? = null,
-        currentDeviceId: String? = null
+        currentDeviceId: String? = null,
+        volume: Float? = null,
+        queue: List<YouTubeSong>? = null,
+        queueIndex: Int? = null
     ) {
         if (userId.isEmpty()) return
         val stateRef = database.getReference("connect/$userId/playbackState")
@@ -332,6 +387,19 @@ class IsaiConnectManager(private val context: Context) {
         isPlaying?.let { updates["isPlaying"] = it }
         positionMs?.let { updates["positionMs"] = it }
         durationMs?.let { updates["durationMs"] = it }
+        volume?.let { updates["volume"] = it }
+        queueIndex?.let { updates["queueIndex"] = it }
+        queue?.let { qList ->
+            updates["queue"] = qList.map {
+                mapOf(
+                    "id" to it.videoId,
+                    "title" to it.title,
+                    "artist" to it.channelTitle,
+                    "artwork" to it.thumbnailUrl,
+                    "audioUrl" to (it.audioUrl ?: "")
+                )
+            }
+        }
 
         stateRef.updateChildren(updates)
     }
@@ -340,6 +408,57 @@ class IsaiConnectManager(private val context: Context) {
         if (userId.isEmpty()) return
         Log.d("IsaiConnect", "Transferring playback to device: $targetDeviceId")
         updatePlaybackState(currentDeviceId = targetDeviceId)
+    }
+
+    fun syncRecentlyPlayed(songs: List<com.saavn.music.data.model.YouTubeSong>) {
+        if (userId.isEmpty() || songs.isEmpty()) return
+        val historyRef = database.getReference("connect/$userId/recentlyPlayed")
+        val clean = songs.take(20).map {
+            mapOf(
+                "id" to it.videoId,
+                "title" to it.title,
+                "artist" to it.channelTitle,
+                "artwork" to it.thumbnailUrl,
+                "audioUrl" to (it.audioUrl ?: "")
+            )
+        }
+        historyRef.setValue(clean)
+    }
+
+    private fun listenToRecentlyPlayed() {
+        if (userId.isEmpty()) return
+        val historyRef = database.getReference("connect/$userId/recentlyPlayed")
+        recentlyPlayedListener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val list = mutableListOf<com.saavn.music.data.model.YouTubeSong>()
+                for (child in snapshot.children) {
+                    val id = child.child("id").getValue(String::class.java) ?: ""
+                    val title = child.child("title").getValue(String::class.java) ?: ""
+                    val artist = child.child("artist").getValue(String::class.java) ?: ""
+                    val artwork = child.child("artwork").getValue(String::class.java) ?: ""
+                    val audioUrl = child.child("audioUrl").getValue(String::class.java)
+                    if (id.isNotBlank() && title.isNotBlank()) {
+                        list.add(
+                            com.saavn.music.data.model.YouTubeSong(
+                                videoId = id,
+                                title = title,
+                                channelTitle = artist,
+                                thumbnailUrl = artwork,
+                                audioUrl = audioUrl
+                            )
+                        )
+                    }
+                }
+                if (list.isNotEmpty()) {
+                    _syncedRecentlyPlayed.value = list
+                }
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                Log.w("IsaiConnect", "recentlyPlayed listener cancelled: ${error.message}")
+            }
+        }
+        historyRef.addValueEventListener(recentlyPlayedListener!!)
     }
 
     fun isMyDeviceActive(): Boolean {
@@ -357,6 +476,7 @@ class IsaiConnectManager(private val context: Context) {
             devicesEventListener?.let { database.getReference("connect/$userId/devices").removeEventListener(it) }
             playbackEventListener?.let { database.getReference("connect/$userId/playbackState").removeEventListener(it) }
             commandEventListener?.let { database.getReference("connect/$userId/command").removeEventListener(it) }
+            recentlyPlayedListener?.let { database.getReference("connect/$userId/recentlyPlayed").removeEventListener(it) }
         }
         userId = ""
     }

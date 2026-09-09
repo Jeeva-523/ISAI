@@ -7,9 +7,11 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   sendEmailVerification,
+  sendPasswordResetEmail,
   applyActionCode,
   updateProfile,
-  signOut
+  signOut,
+  onAuthStateChanged
 } from 'firebase/auth'
 import { getFirestore, doc, setDoc } from 'firebase/firestore'
 import { getDatabase } from 'firebase/database'
@@ -47,7 +49,7 @@ if (typeof window !== 'undefined') {
 }
 
 export function sanitizeEmailKey(email: string): string {
-  if (!email) return 'user_jeeva_default'
+  if (!email) return 'kongujeeva523@gmail_com'
   return email.toLowerCase().trim().replace(/[.#$\[\]]/g, '_')
 }
 
@@ -165,6 +167,19 @@ export async function resendVerificationEmail(): Promise<boolean> {
   }
 }
 
+export async function sendPasswordReset(email: string): Promise<boolean> {
+  const cleanEmail = email.trim().toLowerCase()
+  if (!cleanEmail) {
+    throw new Error("Please enter your email address.")
+  }
+  try {
+    await sendPasswordResetEmail(auth, cleanEmail)
+    return true
+  } catch (err: any) {
+    throw new Error(mapFirebaseError(err))
+  }
+}
+
 export async function logoutFirebaseUser() {
   await signOut(auth)
 }
@@ -208,4 +223,7 @@ function mapFirebaseError(err: any): string {
       return err?.message || 'Authentication error occurred. Please try again.'
   }
 }
+
+export { onAuthStateChanged }
+
 

@@ -27,6 +27,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
@@ -79,7 +81,7 @@ fun MiniPlayer(
     val isRemoteActive = !isMyDeviceActive && syncState != null && 
         syncState!!.currentDeviceId.isNotBlank() && 
         !syncState!!.currentTitle.isNullOrBlank() && 
-        (System.currentTimeMillis() - syncState!!.updatedAt < 90000L)
+        (syncState!!.isPlaying || Math.abs(System.currentTimeMillis() - syncState!!.updatedAt) < 15 * 60_000L)
 
     val activeSong = currentSongLocal ?: if (isRemoteActive) {
         YouTubeSong(
@@ -245,7 +247,23 @@ fun MiniPlayer(
                         }
                     }
 
-                    Spacer(modifier = Modifier.width(6.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+
+                    // Direct Favorite Heart Button
+                    val isFav = viewModel.isFavorite(song.videoId)
+                    IconButton(
+                        onClick = { viewModel.toggleFavorite(song) },
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (isFav) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                            contentDescription = if (isFav) "Liked" else "Like",
+                            tint = if (isFav) HeartColor else TextMuted,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(4.dp))
 
                     // Glowing Play / Pause FAB
                     Box(

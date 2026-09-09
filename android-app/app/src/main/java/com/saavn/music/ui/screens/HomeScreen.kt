@@ -387,25 +387,31 @@ fun HomeScreen(
                                 modifier = Modifier
                                     .size(72.dp)
                                     .clip(CircleShape)
-                                    .background(DarkSurfaceVariant)
+                                    .background(
+                                        brush = androidx.compose.ui.graphics.Brush.linearGradient(
+                                            listOf(NeonPurple.copy(alpha = 0.4f), NeonCyan.copy(alpha = 0.3f))
+                                        )
+                                    )
                                     .border(1.5.dp, GlassBorder, CircleShape),
                                 contentAlignment = Alignment.Center
                             ) {
+                                Text(
+                                    text = artistData.name.take(1).uppercase(),
+                                    fontSize = 26.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = NeonCyan
+                                )
                                 if (artistData.imageUrl.isNotBlank()) {
                                     AsyncImage(
-                                        model = artistData.imageUrl,
+                                        model = coil.request.ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
+                                            .data(artistData.imageUrl)
+                                            .crossfade(true)
+                                            .build(),
                                         contentDescription = artistData.name,
                                         contentScale = androidx.compose.ui.layout.ContentScale.Crop,
                                         modifier = Modifier
                                             .fillMaxSize()
                                             .clip(CircleShape)
-                                    )
-                                } else {
-                                    Text(
-                                        text = artistData.name.take(1).uppercase(),
-                                        fontSize = 26.sp,
-                                        fontWeight = FontWeight.Black,
-                                        color = NeonCyan
                                     )
                                 }
                             }

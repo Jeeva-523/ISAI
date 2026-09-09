@@ -49,13 +49,8 @@ export const IsaiConnectModal: React.FC<IsaiConnectModalProps> = ({
   }
 
   const formatPresence = (device: DeviceInfo) => {
-    const diffMs = Date.now() - (device.lastActiveAt || 0)
-    if (device.isActive && diffMs < 35000) {
+    if (IsaiConnectService.isDeviceAvailable(device)) {
       return <span style={{ color: '#C8FF00' }}>🟢 Active now</span>
-    }
-    if (diffMs < 300000) {
-      const mins = Math.max(1, Math.floor(diffMs / 60000))
-      return <span style={{ color: '#FFC107' }}>🟡 Active {mins} min ago</span>
     }
     return <span style={{ color: '#6C757D' }}>⚫ Offline</span>
   }
@@ -88,16 +83,7 @@ export const IsaiConnectModal: React.FC<IsaiConnectModalProps> = ({
         })
 
         // 2. Claim target device ownership and sync song state in RTDB
-        IsaiConnectService.updatePlaybackState({
-          currentDeviceId: targetDeviceId,
-          currentSongId: activeSong.videoId,
-          currentTitle: activeSong.title,
-          currentArtist: activeSong.channelTitle,
-          currentArtwork: activeSong.thumbnailUrl,
-          currentAudioUrl: activeSong.audioUrl,
-          isPlaying: true,
-          positionMs: posMs
-        })
+        IsaiConnectService.transferPlaybackToDevice(targetDeviceId, activeSong, posMs)
       } else {
         IsaiConnectService.transferPlaybackToDevice(targetDeviceId)
       }
@@ -105,6 +91,8 @@ export const IsaiConnectModal: React.FC<IsaiConnectModalProps> = ({
       onTransferToRemote?.(targetDeviceId)
     }
   }
+
+  const firstRemoteDevice = devices.find(d => d.deviceId !== myDeviceId && IsaiConnectService.isDeviceAvailable(d))
 
   return (
     <div style={{
@@ -137,7 +125,7 @@ export const IsaiConnectModal: React.FC<IsaiConnectModalProps> = ({
             <span style={{ fontSize: '24px' }}>🎧</span>
             <div>
               <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 'bold', color: '#FFFFFF' }}>ISAI Connect</h2>
-              <p style={{ margin: 0, fontSize: '12px', color: '#C8FF00' }}>⚡ Syncing account: <b>{IsaiConnectService.getUserEmail() || 'Guest Account'}</b></p>
+              <p style={{ margin: 0, fontSize: '12px', color: '#C8FF00' }}>⚡ Syncing account: <b>{IsaiConnectService.getUserEmail() || 'kongujeeva523@gmail.com'}</b></p>
             </div>
           </div>
           <button onClick={onClose} style={{
@@ -153,25 +141,75 @@ export const IsaiConnectModal: React.FC<IsaiConnectModalProps> = ({
         {/* Current Active Device Status Banner */}
         <div style={{
           backgroundColor: '#0B0B0F',
-          borderRadius: '12px',
-          padding: '14px 16px',
+          borderRadius: '16px',
+          padding: '16px',
           border: '1px solid rgba(200, 255, 0, 0.3)',
           marginBottom: '24px',
           display: 'flex',
-          alignItems: 'center',
+          flexDirection: 'column',
           gap: '12px'
         }}>
-          <span style={{ fontSize: '20px', animation: 'pulse 1.5s infinite' }}>⚡</span>
-          <div>
-            <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '1px', color: '#C8FF00', fontWeight: 'bold' }}>
-              Current Audio Output
-            </div>
-            <div style={{ fontSize: '14px', fontWeight: '600', color: '#FFFFFF', marginTop: '2px' }}>
-              {currentActiveDeviceId === myDeviceId
-                ? `🟢 Playing on This Device (${IsaiConnectService.getMyDeviceName()})`
-                : `📱 Playing on Remote Device`}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <span style={{ fontSize: '20px', animation: 'pulse 1.5s infinite' }}>⚡</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '1px', color: '#C8FF00', fontWeight: 'bold' }}>
+                Current Audio Output
+              </div>
+              <div style={{ fontSize: '14px', fontWeight: '600', color: '#FFFFFF', marginTop: '2px' }}>
+                {currentActiveDeviceId === myDeviceId
+                  ? `🟢 Playing on This Web Browser (${IsaiConnectService.getMyDeviceName()})`
+                  : `📱 Playing on Remote Device`}
+              </div>
             </div>
           </div>
+
+          {currentActiveDeviceId !== myDeviceId ? (
+            <button
+              onClick={() => handleSelectDevice(myDeviceId)}
+              style={{
+                width: '100%',
+                padding: '12px 16px',
+                borderRadius: '12px',
+                background: 'linear-gradient(135deg, #8B5CF6 0%, #06B6D4 100%)',
+                color: '#FFFFFF',
+                border: 'none',
+                fontWeight: 800,
+                fontSize: '13px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                boxShadow: '0 4px 16px rgba(139, 92, 246, 0.4)',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              <span>💻 Switch Audio to This Web Browser</span>
+            </button>
+          ) : firstRemoteDevice ? (
+            <button
+              onClick={() => handleSelectDevice(firstRemoteDevice.deviceId)}
+              style={{
+                width: '100%',
+                padding: '12px 16px',
+                borderRadius: '12px',
+                background: 'linear-gradient(135deg, #10B981 0%, #06B6D4 100%)',
+                color: '#FFFFFF',
+                border: 'none',
+                fontWeight: 800,
+                fontSize: '13px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                boxShadow: '0 4px 16px rgba(16, 185, 129, 0.4)',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              <span>📲 Switch Audio to {firstRemoteDevice.deviceName}</span>
+            </button>
+          ) : null}
         </div>
 
         {/* Section: This Device */}
@@ -204,9 +242,13 @@ export const IsaiConnectModal: React.FC<IsaiConnectModalProps> = ({
                 </div>
               </div>
             </div>
-            {currentActiveDeviceId === myDeviceId && (
+            {currentActiveDeviceId === myDeviceId ? (
               <span style={{ backgroundColor: '#C8FF00', color: '#0B0B0F', fontSize: '12px', fontWeight: 'bold', padding: '4px 10px', borderRadius: '20px' }}>
                 Active Player
+              </span>
+            ) : (
+              <span style={{ backgroundColor: 'rgba(6, 182, 212, 0.15)', color: '#06B6D4', border: '1px solid rgba(6, 182, 212, 0.3)', fontSize: '12px', fontWeight: 'bold', padding: '4px 12px', borderRadius: '14px' }}>
+                Switch Here
               </span>
             )}
           </div>
@@ -215,7 +257,7 @@ export const IsaiConnectModal: React.FC<IsaiConnectModalProps> = ({
         {/* Section: Available Devices */}
         <div>
           {(() => {
-            const availableDevices = devices.filter(d => d.deviceId !== myDeviceId && IsaiConnectService.isDeviceOnline(d))
+            const availableDevices = devices.filter(d => d.deviceId !== myDeviceId && IsaiConnectService.isDeviceAvailable(d))
             return (
               <>
                 <div style={{ fontSize: '12px', textTransform: 'uppercase', color: '#A5A5AE', fontWeight: 'bold', marginBottom: '10px' }}>
@@ -264,9 +306,13 @@ export const IsaiConnectModal: React.FC<IsaiConnectModalProps> = ({
                               </div>
                             </div>
                           </div>
-                          {isSelected && (
+                          {isSelected ? (
                             <span style={{ backgroundColor: '#C8FF00', color: '#0B0B0F', fontSize: '12px', fontWeight: 'bold', padding: '4px 10px', borderRadius: '20px' }}>
                               Active Player
+                            </span>
+                          ) : (
+                            <span style={{ backgroundColor: 'rgba(6, 182, 212, 0.15)', color: '#06B6D4', border: '1px solid rgba(6, 182, 212, 0.3)', fontSize: '12px', fontWeight: 'bold', padding: '4px 12px', borderRadius: '14px' }}>
+                              Switch
                             </span>
                           )}
                         </div>

@@ -2,6 +2,7 @@ package com.saavn.music.data.repository
 
 import com.saavn.music.data.api.JioSaavnApiService
 import com.saavn.music.data.crypto.DesCrypto
+import com.saavn.music.data.model.AudioQuality
 import com.saavn.music.data.model.RawSongItem
 import com.saavn.music.data.model.SongItem
 import kotlinx.coroutines.Dispatchers
@@ -14,12 +15,7 @@ class MusicRepository(
     suspend fun search(query: String): Result<List<SongItem>> = withContext(Dispatchers.IO) {
         try {
             val cleanQuery = query.trim()
-            val queryWithTamil = if (!cleanQuery.contains("tamil", ignoreCase = true)) {
-                "$cleanQuery Tamil"
-            } else {
-                cleanQuery
-            }
-            val response = api.searchSongs(query = queryWithTamil)
+            val response = api.searchSongs(query = cleanQuery)
             val songs = response.results?.mapNotNull { it.toSongItem() } ?: emptyList()
             Result.success(songs)
         } catch (e: Exception) {
@@ -27,19 +23,65 @@ class MusicRepository(
         }
     }
 
-    suspend fun getTrending(category: String = "Tamil", limit: Int = 60): Result<List<SongItem>> = withContext(Dispatchers.IO) {
+    suspend fun getTrending(preferredLanguages: List<String> = emptyList(), limit: Int = 60): Result<List<SongItem>> = withContext(Dispatchers.IO) {
         try {
-            val queries = if (category.equals("tamil", ignoreCase = true)) {
-                listOf(
-                    "Latest Tamil Movie Songs 2024",
-                    "Anirudh Ravichander Tamil Hits",
-                    "A R Rahman Tamil Super Hits",
-                    "Yuvan Shankar Raja Tamil Hits",
-                    "Harris Jayaraj Tamil Melodies",
-                    "Santhosh Narayanan Tamil Hits"
+            val languageQueryMap = mapOf(
+                "tamil" to listOf(
+                    "Latest Tamil Hits",
+                    "Tamil Top Hits",
+                    "Sai Abhyankkar Hits",
+                    "Amaran Tamil Songs",
+                    "The Greatest Of All Time Tamil Songs",
+                    "Anirudh Ravichander Tamil Hits"
+                ),
+                "telugu" to listOf(
+                    "Latest Telugu Hits 2025",
+                    "Telugu Super Hits",
+                    "Thaman S Telugu Hits"
+                ),
+                "hindi" to listOf(
+                    "Latest Bollywood Hindi Hits 2025",
+                    "Arijit Singh Super Hits",
+                    "Top Hindi Songs 2025"
+                ),
+                "malayalam" to listOf(
+                    "Latest Malayalam Hits 2025",
+                    "Sushin Shyam Malayalam Hits"
+                ),
+                "english" to listOf(
+                    "Top Global Pop Hits 2025",
+                    "Billboard Hot 100 Hits"
+                ),
+                "kannada" to listOf(
+                    "Latest Kannada Hits 2025",
+                    "Kannada Super Hits"
+                ),
+                "punjabi" to listOf(
+                    "Latest Punjabi Hits 2025",
+                    "Top Punjabi Songs"
                 )
-            } else {
-                listOf("Latest $category Hit Songs 2024")
+            )
+
+            val queries = mutableListOf<String>()
+            if (preferredLanguages.isNotEmpty()) {
+                for (lang in preferredLanguages) {
+                    val list = languageQueryMap[lang.lowercase().trim()]
+                    if (list != null) {
+                        queries.addAll(list)
+                    } else {
+                        queries.add("Latest $lang Hits")
+                    }
+                }
+            }
+
+            if (queries.isEmpty()) {
+                queries.addAll(listOf(
+                    "Latest Tamil Hits",
+                    "Tamil Top Hits",
+                    "Sai Abhyankkar Hits",
+                    "Amaran Tamil Songs",
+                    "Anirudh Ravichander Tamil Hits"
+                ))
             }
 
             val allSongs = mutableListOf<SongItem>()
@@ -53,13 +95,19 @@ class MusicRepository(
 
             val filtered = allSongs.filterNot { song ->
                 val title = song.title.lowercase()
-                title.contains("trending") || title.contains("jukebox") || title.contains("full album") || title.contains("non stop") || title.contains("compilation")
-            }
+                title.contains("trending") || title.contains("jukebox") || title.contains("full album") || 
+                title.contains("non stop") || title.contains("compilation") || title.contains("remaster") ||
+                song.playCount < 10000L
+            }.sortedByDescending { it.playCount }
+
             Result.success(if (filtered.isNotEmpty()) filtered else allSongs)
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
+
+    suspend fun getTrending(category: String, limit: Int = 60): Result<List<SongItem>> =
+        getTrending(listOf(category), limit)
 
     suspend fun ensureStreamUrl(song: SongItem): SongItem = withContext(Dispatchers.IO) {
         if (!song.decryptedMediaUrl.isNullOrBlank()) {
@@ -85,6 +133,52 @@ class MusicRepository(
             song
         }
     }
+
+    suspend fun resolveStreamUrl(title: String, artist: String = ""): String? = withContext(Dispatchers.IO) {
+        try {
+            // 1. Search JioSaavn official API
+            val searchRes = search(title).getOrNull()
+            val first = searchRes?.firstOrNull()
+            if (first != null) {
+                val ensured = ensureStreamUrl(first)
+                val streamUrl = ensured.getStreamUrl(AudioQuality.VERY_HIGH)
+                if (!streamUrl.isNullOrBlank()) return@withContext streamUrl
+            }
+        } catch (_: Exception) {}
+
+        try {
+            // 2. Secondary fallback: saavn-api-seven endpoint for direct downloadUrl
+            val client = okhttp3.OkHttpClient.Builder()
+                .connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+                .build()
+            val cleanQuery = java.net.URLEncoder.encode("$title $artist".trim(), "UTF-8")
+            val req = okhttp3.Request.Builder()
+                .url("https://saavn-api-seven.vercel.app/api/search/songs?query=$cleanQuery&limit=3")
+                .build()
+            val resp = client.newCall(req).execute()
+            if (resp.isSuccessful) {
+                val body = resp.body?.string() ?: ""
+                val json = org.json.JSONObject(body)
+                val results = json.optJSONObject("data")?.optJSONArray("results")
+                    ?: json.optJSONArray("results")
+                if (results != null && results.length() > 0) {
+                    val songObj = results.getJSONObject(0)
+                    val downloadUrls = songObj.optJSONArray("downloadUrl")
+                    if (downloadUrls != null && downloadUrls.length() > 0) {
+                        for (i in (downloadUrls.length() - 1) downTo 0) {
+                            val item = downloadUrls.getJSONObject(i)
+                            val url = item.optString("url")
+                            if (url.isNotBlank()) return@withContext url
+                        }
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+
+        null
+    }
+
 
     suspend fun getLyrics(song: SongItem): Result<String> = withContext(Dispatchers.IO) {
         try {
@@ -136,7 +230,8 @@ class MusicRepository(
             hasLyrics = moreInfo?.hasLyrics == "true",
             lyricsId = moreInfo?.lyricsId,
             encryptedMediaUrl = encUrl,
-            decryptedMediaUrl = decUrl
+            decryptedMediaUrl = decUrl,
+            playCount = playCount?.toLongOrNull() ?: 0L
         )
     }
 

@@ -58,7 +58,7 @@ import com.saavn.music.ui.theme.NeonPurple
 import com.saavn.music.ui.theme.TextMuted
 import com.saavn.music.ui.theme.TextPrimary
 
-data class TamilSearchCategory(
+data class SearchCategory(
     val title: String,
     val subtitle: String,
     val query: String,
@@ -76,25 +76,34 @@ fun SearchScreen(
     val searchError by viewModel.searchError.collectAsState()
     val currentSong by viewModel.ytPlayerController.currentSong.collectAsState()
     val isPlaying by viewModel.ytPlayerController.isPlaying.collectAsState()
+    val selectedLang by viewModel.searchLanguageFilter.collectAsState()
+
+    val languages = listOf("All", "Tamil", "Hindi", "English", "Telugu", "Malayalam", "Punjabi", "Kannada")
 
     val quickQueries = listOf(
-        "Tamil songs",
-        "Tamil melody songs",
-        "Anirudh Tamil songs",
-        "AR Rahman Tamil songs",
-        "Yuvan Tamil songs",
-        "Harris Jayaraj songs",
-        "Sid Sriram Tamil",
-        "Ilaiyaraaja hits"
+        "Trending Hits",
+        "Melody Songs",
+        "Anirudh Hits",
+        "Arijit Singh",
+        "A. R. Rahman",
+        "Shape of You",
+        "Sid Sriram",
+        "Love Songs",
+        "Party Beats",
+        "Hindi Hits",
+        "Telugu Hits",
+        "English Pop"
     )
 
     val exploreCategories = listOf(
-        TamilSearchCategory("🔥 Tamil Trending", "Chartbusters 2024", "Tamil trending songs 2024", listOf(Color(0xFFE91E63), Color(0xFF9C27B0))),
-        TamilSearchCategory("🌙 Tamil Melodies", "Soulful Hits", "Tamil melody songs", listOf(Color(0xFF3F51B5), Color(0xFF00BCD4))),
-        TamilSearchCategory("💖 Love Songs", "Romantic Classics", "Tamil love romantic songs", listOf(Color(0xFF9C27B0), Color(0xFF673AB7))),
-        TamilSearchCategory("💃 Kuthu & Gaana", "Party Energy", "Tamil gaana kuthu songs", listOf(Color(0xFFFF5722), Color(0xFFFF9800))),
-        TamilSearchCategory("🌿 Village Folk", "Gramiya Paadalgal", "Tamil folk songs gramiya", listOf(Color(0xFF009688), Color(0xFF4CAF50))),
-        TamilSearchCategory("✨ Devotional", "Bakthi Paadalgal", "Tamil devotional bakthi songs", listOf(Color(0xFF2196F3), Color(0xFF00E5FF)))
+        SearchCategory("🔥 Trending Hits", "Top Chartbusters", "Trending hit songs", listOf(Color(0xFFE91E63), Color(0xFF9C27B0))),
+        SearchCategory("🌙 Sweet Melodies", "Soulful Acoustic", "Melody hit songs", listOf(Color(0xFF3F51B5), Color(0xFF00BCD4))),
+        SearchCategory("💖 Romantic Hits", "Love Classics", "Romantic love songs", listOf(Color(0xFF9C27B0), Color(0xFF673AB7))),
+        SearchCategory("💃 Party & Dance", "High Energy Beats", "Party dance songs", listOf(Color(0xFFFF5722), Color(0xFFFF9800))),
+        SearchCategory("🌍 English & Pop", "Global Chartbusters", "English pop hit songs", listOf(Color(0xFF009688), Color(0xFF4CAF50))),
+        SearchCategory("🎬 Bollywood Hits", "Latest Hindi Music", "Hindi Bollywood hit songs", listOf(Color(0xFFE91E63), Color(0xFFFF5722))),
+        SearchCategory("🌟 South Superhits", "Tamil & Telugu Beats", "South Indian hit songs", listOf(Color(0xFF673AB7), Color(0xFF3F51B5))),
+        SearchCategory("✨ Devotional", "Spiritual Peace", "Devotional songs", listOf(Color(0xFF2196F3), Color(0xFF00E5FF)))
     )
 
     Column(
@@ -106,7 +115,7 @@ fun SearchScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 12.dp),
+                .padding(horizontal = 14.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(
@@ -132,7 +141,7 @@ fun SearchScreen(
                 onValueChange = { viewModel.onSearchQueryChanged(it) },
                 placeholder = {
                     Text(
-                        text = "Search Tamil songs, artists, videos…",
+                        text = "Search songs, albums, artists, podcasts…",
                         color = TextMuted,
                         fontSize = 14.sp
                     )
@@ -174,6 +183,42 @@ fun SearchScreen(
             )
         }
 
+        // Language Filter Chips
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 2.dp)
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Spacer(modifier = Modifier.width(14.dp))
+            languages.forEach { lang ->
+                val isSelected = (lang == selectedLang)
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(if (isSelected) NeonCyan else DarkSurfaceVariant)
+                        .border(
+                            1.dp,
+                            if (isSelected) NeonCyan else GlassBorderSubtle,
+                            RoundedCornerShape(16.dp)
+                        )
+                        .clickable { viewModel.setSearchLanguageFilter(lang) }
+                        .padding(horizontal = 13.dp, vertical = 6.dp)
+                ) {
+                    Text(
+                        text = lang,
+                        color = if (isSelected) DarkBackground else TextPrimary,
+                        fontSize = 12.sp,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.width(14.dp))
+        }
+
+        Spacer(modifier = Modifier.height(4.dp))
+
         // Quick Search Chips
         Row(
             modifier = Modifier
@@ -182,12 +227,12 @@ fun SearchScreen(
                 .horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Spacer(modifier = Modifier.width(16.dp))
+            Spacer(modifier = Modifier.width(14.dp))
             quickQueries.forEach { q ->
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(16.dp))
-                        .background(DarkSurfaceVariant)
+                        .background(DarkSurfaceGlass)
                         .border(1.dp, GlassBorderSubtle, RoundedCornerShape(16.dp))
                         .clickable { viewModel.onSearchQueryChanged(q) }
                         .padding(horizontal = 14.dp, vertical = 7.dp)
@@ -200,7 +245,7 @@ fun SearchScreen(
                     )
                 }
             }
-            Spacer(modifier = Modifier.width(16.dp))
+            Spacer(modifier = Modifier.width(14.dp))
         }
 
         Spacer(modifier = Modifier.height(8.dp))
@@ -220,7 +265,7 @@ fun SearchScreen(
                 ) {
                     CircularProgressIndicator(color = NeonCyan, strokeWidth = 3.dp)
                     Text(
-                        text = "Discovering Tamil songs...",
+                        text = "Discovering songs...",
                         color = TextPrimary,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold
@@ -307,13 +352,13 @@ fun SearchScreen(
                         fontSize = 44.sp
                     )
                     Text(
-                        text = "No Tamil Songs Found",
+                        text = "No Songs Found",
                         color = TextPrimary,
                         fontSize = 17.sp,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "We couldn't find any songs matching \"$query\". Check spelling or try searching another Tamil singer, movie, or song title.",
+                        text = "We couldn't find any songs matching \"$query\". Check spelling or try searching another song title, artist, or album.",
                         color = TextMuted,
                         fontSize = 13.sp,
                         textAlign = TextAlign.Center,
@@ -330,13 +375,13 @@ fun SearchScreen(
                 item {
                     Column(modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp)) {
                         Text(
-                            text = "Tamil Songs Discovered (${results.size})",
+                            text = "Songs Discovered (${results.size})",
                             color = TextPrimary,
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "ISAI HD Music • Song details & info",
+                            text = "ISAI HD Music • Tap to play directly",
                             color = TextMuted,
                             fontSize = 11.sp
                         )
@@ -375,7 +420,7 @@ fun SearchScreen(
             ) {
                 item {
                     Text(
-                        text = "✨ Explore Tamil Vibes",
+                        text = "✨ Explore Music",
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
                         color = TextPrimary,

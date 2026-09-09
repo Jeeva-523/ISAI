@@ -28,7 +28,7 @@ export interface MovieDoc {
 }
 
 class FirestoreMusicService {
-  async getTrendingSongs(maxResults = 30): Promise<Song[]> {
+  async getTrendingSongs(preferredLanguages?: string[], maxResults = 30): Promise<Song[]> {
     try {
       const q = query(collection(firestore, 'songs'), orderBy('releaseDate', 'desc'), limit(maxResults))
       const snap = await getDocs(q)
@@ -38,7 +38,7 @@ class FirestoreMusicService {
     } catch (err) {
       console.warn('[FirestoreMusicService] Firestore songs query fallback to MusicAPI:', err)
     }
-    return musicApi.getTrending(maxResults)
+    return musicApi.getTrending(preferredLanguages, maxResults)
   }
 
   async searchCatalog(rawQuery: string): Promise<Song[]> {

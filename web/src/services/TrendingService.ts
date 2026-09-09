@@ -17,7 +17,8 @@ export class TrendingService {
     return [...songs].sort((a, b) => {
       const playsA = analyticsService.getEventCount(a.videoId, 'play', 30 * 24 * 3600 * 1000)
       const playsB = analyticsService.getEventCount(b.videoId, 'play', 30 * 24 * 3600 * 1000)
-      return playsB - playsA
+      if (playsB !== playsA) return playsB - playsA
+      return (b.playCountNumber || 0) - (a.playCountNumber || 0)
     })
   }
 

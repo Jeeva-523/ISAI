@@ -52,6 +52,7 @@ import com.saavn.music.ui.theme.GlassBorderSubtle
 import com.saavn.music.ui.theme.GoldRank
 import com.saavn.music.ui.theme.NeonCyan
 import com.saavn.music.ui.theme.NeonPink
+import com.saavn.music.ui.theme.HeartColor
 import com.saavn.music.ui.theme.SilverRank
 import com.saavn.music.ui.theme.TextMuted
 import com.saavn.music.ui.theme.TextPrimary
@@ -197,6 +198,21 @@ fun YouTubeSongRowItem(
 
         Spacer(modifier = Modifier.width(4.dp))
 
+        // Direct Favorite Heart Button
+        if (onToggleFav != null) {
+            IconButton(
+                onClick = onToggleFav,
+                modifier = Modifier.size(36.dp)
+            ) {
+                Icon(
+                    imageVector = if (isFav) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                    contentDescription = if (isFav) "Liked" else "Like",
+                    tint = if (isFav) HeartColor else TextMuted,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+
         // Play Button
         IconButton(
             onClick = {
@@ -239,7 +255,7 @@ fun YouTubeSongRowItem(
                             Icon(
                                 imageVector = if (isFav) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                                 contentDescription = null,
-                                tint = if (isFav) NeonPink else TextMuted
+                                tint = if (isFav) HeartColor else TextMuted
                             )
                         },
                         onClick = {

@@ -33,8 +33,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -67,18 +68,53 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.saavn.music.ui.components.LoginDialog
+import com.saavn.music.ui.components.LanguageSelectionDialog
+import com.saavn.music.ui.screens.LoginScreen
+import com.saavn.music.ui.screens.SplashScreen
 
-import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.activity.viewModels
+import android.view.KeyEvent
 
 class MainActivity : ComponentActivity() {
+    private val mainViewModel: MainViewModel by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
-        installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
             SaavnMusicTheme {
-                IsaiApp()
+                IsaiApp(mainViewModel)
             }
+        }
+    }
+
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        val syncState = mainViewModel.isaiConnectManager.playbackState.value
+        val isRemoteActive = syncState != null && 
+            syncState.currentDeviceId.isNotBlank() && 
+            !mainViewModel.isaiConnectManager.isMyDeviceActive() && 
+            (syncState.isPlaying || Math.abs(System.currentTimeMillis() - syncState.updatedAt) < 15 * 60_000L)
+
+        if (isRemoteActive && syncState != null) {
+            val currentVol = ((syncState.volume) * 100).toInt()
+            if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
+                val newVol = (currentVol + 5).coerceAtMost(100)
+                mainViewModel.setVolume(newVol)
+                return true
+            } else if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+                val newVol = (currentVol - 5).coerceAtLeast(0)
+                mainViewModel.setVolume(newVol)
+                return true
+            }
+        }
+        return super.onKeyDown(keyCode, event)
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        val isStillPlaying = mainViewModel.ytPlayerController.isPlaying.value
+        if (!isStillPlaying) {
+            mainViewModel.isaiConnectManager.disconnect()
         }
     }
 }
@@ -90,6 +126,8 @@ fun IsaiApp(viewModel: MainViewModel = viewModel()) {
     val addToPlaylistSong by viewModel.showAddToPlaylistDialog.collectAsState()
     val showLoginDialog by viewModel.showLoginDialog.collectAsState()
     val userProfile by viewModel.userProfile.collectAsState()
+    val showLanguageDialog by viewModel.showLanguageDialog.collectAsState()
+    val preferredLanguages by viewModel.preferredLanguages.collectAsState()
 
     val context = androidx.compose.ui.platform.LocalContext.current
 
@@ -105,26 +143,14 @@ fun IsaiApp(viewModel: MainViewModel = viewModel()) {
     }
 
     androidx.compose.runtime.LaunchedEffect(Unit) {
-        // Small delay to ensure Activity is fully resumed so the dialog isn't suppressed
-        kotlinx.coroutines.delay(300)
-        
         val permissionsToRequest = mutableListOf<String>()
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-            if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_MEDIA_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                permissionsToRequest.add(android.Manifest.permission.READ_MEDIA_AUDIO)
-            }
-            if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                permissionsToRequest.add(android.Manifest.permission.POST_NOTIFICATIONS)
-            }
+            permissionsToRequest.add(android.Manifest.permission.READ_MEDIA_AUDIO)
+            permissionsToRequest.add(android.Manifest.permission.POST_NOTIFICATIONS)
         } else {
-            if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_EXTERNAL_STORAGE) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                permissionsToRequest.add(android.Manifest.permission.READ_EXTERNAL_STORAGE)
-            }
+            permissionsToRequest.add(android.Manifest.permission.READ_EXTERNAL_STORAGE)
         }
-        
-        if (permissionsToRequest.isNotEmpty()) {
-            permissionLauncher.launch(permissionsToRequest.toTypedArray())
-        }
+        permissionLauncher.launch(permissionsToRequest.toTypedArray())
     }
 
     // Google Sign In Launcher
@@ -162,6 +188,41 @@ fun IsaiApp(viewModel: MainViewModel = viewModel()) {
         }
     }
 
+    var isSplashVisible by remember { mutableStateOf(true) }
+
+    // Initial Splash Screen
+    if (isSplashVisible) {
+        SplashScreen(onTimeout = { isSplashVisible = false })
+        return
+    }
+
+    // First-Time / Unauthenticated Gate: Show LoginScreen
+    if (userProfile == null || userProfile?.isLoggedIn != true) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(DarkBackground)
+                .systemBarsPadding()
+        ) {
+            LoginScreen(
+                onNavigateBack = {},
+                onLoginSuccess = { name, email ->
+                    viewModel.quickSignInGoogleAccount(name, email)
+                }
+            )
+
+            if (showLanguageDialog || (userProfile?.isLoggedIn == true && preferredLanguages.isEmpty())) {
+                LanguageSelectionDialog(
+                    initialSelected = preferredLanguages.ifEmpty { listOf("tamil") },
+                    onSaveLanguages = { langs ->
+                        viewModel.setPreferredLanguages(langs)
+                    }
+                )
+            }
+        }
+        return
+    }
+
     // Back button handling
     BackHandler(enabled = showFullPlayer || currentScreen != AppScreen.HOME) {
         when {
@@ -170,31 +231,21 @@ fun IsaiApp(viewModel: MainViewModel = viewModel()) {
         }
     }
 
-    var showSplash by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(true) }
-
-    androidx.compose.runtime.LaunchedEffect(Unit) {
-        kotlinx.coroutines.delay(2000)
-        showSplash = false
-    }
-
-    if (showSplash) {
-        com.saavn.music.ui.screens.SplashScreen()
-    } else {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(DarkBackground)
-                .systemBarsPadding()
-        ) {
-            // Main Screen Content
-            Box(modifier = Modifier.fillMaxSize()) {
-                when (currentScreen) {
-                    AppScreen.HOME -> HomeScreen(viewModel = viewModel)
-                    AppScreen.SEARCH -> SearchScreen(viewModel = viewModel)
-                    AppScreen.LIBRARY -> LibraryScreen(viewModel = viewModel)
-                    AppScreen.PROFILE -> ProfileScreen(viewModel = viewModel)
-                }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(DarkBackground)
+            .systemBarsPadding()
+    ) {
+        // Main Screen Content
+        Box(modifier = Modifier.fillMaxSize()) {
+            when (currentScreen) {
+                AppScreen.HOME -> HomeScreen(viewModel = viewModel)
+                AppScreen.SEARCH -> SearchScreen(viewModel = viewModel)
+                AppScreen.LIBRARY -> LibraryScreen(viewModel = viewModel)
+                AppScreen.PROFILE -> ProfileScreen(viewModel = viewModel)
             }
+        }
 
         // Bottom Controls Column: Floating MiniPlayer + Glass Bottom Navigation Bar
         Column(
@@ -219,22 +270,14 @@ fun IsaiApp(viewModel: MainViewModel = viewModel()) {
         AnimatedVisibility(
             visible = showFullPlayer,
             enter = slideInVertically(initialOffsetY = { it }),
-            exit = slideOutVertically(targetOffsetY = { it }),
-            modifier = Modifier
-                .fillMaxSize()
-                .clickable(
-                    indication = null,
-                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
-                ) {
-                    // Consume clicks on full player container so items on background screen are never selected
-                }
+            exit = slideOutVertically(targetOffsetY = { it })
         ) {
             PlayerScreen(viewModel = viewModel)
         }
 
         // Add to Playlist Dialog
         addToPlaylistSong?.let { song ->
-            com.saavn.music.ui.components.AddToPlaylistDialog(
+            AddToPlaylistDialog(
                 song = song,
                 viewModel = viewModel,
                 onDismiss = { viewModel.closeAddToPlaylistDialog() }
@@ -270,8 +313,18 @@ fun IsaiApp(viewModel: MainViewModel = viewModel()) {
                 }
             )
         }
-    } // End of main app Box
-    } // End of else block
+
+        // Language Selection Dialog (Onboarding or Profile Edit)
+        if (showLanguageDialog || preferredLanguages.isEmpty()) {
+            LanguageSelectionDialog(
+                initialSelected = preferredLanguages.ifEmpty { listOf("tamil") },
+                onSaveLanguages = { langs ->
+                    viewModel.setPreferredLanguages(langs)
+                },
+                onDismiss = if (preferredLanguages.isNotEmpty()) { { viewModel.closeLanguageDialog() } } else null
+            )
+        }
+    }
 }
 
 @Composable

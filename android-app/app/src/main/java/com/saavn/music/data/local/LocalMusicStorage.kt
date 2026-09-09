@@ -131,6 +131,12 @@ class LocalMusicStorage(context: Context) {
         prefs.edit().putString(KEY_RECENTLY_PLAYED, gson.toJson(trimmed)).apply()
     }
 
+    fun setRecentlyPlayed(songs: List<YouTubeSong>) {
+        val trimmed = if (songs.size > 20) songs.take(20) else songs
+        _recentlyPlayed.value = trimmed
+        prefs.edit().putString(KEY_RECENTLY_PLAYED, gson.toJson(trimmed)).apply()
+    }
+
     // --- Playlists ---
     fun createPlaylist(name: String): UserPlaylist {
         val newPlaylist = UserPlaylist(name = name)

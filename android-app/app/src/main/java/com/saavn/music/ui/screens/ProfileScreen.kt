@@ -151,13 +151,13 @@ fun ProfileScreen(
 
                     Column {
                         Text(
-                            text = "Profile & Account",
+                            text = "Settings & Profile",
                             fontSize = 22.sp,
                             fontWeight = FontWeight.Bold,
                             color = TextPrimary
                         )
                         Text(
-                            text = "Basic Details & Preferences",
+                            text = "Account Settings & Preferences",
                             fontSize = 12.sp,
                             color = TextSecondary
                         )
@@ -391,11 +391,15 @@ fun ProfileScreen(
                         label = "Audio Engine",
                         value = "ExoPlayer 3D Equalizer Active"
                     )
-                    HorizontalDivider(color = GlassBorderSubtle, thickness = 1.dp)
+                    val chosenLangs by viewModel.preferredLanguages.collectAsState()
+                    val langText = if (chosenLangs.isNotEmpty()) {
+                        chosenLangs.joinToString(", ") { it.replaceFirstChar { c -> c.uppercase() } }
+                    } else "Tamil"
                     ProfileDetailRow(
                         icon = Icons.Default.Language,
                         label = "Music Language",
-                        value = "Tamil, English, Hindi"
+                        value = langText,
+                        onRowClick = { viewModel.openLanguageDialog() }
                     )
                     HorizontalDivider(color = GlassBorderSubtle, thickness = 1.dp)
                     ProfileDetailRow(
@@ -481,66 +485,67 @@ fun ProfileScreen(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // Sign In / Switch Account / Logout Button
-                    if (isUserLoggedIn) {
-                        Button(
-                            onClick = {
-                                viewModel.logoutUser()
-                                android.widget.Toast.makeText(context, "Signed out successfully", android.widget.Toast.LENGTH_SHORT).show()
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(52.dp)
-                                .shadow(8.dp, RoundedCornerShape(16.dp), spotColor = Color(0xFFEF4444).copy(alpha = 0.3f)),
-                            shape = RoundedCornerShape(16.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFF2A1215)
-                            ),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.5f))
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.ExitToApp,
-                                    contentDescription = null,
-                                    tint = Color(0xFFEF4444),
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Text(
-                                    text = "🚪 Sign Out Account",
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFFEF4444)
-                                )
-                            }
-                        }
-                    } else {
-                        Button(
-                            onClick = { viewModel.openLoginDialog() },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(52.dp)
-                                .shadow(8.dp, RoundedCornerShape(16.dp), spotColor = NeonCyan.copy(alpha = 0.4f)),
-                            shape = RoundedCornerShape(16.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = IsaiLime
+                    // Dedicated Logout Button in Settings
+                    Button(
+                        onClick = {
+                            viewModel.logoutUser()
+                            android.widget.Toast.makeText(context, "Logged out successfully", android.widget.Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp)
+                            .shadow(8.dp, RoundedCornerShape(16.dp), spotColor = Color(0xFFEF4444).copy(alpha = 0.3f)),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF2A1215)
+                        ),
+                        border = androidx.compose.foundation.BorderStroke(1.2.dp, Color(0xFFEF4444).copy(alpha = 0.6f))
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ExitToApp,
+                                contentDescription = null,
+                                tint = Color(0xFFEF4444),
+                                modifier = Modifier.size(20.dp)
                             )
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.Lock,
-                                    contentDescription = null,
-                                    tint = TextPrimary,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Text(
-                                    text = "🔑 Sign In / Register Account",
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = TextPrimary
-                                )
-                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = "🚪 Logout",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFEF4444)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Switch Account / Sign In Button
+                    Button(
+                        onClick = { viewModel.openLoginDialog() },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(50.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = DarkSurfaceGlass
+                        ),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, NeonCyan.copy(alpha = 0.4f))
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Lock,
+                                contentDescription = null,
+                                tint = NeonCyan,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = if (isUserLoggedIn) "🔑 Switch Account" else "🔑 Sign In / Register",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = NeonCyan
+                            )
                         }
                     }
                 }

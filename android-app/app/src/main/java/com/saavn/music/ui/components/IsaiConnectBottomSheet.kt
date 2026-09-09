@@ -11,10 +11,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -135,36 +135,133 @@ fun IsaiConnectBottomSheet(
                 color = DarkBackground,
                 border = androidx.compose.foundation.BorderStroke(1.dp, NeonCyan.copy(alpha = 0.35f))
             ) {
-                Row(
-                    modifier = Modifier.padding(14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.GraphicEq,
-                        contentDescription = null,
-                        tint = NeonCyan,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Column {
-                        Text(
-                            text = "CURRENT AUDIO OUTPUT",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                color = NeonCyan,
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.GraphicEq,
+                            contentDescription = null,
+                            tint = NeonCyan,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Column {
+                            Text(
+                                text = "CURRENT AUDIO OUTPUT",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    color = NeonCyan,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.sp
+                                )
+                            )
+                            Text(
+                                text = if (currentActiveId == myDeviceId)
+                                    "Playing on ${formatDeviceDisplayName(connectManager.deviceName)}"
+                                else
+                                    "Playing on Remote Device",
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    color = Color.White,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            )
+                        }
+                    }
+
+                    // Remote volume slider if playing on remote device (e.g. Website/Laptop)
+                    if (currentActiveId != myDeviceId && currentActiveId.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        val syncState = connectManager.playbackState.collectAsState().value
+                        val remoteVolume = ((syncState?.volume ?: 1.0f) * 100f)
+                        var sliderVol by remember(remoteVolume) { mutableFloatStateOf(remoteVolume) }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = if (sliderVol == 0f) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
+                                contentDescription = null,
+                                tint = NeonCyan,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Slider(
+                                value = sliderVol,
+                                onValueChange = {
+                                    sliderVol = it
+                                    viewModel?.setVolume(it.toInt())
+                                },
+                                valueRange = 0f..100f,
+                                colors = SliderDefaults.colors(
+                                    thumbColor = NeonCyan,
+                                    activeTrackColor = NeonCyan,
+                                    inactiveTrackColor = Color(0xFF211733)
+                                ),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(horizontal = 8.dp)
+                            )
+                            Text(
+                                text = "${sliderVol.toInt()}%",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    color = NeonCyan,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Button(
+                            onClick = {
+                                val prevDevice = connectManager.playbackState.value?.currentDeviceId ?: ""
+                                if (prevDevice.isNotBlank() && prevDevice != myDeviceId) {
+                                    connectManager.sendCommand("PAUSE", targetDeviceId = prevDevice)
+                                }
+                                connectManager.transferPlaybackToDevice(myDeviceId)
+                                if (viewModel != null) {
+                                    val sync = connectManager.playbackState.value
+                                    if (sync != null && sync.currentSongId.isNotBlank()) {
+                                        val song = com.saavn.music.data.model.YouTubeSong(
+                                            videoId = sync.currentSongId,
+                                            title = sync.currentTitle,
+                                            channelTitle = sync.currentArtist,
+                                            thumbnailUrl = sync.currentArtwork,
+                                            audioUrl = sync.currentAudioUrl.ifBlank { null }
+                                        )
+                                        val startSec = (sync.positionMs / 1000f).coerceAtLeast(0f)
+                                        val syncQueue = sync.queue.map {
+                                            com.saavn.music.data.model.YouTubeSong(
+                                                videoId = it.id,
+                                                title = it.title,
+                                                channelTitle = it.artist,
+                                                thumbnailUrl = it.artwork,
+                                                audioUrl = it.audioUrl.ifBlank { null }
+                                            )
+                                        }
+                                        val effectiveQueue = if (syncQueue.isNotEmpty()) syncQueue else viewModel.playbackQueue.value
+                                        viewModel.playSong(song, effectiveQueue, startPositionSec = startSec, forceLocal = true)
+                                    }
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = NeonCyan
+                            ),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Smartphone,
+                                contentDescription = null,
+                                tint = DarkBackground,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Switch Audio to This Phone",
+                                color = DarkBackground,
                                 fontWeight = FontWeight.Bold,
-                                letterSpacing = 1.sp
+                                fontSize = 13.sp
                             )
-                        )
-                        Text(
-                            text = if (currentActiveId == myDeviceId)
-                                "Playing on ${formatDeviceDisplayName(connectManager.deviceName)}"
-                            else
-                                "Playing on Remote Device",
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                color = Color.White,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        )
+                        }
                     }
                 }
             }
@@ -203,7 +300,7 @@ fun IsaiConnectBottomSheet(
                                 audioUrl = sync.currentAudioUrl.ifBlank { null }
                             )
                             val startSec = (sync.positionMs / 1000f).coerceAtLeast(0f)
-                            viewModel.playSong(song, startPositionSec = startSec)
+                            viewModel.playSong(song, startPositionSec = startSec, forceLocal = true)
                         }
                     }
                 }
@@ -211,8 +308,11 @@ fun IsaiConnectBottomSheet(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // Section: Available Devices
-            val otherDevices = devices.filter { it.deviceId != myDeviceId && connectManager.isDeviceOnline(it) }
+            // Section: Available Devices (deduplicated by deviceName)
+            val otherDevices = connectManager.deduplicateDevices(
+                devices.filter { it.deviceId != myDeviceId && connectManager.isDeviceAvailable(it) },
+                currentActiveId
+            )
             Text(
                 text = "AVAILABLE DEVICES (${otherDevices.size})",
                 style = MaterialTheme.typography.labelMedium.copy(
@@ -245,11 +345,11 @@ fun IsaiConnectBottomSheet(
                     modifier = Modifier.heightIn(max = 240.dp)
                 ) {
                     items(otherDevices) { device ->
-                        val diffMs = System.currentTimeMillis() - device.lastActiveAt
-                        val (pText, pColor) = when {
-                            device.isActive && diffMs < 35000 -> "Active now" to IsaiLime
-                            diffMs < 300000 -> "Active ${(diffMs / 60000).coerceAtLeast(1)}m ago" to Color(0xFFFFC107)
-                            else -> "Offline" to TextSecondary
+                        val isOnline = connectManager.isDeviceAvailable(device)
+                        val (pText, pColor) = if (isOnline) {
+                            "Active now" to IsaiLime
+                        } else {
+                            "Offline" to TextSecondary
                         }
 
                         DeviceItemRow(

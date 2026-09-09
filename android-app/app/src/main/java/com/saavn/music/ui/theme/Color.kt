@@ -21,6 +21,10 @@ val NeonPink = Color(0xFFA78BFA) // Light Accent: #A78BFA
 val NeonBlue = Color(0xFFA78BFA) // Light Accent: #A78BFA
 val NeonAmber = Color(0xFFA78BFA) // Light Accent: #A78BFA
 
+// Dedicated Heart / Favorite Colors (Vibrant Rose Red-Pink)
+val HeartColor = Color(0xFFFF2D55)
+val HeartColorGlow = Color(0x66FF2D55)
+
 val GoldRank = Color(0xFF8B5CF6)
 val SilverRank = Color(0xFFA78BFA)
 val BronzeRank = Color(0xFF6D4BC3)

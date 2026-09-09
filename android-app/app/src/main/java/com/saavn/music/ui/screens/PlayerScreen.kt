@@ -108,6 +108,7 @@ import com.saavn.music.ui.theme.GlassBorder
 import com.saavn.music.ui.theme.GlassBorderSubtle
 import com.saavn.music.ui.theme.NeonCyan
 import com.saavn.music.ui.theme.NeonPink
+import com.saavn.music.ui.theme.HeartColor
 import com.saavn.music.ui.theme.NeonPurple
 import com.saavn.music.ui.theme.SliderTrack
 import com.saavn.music.ui.theme.TextMuted
@@ -128,19 +129,50 @@ fun PlayerScreen(
     modifier: Modifier = Modifier
 ) {
     val song by viewModel.ytPlayerController.currentSong.collectAsState()
-    val isPlaying by viewModel.ytPlayerController.isPlaying.collectAsState()
+    val isPlayingLocal by viewModel.ytPlayerController.isPlaying.collectAsState()
     val isBuffering by viewModel.ytPlayerController.isBuffering.collectAsState()
-    val positionSec by viewModel.ytPlayerController.currentPositionSec.collectAsState()
-    val durationSec by viewModel.ytPlayerController.durationSec.collectAsState()
-    val volume by viewModel.ytPlayerController.volume.collectAsState()
+    val positionSecLocal by viewModel.ytPlayerController.currentPositionSec.collectAsState()
+    val durationSecLocal by viewModel.ytPlayerController.durationSec.collectAsState()
+    val localVolume by viewModel.ytPlayerController.volume.collectAsState()
     val isShuffle by viewModel.ytPlayerController.isShuffle.collectAsState()
     val isRepeat by viewModel.ytPlayerController.isRepeat.collectAsState()
+
+    val syncState by viewModel.isaiConnectManager.playbackState.collectAsState()
+    val isMyDeviceActive = viewModel.isaiConnectManager.isMyDeviceActive()
+    val isRemoteActive = !isMyDeviceActive && syncState != null &&
+        syncState!!.currentDeviceId.isNotBlank() &&
+        !syncState!!.currentTitle.isNullOrBlank() &&
+        (syncState!!.isPlaying || Math.abs(System.currentTimeMillis() - syncState!!.updatedAt) < 15 * 60_000L)
+
+    val remoteVolume = ((syncState?.volume ?: 1.0f) * 100).toInt()
+    val volume = if (isRemoteActive) remoteVolume else localVolume
 
     val queue by viewModel.playbackQueue.collectAsState()
     val currentQueueIdx by viewModel.currentQueueIndex.collectAsState()
 
-    var showQueueSheet by remember { mutableStateOf(false) }
+    val remoteQueueSongs = remember(syncState?.queue) {
+        syncState?.queue?.map { syncSong ->
+            com.saavn.music.data.model.YouTubeSong(
+                videoId = syncSong.id,
+                title = syncSong.title,
+                channelTitle = syncSong.artist,
+                thumbnailUrl = syncSong.artwork,
+                audioUrl = syncSong.audioUrl.ifBlank { null }
+            )
+        } ?: emptyList()
+    }
+    val effectiveDisplayQueue = if (isRemoteActive && remoteQueueSongs.isNotEmpty()) {
+        remoteQueueSongs
+    } else {
+        queue
+    }
+    val effectiveCurrentQueueIdx = if (isRemoteActive) {
+        syncState?.queueIndex ?: 0
+    } else {
+        currentQueueIdx
+    }
 
+    var showQueueSheet by remember { mutableStateOf(false) }
     var showConnectSheet by remember { mutableStateOf(false) }
     var showMoreMenu by remember { mutableStateOf(false) }
     var showLyricsSheet by remember { mutableStateOf(false) }
@@ -148,7 +180,26 @@ fun PlayerScreen(
     var dragPositionSec by remember { mutableFloatStateOf(0f) }
     var visualMode by remember { mutableStateOf(PlayerVisualMode.ALBUM_CARD) }
 
-    val currentSong = song ?: return
+    val currentSong = song ?: if (isRemoteActive) {
+        com.saavn.music.data.model.YouTubeSong(
+            videoId = syncState?.currentSongId ?: "",
+            title = syncState?.currentTitle ?: "Remote Track",
+            channelTitle = syncState?.currentArtist ?: "ISAI Connect",
+            thumbnailUrl = syncState?.currentArtwork ?: "",
+            audioUrl = syncState?.currentAudioUrl?.ifBlank { null }
+        )
+    } else null
+
+    if (currentSong == null) {
+        androidx.compose.runtime.LaunchedEffect(Unit) {
+            viewModel.closeFullPlayer()
+        }
+        return
+    }
+
+    val isPlaying = if (isRemoteActive) (syncState?.isPlaying == true) else isPlayingLocal
+    val positionSec = if (isRemoteActive) ((syncState?.positionMs ?: 0L) / 1000f) else positionSecLocal
+    val durationSec = if (isRemoteActive) ((syncState?.durationMs ?: 210000L) / 1000f) else durationSecLocal
     val isFav = viewModel.isFavorite(currentSong.videoId)
     val context = LocalContext.current
 
@@ -496,13 +547,13 @@ fun PlayerScreen(
                     modifier = Modifier
                         .size(48.dp)
                         .clip(CircleShape)
-                        .background(DarkSurfaceGlass)
-                        .border(1.dp, if (isFav) NeonPink else GlassBorderSubtle, CircleShape)
+                        .background(if (isFav) HeartColor.copy(alpha = 0.18f) else DarkSurfaceGlass)
+                        .border(1.dp, if (isFav) HeartColor else GlassBorderSubtle, CircleShape)
                 ) {
                     Icon(
                         imageVector = if (isFav) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                         contentDescription = "Favorite",
-                        tint = if (isFav) NeonPink else TextMuted,
+                        tint = if (isFav) HeartColor else TextMuted,
                         modifier = Modifier.size(26.dp)
                     )
                 }
@@ -900,7 +951,7 @@ fun PlayerScreen(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "PLAYING QUEUE (${queue.size})",
+                                text = "PLAYING QUEUE (${effectiveDisplayQueue.size})",
                                 color = TextPrimary,
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Bold,
@@ -908,7 +959,7 @@ fun PlayerScreen(
                             )
                         }
 
-                        if (queue.size > 1) {
+                        if (effectiveDisplayQueue.size > 1 && !isRemoteActive) {
                             Text(
                                 text = "Clear Queue",
                                 color = NeonPink,
@@ -932,7 +983,7 @@ fun PlayerScreen(
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    if (queue.isEmpty()) {
+                    if (effectiveDisplayQueue.isEmpty()) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -947,8 +998,8 @@ fun PlayerScreen(
                                 .fillMaxWidth()
                                 .height(420.dp)
                         ) {
-                            itemsIndexed(queue) { idx, qSong ->
-                                val isCurrent = (idx == currentQueueIdx || qSong.videoId == currentSong.videoId)
+                            itemsIndexed(effectiveDisplayQueue) { idx, qSong ->
+                                val isCurrent = (idx == effectiveCurrentQueueIdx || qSong.videoId == currentSong.videoId)
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -956,7 +1007,15 @@ fun PlayerScreen(
                                             if (isCurrent) NeonCyan.copy(alpha = 0.12f) else Color.Transparent
                                         )
                                         .clickable {
-                                            viewModel.playSong(qSong, queue)
+                                            if (isRemoteActive && !syncState?.currentDeviceId.isNullOrBlank()) {
+                                                viewModel.isaiConnectManager.sendCommand(
+                                                    action = "PLAY_SONG",
+                                                    song = qSong,
+                                                    targetDeviceId = syncState!!.currentDeviceId
+                                                )
+                                            } else {
+                                                viewModel.playSong(qSong, effectiveDisplayQueue)
+                                            }
                                         }
                                         .padding(horizontal = 20.dp, vertical = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically
@@ -1021,7 +1080,7 @@ fun PlayerScreen(
                                         )
                                     }
 
-                                    if (!isCurrent) {
+                                    if (!isCurrent && !isRemoteActive) {
                                         IconButton(
                                             onClick = { viewModel.removeFromQueue(idx) },
                                             modifier = Modifier.size(32.dp)

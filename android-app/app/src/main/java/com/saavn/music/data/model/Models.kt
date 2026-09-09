@@ -16,7 +16,8 @@ data class SongItem(
     val hasLyrics: Boolean = false,
     val lyricsId: String? = null,
     val encryptedMediaUrl: String? = null,
-    var decryptedMediaUrl: String? = null
+    var decryptedMediaUrl: String? = null,
+    val playCount: Long = 0L
 ) {
     fun getStreamUrl(quality: AudioQuality): String? {
         val base = decryptedMediaUrl ?: return null

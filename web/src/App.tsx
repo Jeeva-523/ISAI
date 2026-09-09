@@ -177,29 +177,6 @@ export function App() {
     }
   }, [user.email])
 
-  // Pre-fetch audio URLs for upcoming songs in the queue to eliminate loading delay
-  useEffect(() => {
-    if (playbackQueue.length === 0) return
-
-    const lookahead = playbackQueue.slice(currentQueueIndex + 1, currentQueueIndex + 4)
-    
-    lookahead.forEach(async (song) => {
-      if (!song.audioUrl) {
-        try {
-          const results = await musicApi.searchSongs(song.title)
-          if (results && results.length > 0 && results[0].audioUrl) {
-            const resolvedUrl = results[0].audioUrl
-            setPlaybackQueue(prev => prev.map(s => 
-              s.videoId === song.videoId ? { ...s, audioUrl: resolvedUrl } : s
-            ))
-          }
-        } catch (e) {
-          console.warn('[App] Failed to pre-resolve audioUrl:', e)
-        }
-      }
-    })
-  }, [playbackQueue, currentQueueIndex])
-
   // Load trending music
   const loadTrending = async () => {
     setIsTrendingLoading(true)

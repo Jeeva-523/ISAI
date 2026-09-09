@@ -120,6 +120,17 @@ class AuthService private constructor(context: Context) {
         }
     }
 
+    suspend fun sendPasswordResetEmail(emailStr: String): Result<Unit> {
+        val clean = emailStr.trim()
+        if (clean.isBlank()) return Result.failure(Exception("Please enter your email address."))
+        return try {
+            auth.sendPasswordResetEmail(clean).await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(Exception(mapFirebaseError(e)))
+        }
+    }
+
     fun updateDisplayName(newName: String) {
         val current = _currentUserProfile.value
         if (current != null) {

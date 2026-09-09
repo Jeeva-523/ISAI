@@ -4,6 +4,12 @@ export interface Thumbnail {
   height?: number
 }
 
+export interface SongArtist {
+  id?: string
+  name: string
+  role?: string
+}
+
 export interface Song {
   videoId: string
   title: string
@@ -15,6 +21,13 @@ export interface Song {
   album?: string
   audioUrl?: string
   isFavorite?: boolean
+  language?: string
+  releaseDate?: string
+  releaseTimestamp?: number
+  year?: string | number
+  genre?: string
+  playCountNumber?: number
+  artists?: SongArtist[]
 }
 
 export interface TamilCategory {

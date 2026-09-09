@@ -51,6 +51,9 @@ class YouTubeMusicRepository {
         return BuildConfig.YOUTUBE_API_KEY
     }
 
+    suspend fun searchSongs(query: String, maxResults: Int = 20): Result<List<YouTubeSong>> =
+        searchTamilSongs(query, maxResults)
+
     suspend fun searchTamilSongs(query: String, maxResults: Int = 20): Result<List<YouTubeSong>> =
         withContext(Dispatchers.IO) {
             val cacheKey = query.trim().lowercase()
@@ -78,8 +81,7 @@ class YouTubeMusicRepository {
             }
 
             try {
-                // Ensure query focuses on Tamil music
-                val effectiveQuery = if (query.contains("tamil", ignoreCase = true)) query else "$query Tamil song"
+                val effectiveQuery = query.trim()
                 val searchRes = apiService.searchVideos(
                     query = effectiveQuery,
                     maxResults = maxResults,
@@ -141,17 +143,67 @@ class YouTubeMusicRepository {
         }
 
     // Category fetchers with fallback to curated songs
-    suspend fun getTrendingTamil(maxResults: Int = 60): List<YouTubeSong> {
-        val queries = listOf(
-            "Latest Tamil Movie Songs 2024",
-            "Anirudh Ravichander Tamil Hits",
-            "A R Rahman Tamil Super Hits",
-            "Yuvan Shankar Raja Tamil Hits",
-            "Harris Jayaraj Tamil Melodies"
+    suspend fun getTrendingSongs(preferredLanguages: List<String> = emptyList(), maxResults: Int = 60): List<YouTubeSong> {
+        val languageQueryMap = mapOf(
+            "tamil" to listOf(
+                "Latest Tamil Movie Songs 2025 2026",
+                "Anirudh Ravichander Tamil Hits",
+                "A R Rahman Tamil Super Hits",
+                "Yuvan Shankar Raja Tamil Hits",
+                "Harris Jayaraj Tamil Melodies"
+            ),
+            "telugu" to listOf(
+                "Latest Telugu Hits 2025",
+                "Telugu Super Hits",
+                "Thaman S Telugu Hits"
+            ),
+            "hindi" to listOf(
+                "Latest Bollywood Hindi Hits 2025",
+                "Arijit Singh Super Hits",
+                "Top Hindi Songs 2025"
+            ),
+            "malayalam" to listOf(
+                "Latest Malayalam Hits 2025",
+                "Sushin Shyam Malayalam Hits"
+            ),
+            "english" to listOf(
+                "Top Global Pop Hits 2025",
+                "Billboard Hot 100 Hits"
+            ),
+            "kannada" to listOf(
+                "Latest Kannada Hits 2025",
+                "Kannada Super Hits"
+            ),
+            "punjabi" to listOf(
+                "Latest Punjabi Hits 2025",
+                "Top Punjabi Songs"
+            )
         )
+
+        val queries = mutableListOf<String>()
+        if (preferredLanguages.isNotEmpty()) {
+            for (lang in preferredLanguages) {
+                val list = languageQueryMap[lang.lowercase().trim()]
+                if (list != null) {
+                    queries.addAll(list)
+                } else {
+                    queries.add("Latest $lang Hit Songs 2025 2026")
+                }
+            }
+        }
+        if (queries.isEmpty()) {
+            queries.addAll(listOf(
+                "Latest Tamil Movie Songs 2025 2026",
+                "Anirudh Ravichander Tamil Hits",
+                "A R Rahman Tamil Super Hits",
+                "Latest Telugu Hits 2025",
+                "Latest Bollywood Hindi Hits 2025"
+            ))
+        }
+
         val combined = mutableListOf<YouTubeSong>()
         for (q in queries) {
-            val songs = searchTamilSongs(q, 15).getOrDefault(emptyList())
+            val songs = searchSongs(q, 15).getOrDefault(emptyList())
             combined.addAll(songs)
         }
         val filtered = combined.filterNot { song ->
@@ -160,6 +212,9 @@ class YouTubeMusicRepository {
         }
         return deduplicateSongs(if (filtered.isNotEmpty()) filtered else combined)
     }
+
+    suspend fun getTrendingTamil(maxResults: Int = 60): List<YouTubeSong> =
+        getTrendingSongs(listOf("tamil"), maxResults)
 
     suspend fun getTamilMelody(): List<YouTubeSong> =
         searchTamilSongs("Tamil melody songs all time hits").getOrElse { getCuratedTamilSongs("Melody") }
@@ -180,7 +235,7 @@ class YouTubeMusicRepository {
         searchTamilSongs("Tamil classical carnatic songs").getOrElse { getCuratedTamilSongs("Classical") }
 
     suspend fun getNewReleases(): List<YouTubeSong> =
-        searchTamilSongs("Latest Tamil movie songs 2024").getOrElse { getCuratedTamilSongs("New") }
+        searchTamilSongs("Latest Tamil movie songs 2024 2025").getOrElse { getCuratedTamilSongs("New") }
 
     /**
      * Native YouTube Music Innertube WEB_REMIX search implementation
@@ -188,7 +243,7 @@ class YouTubeMusicRepository {
      * Direct song search with no API key or daily quota limits
      */
     private fun searchYouTubeMusicInnertube(query: String, maxResults: Int): List<YouTubeSong> {
-        val effectiveQuery = if (query.contains("tamil", ignoreCase = true)) query.trim() else "${query.trim()} Tamil song"
+        val effectiveQuery = query.trim()
         val jsonBody = JSONObject().apply {
             put("context", JSONObject().apply {
                 put("client", JSONObject().apply {
@@ -254,7 +309,7 @@ class YouTubeMusicRepository {
                     ?.optJSONObject("text")
                     ?.optJSONArray("runs")
 
-                var artist = "Tamil Music"
+                var artist = "Music Artist"
                 var durationStr = "3:45"
                 if (flex1Runs != null && flex1Runs.length() > 0) {
                     val parts = mutableListOf<String>()

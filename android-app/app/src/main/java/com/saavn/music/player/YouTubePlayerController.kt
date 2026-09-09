@@ -2,17 +2,18 @@ package com.saavn.music.player
 
 import android.content.Context
 import android.util.Log
-import android.content.ComponentName
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
-import androidx.media3.session.MediaController
-import androidx.media3.session.SessionToken
+import androidx.media3.exoplayer.ExoPlayer
 import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.PlayerConstants
 import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.YouTubePlayer
 import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.listeners.AbstractYouTubePlayerListener
 import com.saavn.music.data.local.LocalMusicStorage
 import com.saavn.music.data.model.YouTubeSong
+import com.saavn.music.service.MusicPlaybackService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -28,9 +29,34 @@ class YouTubePlayerController(
     private val localStorage: LocalMusicStorage
 ) {
 
-    // Native MediaController for Direct 320kbps Audio Streams connecting to PlaybackService
-    private var mediaController: MediaController? = null
-    private var controllerFuture: com.google.common.util.concurrent.ListenableFuture<MediaController>? = null
+    companion object {
+        @Volatile
+        private var instance: YouTubePlayerController? = null
+
+        fun getInstance(): YouTubePlayerController? = instance
+
+        fun initialize(context: Context, localStorage: LocalMusicStorage): YouTubePlayerController {
+            return instance ?: synchronized(this) {
+                instance ?: YouTubePlayerController(context.applicationContext, localStorage).also {
+                    instance = it
+                }
+            }
+        }
+    }
+
+    // Audio Attributes for continuous background playback and audio focus
+    private val audioAttributes = AudioAttributes.Builder()
+        .setUsage(C.USAGE_MEDIA)
+        .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+        .build()
+
+    // Native ExoPlayer for Direct 320kbps Audio Streams (NepoTune / JioSaavn)
+    private val exoPlayer: ExoPlayer = ExoPlayer.Builder(context)
+        .setAudioAttributes(audioAttributes, true)
+        .setHandleAudioBecomingNoisy(true)
+        .setWakeMode(C.WAKE_MODE_LOCAL)
+        .build()
+
     private val coroutineScope = CoroutineScope(Dispatchers.Main)
     private var progressTrackerJob: Job? = null
     private var isUsingExoPlayer = false
@@ -70,63 +96,79 @@ class YouTubePlayerController(
     val currentQueueIndex: StateFlow<Int> = _currentQueueIndex.asStateFlow()
 
     var onQueueExhausted: (() -> Unit)? = null
+    var onTrackChangeRequested: ((YouTubeSong, List<YouTubeSong>) -> Unit)? = null
 
     init {
-        val sessionToken = SessionToken(context, ComponentName(context, PlaybackService::class.java))
-        controllerFuture = MediaController.Builder(context, sessionToken).buildAsync()
-        controllerFuture?.addListener(
-            {
-                mediaController = controllerFuture?.get()
-                mediaController?.addListener(object : Player.Listener {
-                    override fun onIsPlayingChanged(playing: Boolean) {
-                        if (isUsingExoPlayer) {
-                            _isPlaying.value = playing
-                            if (playing) {
-                                _isBuffering.value = false
-                                startProgressTracker()
-                            } else {
-                                stopProgressTracker()
-                            }
-                        }
+        instance = this
+        exoPlayer.addListener(object : Player.Listener {
+            override fun onIsPlayingChanged(playing: Boolean) {
+                if (isUsingExoPlayer) {
+                    _isPlaying.value = playing
+                    notifyService(playing)
+                    if (playing) {
+                        _isBuffering.value = false
+                        startProgressTracker()
+                    } else {
+                        stopProgressTracker()
                     }
+                }
+            }
 
-                    override fun onPlaybackStateChanged(playbackState: Int) {
-                        if (!isUsingExoPlayer) return
-                        when (playbackState) {
-                            Player.STATE_BUFFERING -> _isBuffering.value = true
-                            Player.STATE_READY -> {
-                                _isBuffering.value = false
-                                val dur = mediaController?.duration ?: 0L
-                                if (dur > 0L) {
-                                    _durationSec.value = dur / 1000f
-                                }
-                            }
-                            Player.STATE_ENDED -> {
-                                _isPlaying.value = false
-                                _isBuffering.value = false
-                                playNext()
-                            }
-                            else -> _isBuffering.value = false
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (!isUsingExoPlayer) return
+                when (playbackState) {
+                    Player.STATE_BUFFERING -> _isBuffering.value = true
+                    Player.STATE_READY -> {
+                        _isBuffering.value = false
+                        val dur = exoPlayer.duration
+                        if (dur > 0L) {
+                            _durationSec.value = dur / 1000f
+                        }
+                        notifyService(_isPlaying.value)
+                    }
+                    Player.STATE_ENDED -> {
+                        _isPlaying.value = false
+                        _isBuffering.value = false
+                        notifyService(false)
+                        coroutineScope.launch {
+                            delay(100)
+                            playNext()
                         }
                     }
+                    else -> _isBuffering.value = false
+                }
+            }
 
-                    override fun onPlayerError(error: PlaybackException) {
-                        Log.e("ISAI_PLAYER", "[YouTubePlayerController] MediaController error: ${error.message}", error)
-                        if (isUsingExoPlayer) {
-                            isUsingExoPlayer = false
-                            _isBuffering.value = false
-                            _isPlaying.value = false
-                            val current = _currentSong.value
-                            if (current != null) {
-                                Log.i("ISAI_PLAYER", "[YouTubePlayerController] Falling back to YouTube video ID: ${current.videoId}")
-                                activeYouTubePlayer?.loadVideo(current.videoId, 0f)
-                            }
-                        }
+            override fun onPlayerError(error: PlaybackException) {
+                Log.e("ISAI_PLAYER", "[YouTubePlayerController] ExoPlayer error: ${error.message}", error)
+                if (isUsingExoPlayer) {
+                    isUsingExoPlayer = false
+                    _isBuffering.value = false
+                    _isPlaying.value = false
+                    notifyService(false)
+                    val current = _currentSong.value
+                    if (current != null) {
+                        Log.i("ISAI_PLAYER", "[YouTubePlayerController] Falling back to YouTube video ID: ${current.videoId}")
+                        activeYouTubePlayer?.loadVideo(current.videoId, 0f)
                     }
-                })
-            },
-            androidx.core.content.ContextCompat.getMainExecutor(context)
-        )
+                }
+            }
+        })
+    }
+
+    fun notifyService(isPlaying: Boolean = _isPlaying.value) {
+        val song = _currentSong.value ?: return
+        try {
+            MusicPlaybackService.startOrUpdate(
+                context = context,
+                song = song,
+                isPlaying = isPlaying,
+                durationSec = _durationSec.value,
+                positionSec = _currentPositionSec.value
+            )
+        } catch (e: Exception) {
+            Log.w("ISAI_PLAYER", "Failed to update notification service: ${e.message}")
+        }
     }
 
     fun getActivePlayer(): YouTubePlayer? = activeYouTubePlayer
@@ -167,10 +209,12 @@ class YouTubePlayerController(
                     PlayerConstants.PlayerState.PLAYING -> {
                         _isPlaying.value = true
                         _isBuffering.value = false
+                        notifyService(true)
                     }
                     PlayerConstants.PlayerState.PAUSED -> {
                         _isPlaying.value = false
                         _isBuffering.value = false
+                        notifyService(false)
                     }
                     PlayerConstants.PlayerState.BUFFERING -> {
                         _isBuffering.value = true
@@ -178,6 +222,7 @@ class YouTubePlayerController(
                     PlayerConstants.PlayerState.ENDED -> {
                         _isPlaying.value = false
                         _isBuffering.value = false
+                        notifyService(false)
                         playNext()
                     }
                     else -> {
@@ -195,6 +240,7 @@ class YouTubePlayerController(
             override fun onVideoDuration(youTubePlayer: YouTubePlayer, duration: Float) {
                 if (!isUsingExoPlayer && duration > 0f) {
                     _durationSec.value = duration
+                    notifyService(_isPlaying.value)
                 }
             }
 
@@ -203,6 +249,7 @@ class YouTubePlayerController(
                     Log.e("ISAI_PLAYER", "[YouTubePlayerController] YouTube onError: $error")
                     _isBuffering.value = false
                     _isPlaying.value = false
+                    notifyService(false)
                 }
             }
         })
@@ -224,6 +271,7 @@ class YouTubePlayerController(
         _isBuffering.value = true
 
         localStorage.addRecentlyPlayed(song)
+        notifyService(true)
 
         if (!song.audioUrl.isNullOrBlank()) {
             isUsingExoPlayer = true
@@ -231,24 +279,19 @@ class YouTubePlayerController(
                 // Pause YouTube if it was playing
                 activeYouTubePlayer?.pause()
 
-                Log.i("ISAI_PLAYER", "[YouTubePlayerController] >>> Playing 320kbps HD Audio via MediaController at ${startPositionSec}s: ${song.audioUrl} <<<")
-                val mediaItem = androidx.media3.common.MediaItem.Builder()
-                    .setMediaId(song.videoId)
-                    .setUri(song.audioUrl)
-                    .setMediaMetadata(
-                        androidx.media3.common.MediaMetadata.Builder()
-                            .setTitle(song.title)
-                            .setArtist(song.channelTitle)
-                            .setArtworkUri(android.net.Uri.parse(song.thumbnailUrl))
-                            .build()
-                    )
-                    .build()
-                mediaController?.setMediaItem(mediaItem)
+                Log.i("ISAI_PLAYER", "[YouTubePlayerController] >>> Playing 320kbps HD Audio via ExoPlayer at ${startPositionSec}s: ${song.audioUrl} <<<")
+                val mediaItem = MediaItem.fromUri(song.audioUrl)
+                exoPlayer.stop()
+                exoPlayer.clearMediaItems()
+                exoPlayer.setMediaItem(mediaItem, true)
                 if (startPositionSec > 0f) {
-                    mediaController?.seekTo((startPositionSec * 1000).toLong())
+                    exoPlayer.seekTo((startPositionSec * 1000).toLong())
+                } else {
+                    exoPlayer.seekTo(0L)
                 }
-                mediaController?.prepare()
-                mediaController?.play()
+                exoPlayer.prepare()
+                exoPlayer.playWhenReady = true
+                exoPlayer.play()
                 startProgressTracker()
             } catch (e: Exception) {
                 Log.e("ISAI_PLAYER", "[YouTubePlayerController] ExoPlayer failed to load: ${e.message}", e)
@@ -257,13 +300,14 @@ class YouTubePlayerController(
             }
         } else {
             isUsingExoPlayer = false
-            mediaController?.stop()
+            exoPlayer.stop()
             stopProgressTracker()
             if (activeYouTubePlayer != null) {
                 Log.i("ISAI_PLAYER", "[YouTubePlayerController] Loading into activeYouTubePlayer at ${startPositionSec}s: ${song.videoId}")
                 activeYouTubePlayer?.loadVideo(song.videoId, startPositionSec)
             } else {
-                Log.w("ISAI_PLAYER", "[YouTubePlayerController] activeYouTubePlayer is NULL in playSong! FullPlayer view will initialize.")
+                Log.w("ISAI_PLAYER", "[YouTubePlayerController] activeYouTubePlayer is NULL in playSong! Direct stream required.")
+                _isBuffering.value = false
             }
         }
     }
@@ -271,30 +315,32 @@ class YouTubePlayerController(
     fun pause() {
         Log.i("ISAI_PLAYER", "[YouTubePlayerController] pause() requested")
         if (isUsingExoPlayer) {
-            mediaController?.pause()
+            exoPlayer.pause()
         } else {
             activeYouTubePlayer?.pause()
         }
         _isPlaying.value = false
+        notifyService(false)
     }
 
     fun play() {
         Log.i("ISAI_PLAYER", "[YouTubePlayerController] play() requested")
         if (isUsingExoPlayer) {
-            mediaController?.play()
+            exoPlayer.play()
         } else {
             activeYouTubePlayer?.play()
         }
         _isPlaying.value = true
+        notifyService(true)
     }
 
     fun togglePlayPause() {
         Log.i("ISAI_PLAYER", "[YouTubePlayerController] togglePlayPause: isUsingExoPlayer=$isUsingExoPlayer, isPlaying=${_isPlaying.value}")
         if (isUsingExoPlayer) {
-            if (mediaController?.isPlaying == true) {
-                mediaController?.pause()
+            if (exoPlayer.isPlaying) {
+                exoPlayer.pause()
             } else {
-                mediaController?.play()
+                exoPlayer.play()
             }
             return
         }
@@ -314,7 +360,7 @@ class YouTubePlayerController(
     fun seekTo(seconds: Float) {
         _currentPositionSec.value = seconds
         if (isUsingExoPlayer) {
-            mediaController?.seekTo((seconds * 1000).toLong())
+            exoPlayer.seekTo((seconds * 1000).toLong())
         } else {
             activeYouTubePlayer?.seekTo(seconds)
         }
@@ -324,7 +370,7 @@ class YouTubePlayerController(
         val clamped = volumePercent.coerceIn(0, 100)
         _volume.value = clamped
         if (isUsingExoPlayer) {
-            mediaController?.volume = clamped / 100f
+            exoPlayer.volume = clamped / 100f
         } else {
             activeYouTubePlayer?.setVolume(clamped)
         }
@@ -363,13 +409,14 @@ class YouTubePlayerController(
         }
     }
 
-    fun updateSongAudioUrl(videoId: String, audioUrl: String) {
-        val list = _playbackQueue.value.toMutableList()
-        val index = list.indexOfFirst { it.videoId == videoId }
-        if (index != -1) {
-            list[index] = list[index].copy(audioUrl = audioUrl)
-            _playbackQueue.value = list
-        }
+    fun replaceUpcomingQueue(newUpcoming: List<YouTubeSong>) {
+        if (newUpcoming.isEmpty()) return
+        val current = _playbackQueue.value
+        val curIdx = _currentQueueIndex.value
+        val playedSoFar = current.take(curIdx + 1)
+        val combined = (playedSoFar + newUpcoming).distinctBy { it.videoId }
+        _playbackQueue.value = combined
+        Log.i("ISAI_PLAYER", "[YouTubePlayerController] Replaced upcoming queue with ${newUpcoming.size} songs, total=${combined.size}")
     }
 
     fun playNextInQueue(song: YouTubeSong) {
@@ -404,6 +451,7 @@ class YouTubePlayerController(
         if (queue.isNotEmpty()) {
             if (_isRepeat.value) {
                 seekTo(0f)
+                play()
                 return
             }
             val nextIdx = if (_isShuffle.value && queue.size > 1) {
@@ -414,7 +462,12 @@ class YouTubePlayerController(
 
             if (nextIdx in queue.indices) {
                 _currentQueueIndex.value = nextIdx
-                playSong(queue[nextIdx], queue)
+                val nextSong = queue[nextIdx]
+                if (onTrackChangeRequested != null) {
+                    onTrackChangeRequested?.invoke(nextSong, queue)
+                } else {
+                    playSong(nextSong, queue)
+                }
             } else {
                 // End of queue reached! Trigger auto-play for next suggestion!
                 Log.i("ISAI_PLAYER", "[YouTubePlayerController] Queue ended! Calling onQueueExhausted for automatic next song.")
@@ -430,6 +483,7 @@ class YouTubePlayerController(
         if (queue.isNotEmpty()) {
             if (_isRepeat.value) {
                 seekTo(0f)
+                play()
                 return
             }
             val prevIdx = if (_isShuffle.value && queue.size > 1) {
@@ -439,7 +493,12 @@ class YouTubePlayerController(
             }
             if (prevIdx in queue.indices) {
                 _currentQueueIndex.value = prevIdx
-                playSong(queue[prevIdx], queue)
+                val prevSong = queue[prevIdx]
+                if (onTrackChangeRequested != null) {
+                    onTrackChangeRequested?.invoke(prevSong, queue)
+                } else {
+                    playSong(prevSong, queue)
+                }
             }
         }
     }
@@ -448,8 +507,8 @@ class YouTubePlayerController(
         progressTrackerJob?.cancel()
         progressTrackerJob = coroutineScope.launch {
             while (isActive) {
-                if (isUsingExoPlayer && mediaController?.isPlaying == true) {
-                    _currentPositionSec.value = ((mediaController?.currentPosition ?: 0L) / 1000f).coerceAtLeast(0f)
+                if (isUsingExoPlayer && exoPlayer.isPlaying) {
+                    _currentPositionSec.value = (exoPlayer.currentPosition / 1000f).coerceAtLeast(0f)
                 }
                 delay(500)
             }
@@ -465,15 +524,15 @@ class YouTubePlayerController(
         activeYouTubePlayer = null
         stopProgressTracker()
         try {
-            mediaController?.stop()
+            exoPlayer.stop()
         } catch (_: Exception) {}
+        MusicPlaybackService.stop(context)
     }
 
     fun release() {
         detachPlayer()
         try {
-            controllerFuture?.let { MediaController.releaseFuture(it) }
-            mediaController = null
+            exoPlayer.release()
         } catch (_: Exception) {}
     }
 }

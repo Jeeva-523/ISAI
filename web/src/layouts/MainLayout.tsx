@@ -43,14 +43,14 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
         {/* ISAI Brand Logo */}
         <div className="ytm-brand">
           <div className="ytm-logo-box">
-            <img src="/logo.png" alt="ISAI Logo" className="ytm-logo-img" />
+            <img src="/logo.png" alt="ISAI HUB Logo" className="ytm-logo-img" />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <span className="isai-brand-font">ISAI</span>
-              <span className="ytm-brand-text">Music</span>
+              <span className="ytm-brand-text">HUB</span>
             </div>
-            <span style={{ fontSize: '9px', color: 'var(--isai-purple-light)', fontWeight: 800, letterSpacing: '0.6px' }}>
+            <span style={{ fontSize: '10px', color: 'var(--isai-purple-light)', fontWeight: 800, letterSpacing: '0.8px' }}>
               LISTEN • FEEL • LIVE 🎧
             </span>
           </div>
@@ -133,10 +133,13 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
           className={`ytm-sidebar-user-footer ${currentTab === 'profile' || currentTab === 'login' ? 'active' : ''}`}
           onClick={() => onSelectTab('profile')}
           style={{ cursor: 'pointer' }}
-          title="Profile & Account"
+          title="Settings & Profile"
         >
           <div className="ytm-user-avatar">{userAvatar}</div>
-          <span style={{ fontSize: '13px', fontWeight: 700 }}>{userName}</span>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <span style={{ fontSize: '13px', fontWeight: 700 }}>{userName}</span>
+            <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>⚙️ Settings</span>
+          </div>
         </div>
       </aside>
 
@@ -162,7 +165,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
             <div
               className={`ytm-profile-circle ${currentTab === 'profile' || currentTab === 'login' ? 'active' : ''}`}
               onClick={() => onSelectTab('profile')}
-              title="Profile & Account"
+              title="Settings & Profile"
               style={{ cursor: 'pointer' }}
             >
               {userAvatar}
@@ -205,7 +208,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
             onClick={() => onSelectTab('profile')}
           >
             <User size={20} />
-            <span style={{ fontSize: '11px', fontWeight: 600 }}>Profile</span>
+            <span style={{ fontSize: '11px', fontWeight: 600 }}>Settings</span>
           </button>
         </nav>
       </div>

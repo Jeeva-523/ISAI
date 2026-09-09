@@ -32,6 +32,7 @@ interface ProfilePageProps {
   onNavigateToLogin: () => void
   onLogout: () => void
   onNavigateHome: () => void
+  onOpenLanguageModal?: () => void
 }
 
 export const ProfilePage: React.FC<ProfilePageProps> = ({
@@ -41,7 +42,8 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
   onUpdateProfile,
   onNavigateToLogin,
   onLogout,
-  onNavigateHome
+  onNavigateHome,
+  onOpenLanguageModal
 }) => {
   const [showEditModal, setShowEditModal] = useState(false)
   const [editNameInput, setEditNameInput] = useState(user.name || 'ISAI Listener')
@@ -90,10 +92,10 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
         </button>
         <div>
           <h1 style={{ margin: 0, fontSize: '24px', fontWeight: 900, color: 'var(--text-primary)', letterSpacing: '-0.4px' }}>
-            Profile &amp; Account
+            Settings &amp; Profile
           </h1>
           <p style={{ margin: '2px 0 0', fontSize: '13px', color: 'var(--text-secondary)' }}>
-            Basic Details &amp; Preferences
+            Account Settings, Preferences &amp; Session
           </p>
         </div>
       </div>
@@ -295,12 +297,33 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
           <span style={{ color: 'var(--text-primary)', fontSize: '14px', fontWeight: 700 }}>WebAudio Spatial 3D Equalizer Active</span>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid var(--divider)' }}>
+        <div
+          onClick={onOpenLanguageModal}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '12px 0',
+            borderBottom: '1px solid var(--divider)',
+            cursor: onOpenLanguageModal ? 'pointer' : 'default'
+          }}
+        >
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', color: 'var(--text-secondary)' }}>
             <Globe size={18} color="#8B5CF6" />
             <span style={{ fontSize: '14px', fontWeight: 600 }}>Music Language</span>
           </div>
-          <span style={{ color: 'var(--text-primary)', fontSize: '14px', fontWeight: 700 }}>Tamil, English, Hindi</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ color: 'var(--text-primary)', fontSize: '14px', fontWeight: 700, textTransform: 'capitalize' }}>
+              {user.preferredLanguages && user.preferredLanguages.length > 0
+                ? user.preferredLanguages.join(', ')
+                : 'Tamil'}
+            </span>
+            {onOpenLanguageModal && (
+              <span style={{ fontSize: '12px', color: '#8B5CF6', fontWeight: 700, background: 'rgba(139, 92, 246, 0.12)', padding: '2px 8px', borderRadius: '10px' }}>
+                Edit
+              </span>
+            )}
+          </div>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0' }}>
@@ -392,59 +415,62 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
           <span>📱 Open ISAI Connect Multi-Device</span>
         </button>
 
-        {/* Sign In / Sign Out Button */}
-        {user.isLoggedIn ? (
-          <button
-            onClick={() => {
-              logoutFirebaseUser()
-              onLogout()
-            }}
-            style={{
-              width: '100%',
-              padding: '16px',
-              borderRadius: '16px',
-              background: 'rgba(239, 68, 68, 0.12)',
-              border: '1.5px solid rgba(239, 68, 68, 0.4)',
-              color: '#EF4444',
-              fontWeight: 800,
-              fontSize: '15px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '10px',
-              transition: 'all 0.2s ease'
-            }}
-            className="control-btn"
-          >
-            <LogOut size={18} />
-            <span>🚪 Sign Out Account</span>
-          </button>
-        ) : (
-          <button
-            onClick={onNavigateToLogin}
-            style={{
-              width: '100%',
-              padding: '16px',
-              borderRadius: '16px',
-              background: 'var(--isai-gradient)',
-              border: 'none',
-              color: '#FFF',
-              fontWeight: 900,
-              fontSize: '15px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '10px',
-              boxShadow: '0 8px 24px rgba(139, 92, 246, 0.35)',
-              transition: 'all 0.2s ease'
-            }}
-          >
-            <LogIn size={18} />
-            <span>🔑 Sign In / Switch Account</span>
-          </button>
-        )}
+        {/* Dedicated Logout Button in Settings */}
+        <button
+          onClick={() => {
+            logoutFirebaseUser()
+            onLogout()
+          }}
+          style={{
+            width: '100%',
+            padding: '16px',
+            borderRadius: '16px',
+            background: 'rgba(239, 68, 68, 0.12)',
+            border: '1.5px solid rgba(239, 68, 68, 0.5)',
+            color: '#EF4444',
+            fontWeight: 800,
+            fontSize: '15px',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '10px',
+            transition: 'all 0.2s ease',
+            boxShadow: '0 4px 16px rgba(239, 68, 68, 0.15)'
+          }}
+          className="control-btn"
+          id="btn-settings-logout"
+          title="Logout of ISAI"
+        >
+          <LogOut size={18} />
+          <span>🚪 Logout</span>
+        </button>
+
+        {/* Switch / Sign In Account Button */}
+        <button
+          onClick={onNavigateToLogin}
+          style={{
+            width: '100%',
+            padding: '14px',
+            borderRadius: '16px',
+            background: 'rgba(6, 182, 212, 0.08)',
+            border: '1px solid rgba(6, 182, 212, 0.3)',
+            color: '#06B6D4',
+            fontWeight: 700,
+            fontSize: '14px',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '10px',
+            transition: 'all 0.2s ease'
+          }}
+          className="control-btn"
+          id="btn-settings-switch-account"
+        >
+          <LogIn size={18} />
+          <span>🔑 {user.isLoggedIn ? 'Switch Account' : 'Sign In / Switch Account'}</span>
+        </button>
       </div>
 
       {/* ISAI Connect Modal */}

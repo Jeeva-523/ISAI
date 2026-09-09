@@ -4,8 +4,12 @@ import './firebase'
 import { App } from './App'
 import './styles/index.css'
 
+import { ErrorBoundary } from './components/ErrorBoundary'
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <App />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   </React.StrictMode>
 )
