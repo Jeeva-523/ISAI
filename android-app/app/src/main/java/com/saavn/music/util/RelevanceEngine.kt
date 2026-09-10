@@ -251,7 +251,7 @@ object RelevanceEngine {
         target: YouTubeSong,
         candidatePool: List<YouTubeSong>,
         preferredLanguages: List<String> = listOf("tamil"),
-        maxItems: Int = 25
+        maxItems: Int = 50
     ): List<YouTubeSong> {
         val normLangs = preferredLanguages.ifEmpty { listOf("tamil") }
 

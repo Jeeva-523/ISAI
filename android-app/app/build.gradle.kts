@@ -23,8 +23,8 @@ android {
         applicationId = "com.company.isai"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.1.0"
 
         buildConfigField("String", "YOUTUBE_API_KEY", "\"$youtubeApiKey\"")
 
@@ -98,13 +98,14 @@ dependencies {
     // Official YouTube Player (IFrame Player wrapper)
     implementation("com.pierfrancescosoffritti.androidyoutubeplayer:core:12.1.1")
 
-    // Google Sign-In & Firebase Auth, Firestore, Analytics & Realtime Database
+    // Google Sign-In & Firebase Auth, Firestore, Analytics, Realtime Database & Cloud Messaging (FCM)
     implementation("com.google.android.gms:play-services-auth:21.2.0")
     implementation(platform("com.google.firebase:firebase-bom:33.1.2"))
     implementation("com.google.firebase:firebase-auth-ktx")
     implementation("com.google.firebase:firebase-firestore-ktx")
     implementation("com.google.firebase:firebase-analytics")
     implementation("com.google.firebase:firebase-database-ktx")
+    implementation("com.google.firebase:firebase-messaging-ktx")
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")

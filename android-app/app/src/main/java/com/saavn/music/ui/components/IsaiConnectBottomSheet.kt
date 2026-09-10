@@ -40,7 +40,7 @@ private fun formatDeviceDisplayName(rawName: String): String {
         .replace(Regex("(?i)[0-9A-Z]{7,}"), "")
         .replace(Regex("\\s+"), " ")
         .trim()
-    return if (cleaned.isNotBlank()) cleaned else "Jeeva's Phone"
+    return if (cleaned.isNotBlank()) cleaned else "This Phone"
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -52,6 +52,7 @@ fun IsaiConnectBottomSheet(
 ) {
     val devices by connectManager.devices.collectAsState()
     val playbackState by connectManager.playbackState.collectAsState()
+    val myDeviceName by connectManager.currentDeviceName.collectAsState()
 
     val myDeviceId = connectManager.deviceId
     val currentActiveId = playbackState?.currentDeviceId?.ifEmpty { myDeviceId } ?: myDeviceId
@@ -281,7 +282,7 @@ fun IsaiConnectBottomSheet(
             Spacer(modifier = Modifier.height(8.dp))
 
             DeviceItemRow(
-                deviceName = connectManager.deviceName,
+                deviceName = myDeviceName,
                 subtitle = "This Phone",
                 platform = "android",
                 isActivePlayer = currentActiveId == myDeviceId,

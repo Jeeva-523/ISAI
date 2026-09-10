@@ -12,12 +12,13 @@ class MusicRepository(
     private val api: JioSaavnApiService = JioSaavnApiService.create()
 ) {
 
-    suspend fun search(query: String): Result<List<SongItem>> = withContext(Dispatchers.IO) {
+    suspend fun search(query: String, limit: Int = 40): Result<List<SongItem>> = withContext(Dispatchers.IO) {
         try {
             val cleanQuery = query.trim()
-            val response = api.searchSongs(query = cleanQuery)
+            val response = api.searchSongs(query = cleanQuery, limit = limit)
             val songs = response.results?.mapNotNull { it.toSongItem() } ?: emptyList()
-            Result.success(songs)
+            val deduped = deduplicateSongItems(songs)
+            Result.success(deduped)
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -120,52 +121,97 @@ class MusicRepository(
         }
     }
 
+    companion object {
+        private val NOISE_REGEX = Regex(
+            "\\b(official|video|lyric|lyrics|full|audio|hd|4k|8k|uhd|song|songs|trending|version|remix|bgm|theme|track|singles|single|teaser|trailer|promo|lyrical|visualizer|jukebox|compilation|all time hits|tamil|telugu|hindi|kannada|malayalam|dj|mix|prod|feat|ft|instrumental|reprise|extended|motion|poster|dialogue|scene|scenes|special|exclusive|original|soundtrack|ost|mashup)\\b",
+            RegexOption.IGNORE_CASE
+        )
+
+        private val STOPWORDS = setOf(
+            "the", "a", "an", "in", "of", "to", "and", "from", "with", "by", "on", "for", "at", "is", "it"
+        )
+    }
+
+    fun isSameSongItem(songA: SongItem, songB: SongItem): Boolean {
+        if (songA.id.isNotBlank() && songB.id.isNotBlank() && songA.id == songB.id) return true
+
+        val keyA = normalizeTitleKey(songA.title)
+        val keyB = normalizeTitleKey(songB.title)
+
+        if (keyA.isNotBlank() && keyB.isNotBlank() && keyA == keyB) return true
+
+        if (keyA.length >= 4 && keyB.length >= 4) {
+            if (keyA.contains(keyB) || keyB.contains(keyA)) {
+                return true
+            }
+        }
+
+        val tokensA = extractTitleTokens(songA.title)
+        val tokensB = extractTitleTokens(songB.title)
+
+        if (tokensA.isEmpty() || tokensB.isEmpty()) return false
+
+        val aInB = tokensA.all { tokensB.contains(it) }
+        val bInA = tokensB.all { tokensA.contains(it) }
+        val common = tokensA.intersect(tokensB)
+        val commonLen = common.sumOf { it.length }
+
+        if ((aInB || bInA) && commonLen >= 4) {
+            return true
+        }
+
+        val significantCommon = common.filter { it.length >= 3 }
+        if (significantCommon.size >= 2) {
+            return true
+        }
+
+        return false
+    }
+
     fun deduplicateSongItems(songs: List<SongItem>): List<SongItem> {
         if (songs.isEmpty()) return emptyList()
-        val seenIds = mutableSetOf<String>()
-        val seenPrimaryKeys = mutableSetOf<String>()
-        val seenFullKeys = mutableSetOf<String>()
         val result = mutableListOf<SongItem>()
-
-        val noiseRegex = Regex("\\b(official|video|lyric|lyrics|full|audio|hd|4k|song|songs|trending|version|remix|bgm|theme|track|singles|single|teaser|trailer|lyrical|visualizer|jukebox|compilation|all time hits|tamil|telugu|hindi|dj|mix|prod|feat|ft|instrumental|reprise)\\b", RegexOption.IGNORE_CASE)
 
         for (song in songs) {
             val vid = song.id.trim()
             if (vid.isBlank() || song.title.isBlank()) continue
-            if (vid.isNotEmpty() && seenIds.contains(vid)) continue
 
-            val rawTitle = cleanHtml(song.title)
-
-            var titleWithoutBrackets = rawTitle
-                .replace(Regex("\\([^)]*\\)"), " ")
-                .replace(Regex("\\[[^\\]]*\\]"), " ")
-
-            titleWithoutBrackets = titleWithoutBrackets.replace(Regex("(?i)\\bfrom\\s+[\"'].*?[\"']"), " ")
-            titleWithoutBrackets = titleWithoutBrackets.replace(Regex("(?i)\\bfrom\\s+[A-Za-z0-9\\s:]+"), " ")
-            titleWithoutBrackets = titleWithoutBrackets.replace(Regex("(?i)\\bversion[.\\s0-9]+"), " ")
-
-            val firstSegment = titleWithoutBrackets.split(Regex("[|\\-:~–—]")).firstOrNull() ?: titleWithoutBrackets
-            val primaryCleaned = firstSegment.replace(noiseRegex, " ")
-            val primaryTitle = phoneticNormalize(primaryCleaned)
-
-            val fullCleaned = titleWithoutBrackets.replace(noiseRegex, " ")
-            val fullTitle = phoneticNormalize(fullCleaned)
-
-            if (primaryTitle.length >= 3 && seenPrimaryKeys.contains(primaryTitle)) {
-                continue
+            val isDuplicate = result.any { existing ->
+                isSameSongItem(existing, song)
             }
 
-            if (fullTitle.length >= 3 && seenFullKeys.contains(fullTitle)) {
-                continue
+            if (!isDuplicate) {
+                result.add(song)
             }
-
-            if (vid.isNotEmpty()) seenIds.add(vid)
-            if (primaryTitle.length >= 3) seenPrimaryKeys.add(primaryTitle)
-            if (fullTitle.length >= 3) seenFullKeys.add(fullTitle)
-
-            result.add(song)
         }
         return result
+    }
+
+    fun extractTitleTokens(rawTitle: String): Set<String> {
+        val cleaned = cleanRawTitle(rawTitle)
+        return cleaned.split(Regex("\\s+"))
+            .map { phoneticNormalize(it) }
+            .filter { it.length >= 2 && !STOPWORDS.contains(it) }
+            .toSet()
+    }
+
+    fun normalizeTitleKey(rawTitle: String): String {
+        val tokens = extractTitleTokens(rawTitle)
+        return tokens.sorted().joinToString("")
+    }
+
+    private fun cleanRawTitle(raw: String): String {
+        if (raw.isBlank()) return ""
+        val unescaped = cleanHtml(raw)
+        return unescaped
+            .replace(Regex("\\([^)]*\\)"), " ")
+            .replace(Regex("\\[[^\\]]*\\]"), " ")
+            .replace(Regex("(?i)\\bfrom\\s+[\"'].*?[\"']"), " ")
+            .replace(Regex("(?i)\\bfrom\\s+[A-Za-z0-9\\s:]+"), " ")
+            .replace(NOISE_REGEX, " ")
+            .replace(Regex("[^a-zA-Z0-9\\s]"), " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
     }
 
     private fun phoneticNormalize(raw: String): String {

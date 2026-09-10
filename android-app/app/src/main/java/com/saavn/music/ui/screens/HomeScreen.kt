@@ -28,14 +28,22 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Shuffle
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -84,29 +92,38 @@ fun HomeScreen(
     val recommendedReason by viewModel.recommendedReason.collectAsState()
     val latestReleases by viewModel.latestReleases.collectAsState()
     val dailyMixes by viewModel.spotifyDailyMixes.collectAsState()
+    var selectedDailyMix by remember { mutableStateOf<SpotifyDailyMix?>(null) }
 
     val categories = listOf(
         "Most Played", "Tamil Songs", "Melody", "Love Songs",
         "Folk", "Devotional", "Gaana", "Classical", "New Releases"
     )
 
-    val heroIds = remember(trendingSongs) { trendingSongs.take(4).map { it.videoId }.toSet() }
-    val displayPersonalizedRecs = remember(personalizedRecs, heroIds) {
-        val filtered = personalizedRecs.filterNot { heroIds.contains(it.videoId) }
-        if (filtered.isNotEmpty()) filtered else personalizedRecs
+    val heroSongs = remember(trendingSongs) { trendingSongs.take(4) }
+    val displayPersonalizedRecs = remember(personalizedRecs, heroSongs) {
+        val deduped = viewModel.ytRepo.deduplicateSongs(personalizedRecs)
+        val filtered = deduped.filterNot { rec ->
+            heroSongs.any { hero -> viewModel.ytRepo.isSameSong(hero, rec) }
+        }
+        if (filtered.isNotEmpty()) filtered else deduped
     }
-    val personalizedIds = remember(displayPersonalizedRecs) { displayPersonalizedRecs.map { it.videoId }.toSet() }
-    val displayNewReleases = remember(latestReleases, trendingSongs, heroIds, personalizedIds) {
+    val displayNewReleases = remember(latestReleases, trendingSongs, heroSongs, displayPersonalizedRecs) {
         val baseList = if (latestReleases.isNotEmpty()) latestReleases else trendingSongs.drop(4)
-        val filtered = baseList.filterNot { heroIds.contains(it.videoId) || personalizedIds.contains(it.videoId) }
-        if (filtered.isNotEmpty()) filtered.take(10) else baseList.take(10)
+        val filtered = baseList.filterNot { song ->
+            heroSongs.any { hero -> viewModel.ytRepo.isSameSong(hero, song) } ||
+            displayPersonalizedRecs.any { rec -> viewModel.ytRepo.isSameSong(rec, song) }
+        }
+        viewModel.ytRepo.deduplicateSongs(if (filtered.isNotEmpty()) filtered else baseList).take(10)
     }
-    val displayCategorySongs = remember(categorySongs, selectedCategory, heroIds) {
-        if ((selectedCategory == "Most Played" || selectedCategory == "Trending") && heroIds.isNotEmpty()) {
-            val filtered = categorySongs.filterNot { heroIds.contains(it.videoId) }
-            if (filtered.isNotEmpty()) filtered else categorySongs
+    val displayCategorySongs = remember(categorySongs, selectedCategory, heroSongs) {
+        val deduped = viewModel.ytRepo.deduplicateSongs(categorySongs)
+        if ((selectedCategory == "Most Played" || selectedCategory == "Trending") && heroSongs.isNotEmpty()) {
+            val filtered = deduped.filterNot { song ->
+                heroSongs.any { hero -> viewModel.ytRepo.isSameSong(hero, song) }
+            }
+            if (filtered.isNotEmpty()) filtered else deduped
         } else {
-            categorySongs
+            deduped
         }
     }
 
@@ -337,9 +354,7 @@ fun HomeScreen(
                         SpotifyMixCard(
                             mix = mix,
                             onClick = {
-                                if (mix.songs.isNotEmpty()) {
-                                    viewModel.playSong(mix.songs.first(), mix.songs)
-                                }
+                                selectedDailyMix = mix
                             }
                         )
                     }
@@ -652,6 +667,14 @@ fun HomeScreen(
             }
         }
     }
+
+    selectedDailyMix?.let { mix ->
+        DailyMixPlaylistBottomSheet(
+            mix = mix,
+            viewModel = viewModel,
+            onDismissRequest = { selectedDailyMix = null }
+        )
+    }
 }
 
 @Composable
@@ -951,3 +974,209 @@ fun SpotifyMixCard(
         )
     }
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DailyMixPlaylistBottomSheet(
+    mix: SpotifyDailyMix,
+    viewModel: MainViewModel,
+    onDismissRequest: () -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismissRequest,
+        containerColor = DarkBackground.copy(alpha = 0.98f),
+        scrimColor = Color.Black.copy(alpha = 0.7f),
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+        dragHandle = {
+            Box(
+                modifier = Modifier
+                    .padding(vertical = 10.dp)
+                    .width(44.dp)
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(Color(0xFF1DB954).copy(alpha = 0.6f))
+            )
+        }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 24.dp)
+        ) {
+            // Header: Mix Info
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(100.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .border(1.dp, GlassBorder, RoundedCornerShape(14.dp))
+                ) {
+                    AsyncImage(
+                        model = mix.coverUrl,
+                        contentDescription = mix.title,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(16.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color(0xFF1DB954).copy(alpha = 0.2f))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = "SPOTIFY DAILY MIX",
+                            color = Color(0xFF1DB954),
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = mix.title,
+                        color = TextPrimary,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 2
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = mix.subtitle,
+                        color = TextMuted,
+                        fontSize = 11.sp,
+                        maxLines = 2
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Action Buttons: Play All & Shuffle
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Play All Button
+                Button(
+                    onClick = {
+                        if (mix.songs.isNotEmpty()) {
+                            viewModel.playSong(mix.songs.first(), mix.songs)
+                            onDismissRequest()
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1DB954)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color.Black, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("PLAY ALL", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                }
+
+                // Shuffle Button
+                OutlinedButton(
+                    onClick = {
+                        if (mix.songs.isNotEmpty()) {
+                            val shuffled = mix.songs.shuffled()
+                            viewModel.playSong(shuffled.first(), shuffled)
+                            onDismissRequest()
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)
+                ) {
+                    Icon(Icons.Default.Shuffle, contentDescription = null, tint = TextPrimary, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("SHUFFLE", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(GlassBorderSubtle)
+            )
+
+            // Tracks List
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(380.dp),
+                contentPadding = PaddingValues(vertical = 8.dp)
+            ) {
+                itemsIndexed(mix.songs) { index, song ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                viewModel.playSong(song, mix.songs)
+                                onDismissRequest()
+                            }
+                            .padding(horizontal = 20.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "${index + 1}",
+                            color = TextMuted,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.width(26.dp)
+                        )
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                        ) {
+                            AsyncImage(
+                                model = song.thumbnailUrl,
+                                contentDescription = song.title,
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = song.title,
+                                color = TextPrimary,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = song.channelTitle,
+                                color = TextMuted,
+                                fontSize = 11.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        Icon(
+                            Icons.Default.PlayArrow,
+                            contentDescription = "Play",
+                            tint = Color(0xFF1DB954),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+

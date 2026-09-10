@@ -38,12 +38,15 @@ import androidx.compose.material.icons.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
+import com.saavn.music.BuildConfig
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
@@ -99,11 +102,11 @@ fun ProfileScreen(
 
     val currentEmail = userProfile?.email?.takeIf { it.isNotBlank() }
         ?: authService.getCurrentUser()?.email?.takeIf { it.isNotBlank() }
-        ?: "jeevananthravikumar@gmail.com"
+        ?: ""
 
     val currentDisplayName = userProfile?.displayName?.takeIf { it.isNotBlank() }
         ?: authService.getCurrentUser()?.displayName?.takeIf { it.isNotBlank() }
-        ?: "Jeevananth"
+        ?: "ISAI Listener"
 
 
     var showEditNameDialog by remember { mutableStateOf(false) }
@@ -114,6 +117,9 @@ fun ProfileScreen(
     val playlists by viewModel.playlists.collectAsState()
     val favoritesCount = favorites.size
     val playlistsCount = playlists.size
+
+    val isCheckingUpdate by viewModel.isCheckingUpdate.collectAsState()
+    val currentUpdateInfo by viewModel.appUpdateInfo.collectAsState()
 
     Box(
         modifier = modifier
@@ -416,7 +422,7 @@ fun ProfileScreen(
                     ProfileDetailRow(
                         icon = Icons.Default.Smartphone,
                         label = "Active Device",
-                        value = "Jeeva's Phone (Current)"
+                        value = "${viewModel.isaiConnectManager.deviceName} (Current)"
                     )
                     HorizontalDivider(color = GlassBorderSubtle, thickness = 1.dp)
                     ProfileDetailRow(
@@ -441,7 +447,22 @@ fun ProfileScreen(
                     ProfileDetailRow(
                         icon = Icons.Default.Equalizer,
                         label = "App Version",
-                        value = "ISAI v2.4.0 (2026 Build)"
+                        value = "ISAI v${BuildConfig.VERSION_NAME}"
+                    )
+                    HorizontalDivider(color = GlassBorderSubtle, thickness = 1.dp)
+                    ProfileDetailRow(
+                        icon = Icons.Default.SystemUpdate,
+                        label = "Software Update",
+                        value = if (isCheckingUpdate) "Checking..." else if (currentUpdateInfo != null) "Update Ready! 🚀" else "Check Now",
+                        onRowClick = {
+                            if (currentUpdateInfo != null) {
+                                viewModel.launchAppUpdate(context)
+                            } else if (!isCheckingUpdate) {
+                                viewModel.checkForAppUpdatesManual { hasUpdate, msg ->
+                                    android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
                     )
                 }
             }
@@ -546,6 +567,78 @@ fun ProfileScreen(
                                 fontWeight = FontWeight.SemiBold,
                                 color = NeonCyan
                             )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Dedicated Check for Updates Button at the bottom of Profile
+                    Button(
+                        onClick = {
+                            if (currentUpdateInfo != null) {
+                                viewModel.launchAppUpdate(context)
+                            } else if (!isCheckingUpdate) {
+                                viewModel.checkForAppUpdatesManual { hasUpdate, msg ->
+                                    android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(50.dp)
+                            .shadow(8.dp, RoundedCornerShape(16.dp), spotColor = if (currentUpdateInfo != null) Color(0xFF10B981).copy(alpha = 0.3f) else NeonCyan.copy(alpha = 0.25f)),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (currentUpdateInfo != null) Color(0xFF132E22) else DarkSurfaceGlass
+                        ),
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            if (currentUpdateInfo != null) Color(0xFF10B981) else NeonCyan.copy(alpha = 0.4f)
+                        )
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (isCheckingUpdate) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    color = NeonCyan,
+                                    strokeWidth = 2.dp
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Checking for Updates...",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = NeonCyan
+                                )
+                            } else if (currentUpdateInfo != null) {
+                                Icon(
+                                    imageVector = Icons.Default.SystemUpdate,
+                                    contentDescription = null,
+                                    tint = Color(0xFF10B981),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "🚀 Update Available: v${currentUpdateInfo?.latestVersionName} (Tap to Update)",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF10B981)
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Default.SystemUpdate,
+                                    contentDescription = null,
+                                    tint = NeonCyan,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "🔄 Check for Updates",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = NeonCyan
+                                )
+                            }
                         }
                     }
                 }

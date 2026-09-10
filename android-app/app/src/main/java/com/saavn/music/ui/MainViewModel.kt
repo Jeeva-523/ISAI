@@ -27,6 +27,8 @@ import com.saavn.music.auth.GoogleAuthHelper
 import com.saavn.music.data.analytics.AnalyticsService
 import com.saavn.music.data.auth.AuthService
 import com.saavn.music.data.model.UserProfile
+import com.saavn.music.data.model.AppUpdateModel
+import com.saavn.music.data.repository.AppUpdateService
 import com.saavn.music.data.repository.FirestoreMusicService
 import com.saavn.music.data.repository.PlaylistService
 import com.saavn.music.data.search.SearchService
@@ -63,6 +65,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val authService = AuthService.getInstance(application.applicationContext)
     val playlistService = PlaylistService.getInstance(application.applicationContext)
     val firestoreMusicService = FirestoreMusicService.getInstance(application.applicationContext)
+    val appUpdateService = AppUpdateService.getInstance(application.applicationContext)
 
     // User Authentication Profile
     val userProfile: StateFlow<UserProfile?> = localStorage.userProfile
@@ -70,7 +73,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _showLoginDialog = MutableStateFlow(false)
     val showLoginDialog: StateFlow<Boolean> = _showLoginDialog.asStateFlow()
 
+    // In-App Auto Update State
+    private val _appUpdateInfo = MutableStateFlow<AppUpdateModel?>(null)
+    val appUpdateInfo: StateFlow<AppUpdateModel?> = _appUpdateInfo.asStateFlow()
+
+    private val _isCheckingUpdate = MutableStateFlow(false)
+    val isCheckingUpdate: StateFlow<Boolean> = _isCheckingUpdate.asStateFlow()
+
     init {
+        // Automatically check for newer app updates on startup
+        checkForAppUpdates()
+
         viewModelScope.launch {
             val existing = localStorage.userProfile.value
             if (authService.isUserLoggedIn()) {
@@ -104,6 +117,48 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     _preferredLanguages.value = existing.preferredLanguages
                 }
             }
+        }
+    }
+
+    fun checkForAppUpdates() {
+        viewModelScope.launch {
+            val update = appUpdateService.checkForUpdate()
+            if (update != null) {
+                _appUpdateInfo.value = update
+            }
+        }
+        appUpdateService.listenForRealtimeUpdates { update ->
+            _appUpdateInfo.value = update
+        }
+    }
+
+    fun dismissUpdateDialog() {
+        _appUpdateInfo.value = null
+    }
+
+    fun checkForAppUpdatesManual(onResult: (hasUpdate: Boolean, message: String) -> Unit) {
+        viewModelScope.launch {
+            _isCheckingUpdate.value = true
+            try {
+                val update = appUpdateService.checkForUpdate()
+                if (update != null) {
+                    _appUpdateInfo.value = update
+                    onResult(true, "New update available: v${update.latestVersionName}")
+                } else {
+                    onResult(false, "You are using the latest version of ISAI (v${com.saavn.music.BuildConfig.VERSION_NAME})")
+                }
+            } catch (e: Exception) {
+                onResult(false, "Could not check for updates: ${e.message ?: "Network error"}")
+            } finally {
+                _isCheckingUpdate.value = false
+            }
+        }
+    }
+
+    fun launchAppUpdate(context: android.content.Context) {
+        val update = _appUpdateInfo.value
+        if (update != null) {
+            appUpdateService.openUpdateUrl(context, update.downloadUrl)
         }
     }
 
@@ -205,49 +260,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val isLoadingSuggestions: StateFlow<Boolean> = _isLoadingSuggestions.asStateFlow()
 
     // Spotify-Style Daily Mixes
-    val spotifyDailyMixes: StateFlow<List<SpotifyDailyMix>> = combine(_trendingSongs, _preferredLanguages) { songs, langs ->
-        val primaryLang = (langs.firstOrNull() ?: "Tamil").uppercase()
-        val anirudhSongs = songs.filter { 
-            it.title.contains("anirudh", ignoreCase = true) || it.channelTitle.contains("anirudh", ignoreCase = true) 
-        }
-        val arrSongs = songs.filter { 
-            it.title.contains("rahman", ignoreCase = true) || it.channelTitle.contains("rahman", ignoreCase = true) || it.channelTitle.contains("arr", ignoreCase = true) 
-        }
-        val yuvanSongs = songs.filter { 
-            it.title.contains("yuvan", ignoreCase = true) || it.channelTitle.contains("yuvan", ignoreCase = true) || it.channelTitle.contains("u1", ignoreCase = true) 
-        }
-
-        listOf(
-            SpotifyDailyMix(
-                id = "daily_mix_1",
-                title = "Daily Mix 1 • Anirudh Hits",
-                subtitle = "Anirudh, Dhanush, Vijay & club anthems",
-                coverUrl = anirudhSongs.firstOrNull()?.thumbnailUrl ?: "https://c.saavncdn.com/187/Jailer-Tamil-2023-20230728081443-500x500.jpg",
-                songs = if (anirudhSongs.isNotEmpty()) anirudhSongs else songs.take(8)
-            ),
-            SpotifyDailyMix(
-                id = "daily_mix_2",
-                title = "Daily Mix 2 • A.R. Rahman Soul",
-                subtitle = "A.R. Rahman, Bombay Jayashri & timeless melodies",
-                coverUrl = arrSongs.firstOrNull()?.thumbnailUrl ?: "https://c.saavncdn.com/420/Vendhu-Thanindhathu-Kaadu-Original-Motion-Picture-Soundtrack-Tamil-2022-20250905072731-500x500.jpg",
-                songs = if (arrSongs.isNotEmpty()) arrSongs else songs.drop(1).take(8)
-            ),
-            SpotifyDailyMix(
-                id = "daily_mix_3",
-                title = "Daily Mix 3 • Yuvan Drug Melodies",
-                subtitle = "Yuvan Shankar Raja, Harris & night drives",
-                coverUrl = yuvanSongs.firstOrNull()?.thumbnailUrl ?: "https://c.saavncdn.com/276/Maari-2-Tamil-2018-20260203193952-500x500.jpg",
-                songs = if (yuvanSongs.isNotEmpty()) yuvanSongs else songs.drop(2).take(8)
-            ),
-            SpotifyDailyMix(
-                id = "daily_mix_4",
-                title = "Top 50 • $primaryLang",
-                subtitle = "The most played and trending hits in $primaryLang",
-                coverUrl = songs.firstOrNull()?.thumbnailUrl ?: "https://c.saavncdn.com/510/Beast-Tamil-2022-20220504184736-500x500.jpg",
-                songs = songs
-            )
-        )
-    }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+    private val _spotifyDailyMixes = MutableStateFlow<List<SpotifyDailyMix>>(emptyList())
+    val spotifyDailyMixes: StateFlow<List<SpotifyDailyMix>> = _spotifyDailyMixes.asStateFlow()
 
     // Storage references
     val favorites: StateFlow<List<YouTubeSong>> = localStorage.favorites
@@ -328,10 +342,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // Initialize ISAI Connect with user profile
         viewModelScope.launch {
             userProfile.collect { profile ->
-                val email = profile?.email?.ifBlank { null } 
-                    ?: authService.getCurrentUser()?.email?.ifBlank { null } 
-                    ?: "kongujeeva523@gmail.com"
-                isaiConnectManager.initialize(email)
+                val email = profile?.email?.takeIf { it.isNotBlank() } 
+                    ?: authService.getCurrentUser()?.email?.takeIf { it.isNotBlank() } 
+                    ?: ""
+                if (email.isNotBlank()) {
+                    val displayName = profile?.displayName?.takeIf { it.isNotBlank() }
+                        ?: authService.getCurrentUser()?.displayName?.takeIf { it.isNotBlank() }
+                        ?: email.substringBefore("@").replaceFirstChar { it.uppercase() }
+                    isaiConnectManager.initialize(email, displayName)
+                }
                 if (localStorage.recentlyPlayed.value.isNotEmpty()) {
                     isaiConnectManager.syncRecentlyPlayed(localStorage.recentlyPlayed.value)
                 }
@@ -587,10 +606,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         val cleanTopArtist = topArtist.split(",").first().split("&").first().trim()
                         _recommendedReason.value = "Because you listen to $cleanTopArtist"
                         val saavnResult = musicRepo.search("$cleanTopArtist Tamil songs")
-                        val recSongs = saavnResult.getOrNull()?.map { it.toYouTubeSong() } ?: emptyList()
+                        val rawRecSongs = saavnResult.getOrNull()?.map { it.toYouTubeSong() } ?: emptyList()
+                        val recSongs = ytRepo.deduplicateSongs(rawRecSongs)
                         if (recSongs.isNotEmpty()) {
-                            val filtered = recSongs.filterNot { s -> combined.any { it.videoId == s.videoId } }
-                            _personalizedRecommendations.value = if (filtered.isNotEmpty()) filtered else recSongs
+                            val heroExclude = _trendingSongs.value.take(4)
+                            val filtered = recSongs.filterNot { s -> 
+                                combined.any { ytRepo.isSameSong(it, s) } ||
+                                heroExclude.any { ytRepo.isSameSong(it, s) }
+                            }
+                            val finalRecs = ytRepo.deduplicateSongs(if (filtered.isNotEmpty()) filtered else recSongs)
+                            _personalizedRecommendations.value = finalRecs.take(12)
                             return@launch
                         }
                     }
@@ -638,12 +663,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     isaiConnectManager.syncHomeSongs(mostPlayed)
                 }
 
-                // Compute / Populate Popular Singers & Artists
+                // Compute / Populate Popular Singers & Artists (curated by preferred language)
                 val trendingSvc = com.saavn.music.data.trending.TrendingService.getInstance(getApplication())
-                val artists = trendingSvc.getPopularArtists(_trendingSongs.value)
+                val artists = trendingSvc.getPopularArtists(_trendingSongs.value, _preferredLanguages.value)
                 if (artists.isNotEmpty()) {
                     _popularArtists.value = artists
                 }
+
+                // Load Spotify-Style Daily Mixes (curated by preferred language with 30 songs each)
+                loadDailyMixes(_preferredLanguages.value)
 
                 // Load Popular New Releases (Released in last 30 days)
                 try {
@@ -736,15 +764,115 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun loadDailyMixes(preferredLanguages: List<String> = _preferredLanguages.value) {
+        viewModelScope.launch {
+            try {
+                val activeLangs = preferredLanguages.ifEmpty { listOf("tamil") }
+                val primaryLang = activeLangs.first().lowercase().trim()
+
+                val mixConfigs = when (primaryLang) {
+                    "telugu" -> listOf(
+                        Triple("daily_mix_1", "Daily Mix 1 • DSP Mass Hits", "Devi Sri Prasad, Thaman & energetic Telugu anthems") to "Devi Sri Prasad Telugu hit songs",
+                        Triple("daily_mix_2", "Daily Mix 2 • Sid Sriram Soul", "Sid Sriram, Anurag Kulkarni & heartfelt melodies") to "Sid Sriram Telugu melody songs",
+                        Triple("daily_mix_3", "Daily Mix 3 • Keeravani Classics", "M.M. Keeravani, SPB & timeless Telugu melodies") to "M M Keeravani Telugu songs",
+                        Triple("daily_mix_4", "Top 50 • TELUGU", "Trending chartbusters & fresh Telugu releases") to "Latest Telugu hits 2025 2026"
+                    )
+                    "hindi" -> listOf(
+                        Triple("daily_mix_1", "Daily Mix 1 • Arijit Singh Soul", "Arijit Singh, Jasleen Royal & soulful romantic hits") to "Arijit Singh Hindi romantic hit songs",
+                        Triple("daily_mix_2", "Daily Mix 2 • Pritam Hit Machine", "Pritam, KK & iconic Bollywood melodies") to "Pritam Bollywood super hit songs",
+                        Triple("daily_mix_3", "Daily Mix 3 • Bollywood Party Beats", "Badshah, Sachin-Jigar & club bangers") to "Hindi party dance songs 2025",
+                        Triple("daily_mix_4", "Top 50 • HINDI", "Top trending Hindi hits and new releases") to "Top Hindi songs 2025 2026"
+                    )
+                    "malayalam" -> listOf(
+                        Triple("daily_mix_1", "Daily Mix 1 • Sushin Shyam Hits", "Sushin Shyam, Jakes Bejoy & trendy new wave Malayalam") to "Sushin Shyam Malayalam hit songs",
+                        Triple("daily_mix_2", "Daily Mix 2 • Hesham Melodies", "Hesham Abdul Wahab, K.S. Harisankar & heart-touching tunes") to "Hesham Abdul Wahab Malayalam songs",
+                        Triple("daily_mix_3", "Daily Mix 3 • Evergreen Malayalam", "Vidyasagar, Deepak Dev & nostalgic melodies") to "Malayalam melody hit songs",
+                        Triple("daily_mix_4", "Top 50 • MALAYALAM", "The most played trending hits in Malayalam") to "Latest Malayalam hits 2025 2026"
+                    )
+                    else -> listOf(
+                        Triple("daily_mix_1", "Daily Mix 1 • Anirudh Hits", "Anirudh, Dhanush, Vijay & club anthems") to "Anirudh Ravichander Tamil hit songs",
+                        Triple("daily_mix_2", "Daily Mix 2 • A.R. Rahman Soul", "A.R. Rahman, Bombay Jayashri & timeless melodies") to "A R Rahman Tamil melody hit songs",
+                        Triple("daily_mix_3", "Daily Mix 3 • Yuvan Drug Melodies", "Yuvan Shankar Raja, Harris Jayaraj & night drives") to "Yuvan Shankar Raja Tamil hits",
+                        Triple("daily_mix_4", "Top 50 • TAMIL", "The most played and trending hits in Tamil") to "Latest Tamil hits 2025 2026"
+                    )
+                }
+
+                val loadedMixes = mutableListOf<SpotifyDailyMix>()
+                for ((info, query) in mixConfigs) {
+                    val (id, title, subtitle) = info
+                    val rawSongs = musicRepo.search(query, limit = 40).getOrNull()?.map { it.toYouTubeSong() } ?: emptyList()
+                    val dedupedSongs = ytRepo.deduplicateSongs(rawSongs).take(30)
+                    val cover = dedupedSongs.firstOrNull()?.thumbnailUrl ?: "https://c.saavncdn.com/187/Jailer-Tamil-2023-20230728081443-500x500.jpg"
+
+                    if (dedupedSongs.isNotEmpty()) {
+                        loadedMixes.add(
+                            SpotifyDailyMix(
+                                id = id,
+                                title = title,
+                                subtitle = "$subtitle • ${dedupedSongs.size} Songs",
+                                coverUrl = cover,
+                                songs = dedupedSongs
+                            )
+                        )
+                    }
+                }
+
+                if (loadedMixes.isNotEmpty()) {
+                    _spotifyDailyMixes.value = loadedMixes
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("ISAI_PLAYER", "Failed loading daily mixes: ${e.message}")
+            }
+        }
+    }
+
     fun selectArtist(artistName: String) {
         val clean = artistName
             .replace("Topic", "", ignoreCase = true)
             .replace("VEVO", "", ignoreCase = true)
             .replace("Official", "", ignoreCase = true)
             .trim()
-        val query = if (clean.isNotBlank()) "$clean Hits" else "Popular Hits"
-        onSearchQueryChanged(query)
+        val activeLangs = _preferredLanguages.value.ifEmpty { listOf("tamil") }
+        val primaryLang = activeLangs.first().replaceFirstChar { it.uppercase() }
+
+        _searchQuery.value = "$clean Hits"
+        _searchLanguageFilter.value = primaryLang
         setScreen(AppScreen.SEARCH)
+
+        // Asynchronously fetch rich collection of min 30-50 songs for this artist in preferred languages
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch {
+            _isSearching.value = true
+            _searchError.value = null
+            try {
+                val q1 = "$clean $primaryLang hit songs"
+                val q2 = "$clean super hits"
+                val q3 = "$clean best melody songs"
+
+                val r1 = async { musicRepo.search(q1, limit = 40).getOrNull()?.map { it.toYouTubeSong() } ?: emptyList() }
+                val r2 = async { musicRepo.search(q2, limit = 35).getOrNull()?.map { it.toYouTubeSong() } ?: emptyList() }
+                val r3 = async { musicRepo.search(q3, limit = 30).getOrNull()?.map { it.toYouTubeSong() } ?: emptyList() }
+
+                val combined = (r1.await() + r2.await() + r3.await())
+                val deduped = ytRepo.deduplicateSongs(combined.distinctBy { it.videoId })
+
+                val filtered = if (deduped.isNotEmpty()) {
+                    deduped.filter { s ->
+                        val t = s.title.lowercase()
+                        val a = s.channelTitle.lowercase()
+                        val c = clean.lowercase()
+                        t.contains(c) || a.contains(c) || calculateSongRelevance(s, clean) > 0
+                    }
+                } else emptyList()
+
+                val finalSongs = if (filtered.size >= 30) filtered else deduped
+                _searchResults.value = finalSongs.take(50)
+            } catch (e: Exception) {
+                _searchError.value = "Could not load artist songs: ${e.message}"
+            } finally {
+                _isSearching.value = false
+            }
+        }
     }
 
     private fun calculateSongRelevance(song: YouTubeSong, query: String): Int {
@@ -944,7 +1072,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             } else {
                 queue
             }
-            com.saavn.music.util.RelevanceEngine.buildRelevantQueue(song, candidatePool, activeLangs, 25)
+            com.saavn.music.util.RelevanceEngine.buildRelevantQueue(song, candidatePool, activeLangs, 50)
         }
 
         // Asynchronously load matching suggestions for this specific mood/genre
@@ -1118,25 +1246,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val primaryLang = activeLangs.first()
                 // Generate relevant targeted query based on song mood/genre (Gana, Kuthu, Melody, etc.) and preferred language
                 val query = com.saavn.music.util.RelevanceEngine.getRelevantSearchQuery(song, primaryLang)
-                android.util.Log.i("ISAI_PLAYER", "[MainViewModel] Loading mood-targeted suggestions for query: '$query'")
-                val directResult = musicRepo.search(query).getOrNull()?.map { it.toYouTubeSong() } ?: emptyList()
-                val filteredDirect = directResult.filter { it.videoId != song.videoId }
+                val primaryArtist = com.saavn.music.util.RelevanceEngine.extractPrimaryArtist(song.channelTitle)
+                val artistQuery = if (primaryArtist.isNotBlank()) "$primaryArtist $primaryLang hits" else "$primaryLang top songs"
 
-                val relevantMatches = if (filteredDirect.isNotEmpty()) {
-                    com.saavn.music.util.RelevanceEngine.buildRelevantQueue(song, filteredDirect, activeLangs, 20).filter { it.videoId != song.videoId }
+                android.util.Log.i("ISAI_PLAYER", "[MainViewModel] Loading mood & artist suggestions: '$query' / '$artistQuery'")
+
+                val searchResultDeferred = async { musicRepo.search(query, limit = 40).getOrNull()?.map { it.toYouTubeSong() } ?: emptyList() }
+                val artistResultDeferred = async { musicRepo.search(artistQuery, limit = 35).getOrNull()?.map { it.toYouTubeSong() } ?: emptyList() }
+
+                val searchResult = searchResultDeferred.await()
+                val artistResult = artistResultDeferred.await()
+
+                val pool = (searchResult + artistResult + _trendingSongs.value.take(25)).distinctBy { it.videoId }
+                val filteredPool = pool.filter { it.videoId != song.videoId }
+
+                val relevantMatches = if (filteredPool.isNotEmpty()) {
+                    com.saavn.music.util.RelevanceEngine.buildRelevantQueue(song, filteredPool, activeLangs, maxItems = 50).filter { it.videoId != song.videoId }
                 } else {
-                    val ytResult = ytRepo.searchTamilSongs(query).getOrDefault(emptyList())
+                    val ytResult = ytRepo.searchTamilSongs(query, maxResults = 35).getOrDefault(emptyList())
                     val filteredYt = ytResult.filter { it.videoId != song.videoId }
-                    if (filteredYt.isNotEmpty()) {
-                        com.saavn.music.util.RelevanceEngine.buildRelevantQueue(song, filteredYt, activeLangs, 20).filter { it.videoId != song.videoId }
-                    } else {
-                        com.saavn.music.util.RelevanceEngine.buildRelevantQueue(song, _trendingSongs.value, activeLangs, 20).filter { it.videoId != song.videoId }
-                    }
+                    com.saavn.music.util.RelevanceEngine.buildRelevantQueue(song, filteredYt.ifEmpty { _trendingSongs.value }, activeLangs, maxItems = 50).filter { it.videoId != song.videoId }
                 }
 
                 _suggestions.value = relevantMatches
 
-                // Immediately replace the generic upcoming queue with these mood and language matched songs!
+                // Immediately replace the generic upcoming queue with these 40-50 mood and artist matched songs!
                 if (relevantMatches.isNotEmpty()) {
                     ytPlayerController.replaceUpcomingQueue(relevantMatches)
                     if (isaiConnectManager.isMyDeviceActive()) {
@@ -1164,7 +1298,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
                 android.util.Log.i("ISAI_PLAYER", "[MainViewModel] ensureEndlessQueue check: queueSize=${currentQueue.size}, currentIdx=$currentIndex, remaining=$remainingInQueue")
 
-                if (remainingInQueue <= 4 && song != null) {
+                if (remainingInQueue <= 10 && song != null) {
                     val activeLangs = _preferredLanguages.value.ifEmpty { listOf("tamil") }
                     val primaryLang = activeLangs.first()
 
@@ -1173,12 +1307,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     val artistQuery = if (primaryArtist.isNotBlank()) "$primaryArtist $primaryLang hit songs" else "$primaryLang top trending songs"
 
                     val searchHits = async {
-                        musicRepo.search(query).getOrNull()?.map { it.toYouTubeSong() } ?: emptyList()
+                        musicRepo.search(query, limit = 35).getOrNull()?.map { it.toYouTubeSong() } ?: emptyList()
                     }
                     val artistHits = async {
-                        musicRepo.search(artistQuery).getOrNull()?.map { it.toYouTubeSong() } ?: emptyList()
+                        musicRepo.search(artistQuery, limit = 35).getOrNull()?.map { it.toYouTubeSong() } ?: emptyList()
                     }
-                    val combinedHits = (searchHits.await() + artistHits.await())
+                    val combinedHits = (searchHits.await() + artistHits.await() + _trendingSongs.value)
 
                     val existingVideoIds = currentQueue.map { it.videoId }.toSet()
                     val existingNormTitles = currentQueue.map { 
@@ -1195,7 +1329,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         if (existingNormTitles.contains(norm) || seenInBatch.contains(norm)) continue
                         seenInBatch.add(norm)
                         newSongs.add(candidate)
-                        if (newSongs.size >= 8) break
+                        if (newSongs.size >= 20) break
                     }
 
                     if (newSongs.isNotEmpty()) {
@@ -1441,6 +1575,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val updated = current.copy(displayName = newUsername)
         localStorage.saveUserProfile(updated)
         authService.updateDisplayName(newUsername)
+        isaiConnectManager.updateDeviceOwner(newUsername)
     }
 
     fun quickSignInGoogleAccount(displayName: String = "ISAI Listener", email: String = "user@isaimusic.com") {

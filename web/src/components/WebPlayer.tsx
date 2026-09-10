@@ -206,7 +206,7 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
   const activeIsPlaying = isRemoteActive ? Boolean(remoteState?.isPlaying) : isPlaying
 
   const playingDevice = connectedDevices.find(d => d.deviceId === remoteState?.currentDeviceId)
-  const remoteDeviceName = playingDevice?.deviceName || (remoteState?.currentDeviceId?.includes('android') ? "Jeeva's Phone" : "Mobile Device")
+  const remoteDeviceName = playingDevice?.deviceName || (remoteState?.currentDeviceId?.includes('android') ? "Mobile Phone" : "Remote Device")
 
   // Activate local playback on Web when user transfers or remote device hands off
   const activateLocalPlayback = async (targetSong?: any, positionMs?: number) => {

@@ -127,8 +127,8 @@ class IsaiConnectServiceManager {
     return id
   }
 
-  private detectDeviceName(): string {
-    if (typeof navigator === 'undefined') return "Jeeva's Web Browser"
+  public detectDeviceName(ownerName?: string): string {
+    if (typeof navigator === 'undefined') return ownerName ? `${ownerName}'s Browser` : 'Web Browser'
     const ua = navigator.userAgent
     let browser = 'Browser'
     if (ua.includes('Edg/')) browser = 'Edge'
@@ -142,7 +142,12 @@ class IsaiConnectServiceManager {
     else if (ua.includes('Android')) os = 'Android Device'
     else if (ua.includes('iPhone') || ua.includes('iPad')) os = 'iOS Device'
 
-    return `Jeeva's ${os} (${browser})`
+    const cleanOwner = ownerName?.trim()
+    if (cleanOwner && !cleanOwner.toLowerCase().includes('guest')) {
+      const possessive = cleanOwner.endsWith('s') || cleanOwner.endsWith('S') ? `${cleanOwner}'` : `${cleanOwner}'s`
+      return `${possessive} ${os} (${browser})`
+    }
+    return `${os} (${browser})`
   }
 
   private detectPlatform(): 'web' | 'windows' | 'mac' {
@@ -172,9 +177,24 @@ class IsaiConnectServiceManager {
     return rawId.toLowerCase().trim().replace(/[.#$\[\]]/g, '_')
   }
 
-  public initialize(rawUserId: string) {
+  public updateDeviceOwner(userName?: string) {
+    const newName = this.detectDeviceName(userName)
+    if (this.deviceName !== newName) {
+      this.deviceName = newName
+      if (this.userId) {
+        this.registerDevice()
+      }
+    }
+  }
+
+  public initialize(rawUserId: string, rawUserName?: string) {
     const sanitized = this.sanitizeUserId(rawUserId)
-    if (this.userId === sanitized) return
+    const resolvedName = rawUserName?.trim() || (rawUserId && !rawUserId.includes('guest') ? rawUserId.split('@')[0] : '')
+    const newName = this.detectDeviceName(resolvedName)
+    const nameChanged = this.deviceName !== newName
+    this.deviceName = newName
+
+    if (this.userId === sanitized && !nameChanged) return
     this.disconnect()
 
     this.userEmail = rawUserId

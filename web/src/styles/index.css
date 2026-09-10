@@ -487,6 +487,7 @@ h1, h2, h3, h4, h5, h6 {
   font-weight: 900;
   background: var(--isai-gradient);
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
   letter-spacing: 0.04em;
   line-height: 1;
@@ -547,8 +548,13 @@ h1, h2, h3, h4, h5, h6 {
   gap: 10px;
   overflow-x: auto;
   padding: 2px 0 20px;
-  scrollbar-width: none;
   -ms-overflow-style: none;
+}
+
+@supports (scrollbar-width: none) {
+  .ytm-activity-chips-bar {
+    scrollbar-width: none;
+  }
 }
 
 .ytm-activity-chips-bar::-webkit-scrollbar {
@@ -615,7 +621,12 @@ h1, h2, h3, h4, h5, h6 {
   overflow-x: auto;
   scroll-behavior: smooth;
   padding-bottom: 8px;
-  scrollbar-width: thin;
+}
+
+@supports (scrollbar-width: thin) {
+  .ytm-quick-picks-container {
+    scrollbar-width: thin;
+  }
 }
 
 .ytm-quick-picks-container::-webkit-scrollbar {
@@ -939,7 +950,12 @@ h1, h2, h3, h4, h5, h6 {
   overflow-x: auto;
   scroll-behavior: smooth;
   padding: 4px 2px 14px;
-  scrollbar-width: thin;
+}
+
+@supports (scrollbar-width: thin) {
+  .carousel-row {
+    scrollbar-width: thin;
+  }
 }
 
 .carousel-row::-webkit-scrollbar {

@@ -3,6 +3,7 @@ package com.saavn.music.connect
 import android.content.Context
 import android.content.SharedPreferences
 import android.os.Build
+import android.provider.Settings
 import android.util.Log
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
@@ -79,7 +80,53 @@ class IsaiConnectManager(private val context: Context) {
     private val database: FirebaseDatabase = FirebaseDatabase.getInstance("https://isai-49b51-default-rtdb.firebaseio.com")
 
     val deviceId: String = getOrCreateDeviceId()
-    val deviceName: String = computeDeviceName()
+
+    fun getActualSystemDeviceName(): String {
+        // 1. Android Settings Global DEVICE_NAME (user-configured device name e.g. "OnePlus 11R", "Jeeva S23", "Galaxy A54")
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N_MR1) {
+                val name = Settings.Global.getString(context.contentResolver, Settings.Global.DEVICE_NAME)
+                if (!name.isNullOrBlank() && !name.equals("Android", ignoreCase = true)) {
+                    return name.trim()
+                }
+            }
+        } catch (_: Exception) {}
+
+        // 2. Settings.System "device_name" (used on Xiaomi, Oppo, Vivo, Realme, OnePlus, Samsung)
+        try {
+            val name = Settings.System.getString(context.contentResolver, "device_name")
+            if (!name.isNullOrBlank() && !name.equals("Android", ignoreCase = true)) {
+                return name.trim()
+            }
+        } catch (_: Exception) {}
+
+        // 3. Bluetooth name in Settings.Secure / System (often customized by user in phone settings)
+        try {
+            val btName = Settings.Secure.getString(context.contentResolver, "bluetooth_name")
+                ?: Settings.System.getString(context.contentResolver, "bluetooth_name")
+            if (!btName.isNullOrBlank() && !btName.equals("Android", ignoreCase = true)) {
+                return btName.trim()
+            }
+        } catch (_: Exception) {}
+
+        // 4. Default to Manufacturer + Clean Model (e.g., "OnePlus 11R", "Samsung Galaxy S23")
+        val manufacturer = Build.MANUFACTURER?.replaceFirstChar { it.uppercase() } ?: ""
+        val model = Build.MODEL ?: "Android Phone"
+        return if (model.contains(manufacturer, ignoreCase = true)) {
+            model.trim()
+        } else {
+            "$manufacturer $model".trim()
+        }
+    }
+
+    private val _currentDeviceName = MutableStateFlow(getActualSystemDeviceName())
+    val currentDeviceName: StateFlow<String> = _currentDeviceName.asStateFlow()
+
+    var deviceName: String
+        get() = _currentDeviceName.value
+        private set(value) {
+            _currentDeviceName.value = value
+        }
 
     private var userId: String = ""
     var userEmail: String = ""
@@ -122,19 +169,8 @@ class IsaiConnectManager(private val context: Context) {
         return newId
     }
 
-    private fun computeDeviceName(): String {
-        val rawModel = Build.MODEL ?: "Phone"
-        val manufacturer = Build.MANUFACTURER?.replaceFirstChar { it.uppercase() } ?: "Android"
-        var cleanModel = rawModel
-            .replace(Regex("(?i)[0-9A-Z]{7,}"), "")
-            .trim()
-
-        if (cleanModel.isBlank() || cleanModel.length <= 2) {
-            cleanModel = "$manufacturer Phone"
-        } else if (!cleanModel.lowercase().contains(manufacturer.lowercase())) {
-            cleanModel = "$manufacturer $cleanModel"
-        }
-        return "Jeeva's $cleanModel"
+    fun computeDeviceName(ownerName: String? = null): String {
+        return getActualSystemDeviceName()
     }
 
     fun sanitizeUserId(rawId: String): String {
@@ -142,9 +178,26 @@ class IsaiConnectManager(private val context: Context) {
         return rawId.lowercase().trim().replace(Regex("[.#$\\[\\]]"), "_")
     }
 
-    fun initialize(rawUserId: String) {
+    fun updateDeviceOwner(userName: String?) {
+        val newName = computeDeviceName(userName)
+        if (deviceName != newName) {
+            deviceName = newName
+            if (userId.isNotEmpty()) {
+                registerDevice()
+            }
+        }
+    }
+
+    fun initialize(rawUserId: String, rawUserName: String? = null) {
         val sanitized = sanitizeUserId(rawUserId)
-        if (userId == sanitized) return
+        val resolvedName = rawUserName?.trim()?.takeIf { it.isNotBlank() }
+            ?: rawUserId.substringBefore("@").replaceFirstChar { it.uppercase() }.takeIf { it.isNotBlank() && !it.equals("guest", ignoreCase = true) }
+
+        val newDeviceName = computeDeviceName(resolvedName)
+        val nameChanged = (deviceName != newDeviceName)
+        deviceName = newDeviceName
+
+        if (userId == sanitized && !nameChanged) return
         disconnect()
 
         userEmail = rawUserId

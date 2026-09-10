@@ -23,7 +23,7 @@ interface JioSaavnApiService {
         @Query("ctx") ctx: String = "web6dot0",
         @Query("q") query: String,
         @Query("p") page: Int = 1,
-        @Query("n") limit: Int = 20
+        @Query("n") limit: Int = 40
     ): SearchResultResponse
 
     @GET("api.php")

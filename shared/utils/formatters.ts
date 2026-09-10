@@ -93,77 +93,34 @@ function phoneticNormalize(text: string): string {
     .trim()
 }
 
-/**
- * Deduplicate songs by videoId, primary title key, and cleaned full title key
- */
-export function deduplicateSongs(songs: Song[]): Song[] {
-  if (!Array.isArray(songs) || songs.length === 0) return []
-  const seenIds = new Set<string>()
-  const seenPrimaryKeys = new Set<string>()
-  const seenFullKeys = new Set<string>()
-  const result: Song[] = []
+const NOISE_REGEX = /\b(official|video|lyric|lyrics|full|audio|hd|4k|8k|uhd|song|songs|trending|version|remix|bgm|theme|track|singles|single|teaser|trailer|promo|lyrical|visualizer|jukebox|compilation|all time hits|tamil|telugu|hindi|kannada|malayalam|dj|mix|prod|feat|ft|instrumental|reprise|extended|motion|poster|dialogue|scene|scenes|special|exclusive|original|soundtrack|ost|mashup)\b/gi
+const STOPWORDS = new Set(['the', 'a', 'an', 'in', 'of', 'to', 'and', 'from', 'with', 'by', 'on', 'for', 'at', 'is', 'it'])
 
-  const noiseRegex = /\b(official|video|lyric|lyrics|full|audio|hd|4k|song|songs|trending|version|remix|bgm|theme|track|singles|single|teaser|trailer|lyrical|visualizer|jukebox|compilation|all time hits|tamil|telugu|hindi|dj|mix|prod|feat|ft|instrumental|reprise)\b/gi
-
-  for (const song of songs) {
-    if (!song || !song.title) continue
-
-    const vid = song.videoId ? song.videoId.trim() : ''
-    if (vid && seenIds.has(vid)) continue
-
-    const rawTitle = cleanHtmlTitle(song.title)
-
-    // 1. Strip complete bracketed content first, e.g. (From "Movie - Name") or [Tamil]
-    let titleWithoutBrackets = rawTitle.replace(/\([^)]*\)/g, ' ').replace(/\[[^\]]*\]/g, ' ')
-
-    // 2. Strip "From ..." clauses even if without brackets
-    titleWithoutBrackets = titleWithoutBrackets.replace(/\bfrom\s+["'].*?["']/gi, ' ')
-    titleWithoutBrackets = titleWithoutBrackets.replace(/\bfrom\s+[A-Za-z0-9\s:]+/gi, ' ')
-
-    // 3. Strip version/reprise/mix clauses
-    titleWithoutBrackets = titleWithoutBrackets.replace(/\bversion[.\s0-9]+/gi, ' ')
-
-    // 4. Primary Title Key (first segment before separators like |, -, :, ~, /)
-    const firstSegment = titleWithoutBrackets.split(/[|\-:~–—]/)[0] || titleWithoutBrackets
-    const primaryCleaned = firstSegment.replace(noiseRegex, ' ')
-    const primaryTitle = phoneticNormalize(primaryCleaned)
-
-    // 5. Full Title Key
-    const fullCleaned = titleWithoutBrackets.replace(noiseRegex, ' ')
-    const fullTitle = phoneticNormalize(fullCleaned)
-
-    if (primaryTitle.length >= 3 && seenPrimaryKeys.has(primaryTitle)) {
-      continue
-    }
-
-    if (fullTitle.length >= 3 && seenFullKeys.has(fullTitle)) {
-      continue
-    }
-
-    if (vid) seenIds.add(vid)
-    if (primaryTitle.length >= 3) seenPrimaryKeys.add(primaryTitle)
-    if (fullTitle.length >= 3) seenFullKeys.add(fullTitle)
-
-    result.push(song)
-  }
-
-  return result
+function cleanRawTitle(raw: string): string {
+  if (!raw) return ''
+  const unescaped = cleanHtmlTitle(raw)
+  return unescaped
+    .replace(/\([^)]*\)/g, ' ')
+    .replace(/\[[^\]]*\]/g, ' ')
+    .replace(/\bfrom\s+["'].*?["']/gi, ' ')
+    .replace(/\bfrom\s+[A-Za-z0-9\s:]+/gi, ' ')
+    .replace(NOISE_REGEX, ' ')
+    .replace(/[^a-zA-Z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
-/**
- * Clean base title for cross-song comparison and deduplication
- */
-export function cleanBaseTitle(rawTitle: string): string {
-  if (!rawTitle) return ''
-  const cleaned = cleanHtmlTitle(rawTitle)
-  return cleaned
-    .toLowerCase()
-    .replace(/^(official\s*(video|audio|lyric(al)?\s*video)?|lyric(al)?\s*video|video\s*song|full\s*song|audio\s*song)\s*[:|-]\s*/i, '')
-    .replace(/\(.*?\)/g, '')
-    .replace(/\[.*?\]/g, '')
-    .replace(/\s*[\|\-\–\—\:].*$/, '')
-    .replace(/[^a-z0-9]/g, '')
-    .trim()
+export function extractTitleTokens(rawTitle: string): Set<string> {
+  const cleaned = cleanRawTitle(rawTitle)
+  const tokens = cleaned.split(/\s+/)
+    .map(t => phoneticNormalize(t))
+    .filter(t => t.length >= 2 && !STOPWORDS.has(t))
+  return new Set(tokens)
+}
+
+export function normalizeTitleKey(rawTitle: string): string {
+  const tokens = Array.from(extractTitleTokens(rawTitle))
+  return tokens.sort().join('')
 }
 
 /**
@@ -176,14 +133,64 @@ export function isSameSongOrDuplicate(
   if (!songA || !songB) return false
   if (songA.videoId && songB.videoId && songA.videoId === songB.videoId) return true
 
-  const baseA = cleanBaseTitle(songA.title || '')
-  const baseB = cleanBaseTitle(songB.title || '')
+  const keyA = normalizeTitleKey(songA.title || '')
+  const keyB = normalizeTitleKey(songB.title || '')
 
-  if (!baseA || !baseB) return false
-  if (baseA === baseB) return true
+  if (keyA && keyB && keyA === keyB) return true
 
-  if (baseA.length >= 5 && baseB.includes(baseA)) return true
-  if (baseB.length >= 5 && baseA.includes(baseB)) return true
+  if (keyA.length >= 4 && keyB.length >= 4) {
+    if (keyA.includes(keyB) || keyB.includes(keyA)) {
+      return true
+    }
+  }
+
+  const tokensA = extractTitleTokens(songA.title || '')
+  const tokensB = extractTitleTokens(songB.title || '')
+
+  if (tokensA.size === 0 || tokensB.size === 0) return false
+
+  let aInB = true
+  for (const t of tokensA) {
+    if (!tokensB.has(t)) { aInB = false; break }
+  }
+
+  let bInA = true
+  for (const t of tokensB) {
+    if (!tokensA.has(t)) { bInA = false; break }
+  }
+
+  const common: string[] = []
+  for (const t of tokensA) {
+    if (tokensB.has(t)) common.push(t)
+  }
+
+  const commonLen = common.reduce((acc, t) => acc + t.length, 0)
+  if ((aInB || bInA) && commonLen >= 4) {
+    return true
+  }
+
+  const significantCommon = common.filter(t => t.length >= 3)
+  if (significantCommon.length >= 2) {
+    return true
+  }
 
   return false
+}
+
+/**
+ * Deduplicate songs so each unique song appears only once
+ */
+export function deduplicateSongs(songs: Song[]): Song[] {
+  if (!Array.isArray(songs) || songs.length === 0) return []
+  const result: Song[] = []
+
+  for (const song of songs) {
+    if (!song || !song.title) continue
+    const isDup = result.some(existing => isSameSongOrDuplicate(existing, song))
+    if (!isDup) {
+      result.push(song)
+    }
+  }
+
+  return result
 }

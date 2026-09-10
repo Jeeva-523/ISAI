@@ -18,9 +18,9 @@ export class LocalMusicStorageService {
     if (typeof window === 'undefined' || !window.localStorage) {
       return {
         isLoggedIn: false,
-        name: 'JEEVA ⚡',
-        email: 'kongujeeva523@gmail.com',
-        avatar: 'J',
+        name: 'ISAI Listener',
+        email: '',
+        avatar: 'I',
         isPremium: true
       }
     }
@@ -28,17 +28,17 @@ export class LocalMusicStorageService {
       const data = localStorage.getItem(USER_KEY)
       return data ? JSON.parse(data) : {
         isLoggedIn: false,
-        name: 'JEEVA ⚡',
-        email: 'kongujeeva523@gmail.com',
-        avatar: 'J',
+        name: 'ISAI Listener',
+        email: '',
+        avatar: 'I',
         isPremium: true
       }
     } catch {
       return {
         isLoggedIn: false,
-        name: 'JEEVA ⚡',
-        email: 'kongujeeva523@gmail.com',
-        avatar: 'J',
+        name: 'ISAI Listener',
+        email: '',
+        avatar: 'I',
         isPremium: true
       }
     }

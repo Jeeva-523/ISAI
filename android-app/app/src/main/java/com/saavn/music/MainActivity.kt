@@ -69,18 +69,45 @@ import androidx.activity.result.contract.ActivityResultContracts
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.saavn.music.ui.components.LoginDialog
 import com.saavn.music.ui.components.LanguageSelectionDialog
+import com.saavn.music.ui.components.UpdateDialog
 import com.saavn.music.ui.screens.LoginScreen
 import com.saavn.music.ui.screens.SplashScreen
 
 import androidx.activity.viewModels
 import android.view.KeyEvent
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.core.content.ContextCompat
+import com.saavn.music.service.IsaiFirebaseMessagingService
 
 class MainActivity : ComponentActivity() {
     private val mainViewModel: MainViewModel by viewModels()
 
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            android.util.Log.d("MainActivity", "Notification permission granted")
+        } else {
+            android.util.Log.w("MainActivity", "Notification permission denied")
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        // Setup FCM Topics & Notification Channel
+        IsaiFirebaseMessagingService.setupFCMSubscriptions(this)
+
+        // Request POST_NOTIFICATIONS runtime permission on Android 13+ (API 33+)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+
         setContent {
             SaavnMusicTheme {
                 IsaiApp(mainViewModel)
@@ -128,6 +155,7 @@ fun IsaiApp(viewModel: MainViewModel = viewModel()) {
     val userProfile by viewModel.userProfile.collectAsState()
     val showLanguageDialog by viewModel.showLanguageDialog.collectAsState()
     val preferredLanguages by viewModel.preferredLanguages.collectAsState()
+    val appUpdateInfo by viewModel.appUpdateInfo.collectAsState()
 
     val context = androidx.compose.ui.platform.LocalContext.current
 
@@ -202,6 +230,15 @@ fun IsaiApp(viewModel: MainViewModel = viewModel()) {
     if (isSplashVisible) {
         SplashScreen(onTimeout = { isSplashVisible = false })
         return
+    }
+
+    // In-App Auto Update Dialog (Renders on top of any screen if update available)
+    appUpdateInfo?.let { update ->
+        UpdateDialog(
+            updateInfo = update,
+            onUpdateClick = { viewModel.launchAppUpdate(context) },
+            onDismiss = { viewModel.dismissUpdateDialog() }
+        )
     }
 
     // First-Time / Unauthenticated Gate: Show LoginScreen

@@ -168,8 +168,8 @@ export function App() {
 
   // Initialize ISAI Connect service
   useEffect(() => {
-    const activeUserId = user.email || 'user_jeeva_default'
-    IsaiConnectService.initialize(activeUserId)
+    const activeUserId = user.email || 'user_guest'
+    IsaiConnectService.initialize(activeUserId, user.name)
 
     const unsubDevices = IsaiConnectService.subscribeDevices((devices) => {
       setConnectedDevices(devices)
@@ -570,7 +570,7 @@ export function App() {
     if (isRemoteActive) {
       IsaiConnectService.sendCommand('PLAY_SONG', { song })
       const playingDevice = connectedDevices.find(d => d.deviceId === remotePlaybackState?.currentDeviceId)
-      const devName = playingDevice?.deviceName || (remotePlaybackState?.currentDeviceId.includes('android') ? "Jeeva's Phone" : "Mobile Device")
+      const devName = playingDevice?.deviceName || (remotePlaybackState?.currentDeviceId.includes('android') ? "Mobile Phone" : "Remote Device")
       showToast(`Playing on ${devName} 📱`)
       return
     }
@@ -1090,7 +1090,7 @@ export function App() {
           }
           showToast('Queue cleared 🗑️')
         }}
-        userId={user.email || 'user_jeeva_default'}
+        userId={user.email || 'user_guest'}
         onTransferPlayback={(s) => handlePlaySong(s, [], true)}
       />
     </MainLayout>

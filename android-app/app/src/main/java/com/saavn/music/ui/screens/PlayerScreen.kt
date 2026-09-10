@@ -370,21 +370,6 @@ fun PlayerScreen(
                                 context.startActivity(Intent.createChooser(shareIntent, "Share Track"))
                             }
                         )
-                        DropdownMenuItem(
-                            text = { Text("📥 Offline Download", color = TextPrimary) },
-                            onClick = {
-                                showMoreMenu = false
-                                viewModel.addToQueue(currentSong)
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("👤 Go to Artist", color = TextPrimary) },
-                            onClick = {
-                                showMoreMenu = false
-                                viewModel.onSearchQueryChanged(currentSong.channelTitle)
-                                viewModel.closeFullPlayer()
-                            }
-                        )
                     }
                 }
             }
