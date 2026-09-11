@@ -14,6 +14,7 @@ import com.saavn.music.player.YouTubePlayerController
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -22,6 +23,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.Dispatchers
 
 import com.saavn.music.auth.GoogleAuthHelper
 import com.saavn.music.data.analytics.AnalyticsService
@@ -32,6 +34,8 @@ import com.saavn.music.data.repository.AppUpdateService
 import com.saavn.music.data.repository.FirestoreMusicService
 import com.saavn.music.data.repository.PlaylistService
 import com.saavn.music.data.search.SearchService
+import com.saavn.music.data.search.SmartSearchEngine
+import com.saavn.music.data.search.IsaiKeywordDictionary
 import com.saavn.music.data.trending.TrendingService
 
 enum class AppScreen {
@@ -79,6 +83,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _isCheckingUpdate = MutableStateFlow(false)
     val isCheckingUpdate: StateFlow<Boolean> = _isCheckingUpdate.asStateFlow()
+
+    // Multi-Device Playback Mode: Separate (independent on 2+ devices) vs Sync (Spotify Connect)
+    val isMultiDevicePlaybackSeparate: StateFlow<Boolean> = localStorage.isMultiDevicePlaybackSeparate
+
+    fun setMultiDevicePlaybackSeparate(enabled: Boolean) {
+        localStorage.setMultiDevicePlaybackSeparate(enabled)
+    }
+
+    // Server-Driven Dynamic UI Config (Cloud-driven real-time design updates)
+    val dynamicUiService = com.saavn.music.data.repository.DynamicUiService.getInstance(application)
+    val dynamicUiConfig: StateFlow<com.saavn.music.data.model.DynamicUiConfig> = dynamicUiService.uiConfig
 
     init {
         // Automatically check for newer app updates on startup
@@ -172,7 +187,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             durationMs = durationSeconds * 1000L,
             viewCountFormatted = if (playCount > 0) "${java.text.NumberFormat.getInstance().format(playCount)} plays" else if (year.isNotBlank()) "Year $year" else "",
             audioUrl = getStreamUrl(AudioQuality.VERY_HIGH),
-            playCount = playCount
+            playCount = playCount,
+            language = this.language.lowercase().trim()
         )
     }
 
@@ -339,18 +355,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        // Initialize ISAI Connect with user profile
+        // Initialize ISAI Connect with user profile (with user_guest fallback matching web client)
         viewModelScope.launch {
             userProfile.collect { profile ->
                 val email = profile?.email?.takeIf { it.isNotBlank() } 
                     ?: authService.getCurrentUser()?.email?.takeIf { it.isNotBlank() } 
-                    ?: ""
-                if (email.isNotBlank()) {
-                    val displayName = profile?.displayName?.takeIf { it.isNotBlank() }
-                        ?: authService.getCurrentUser()?.displayName?.takeIf { it.isNotBlank() }
-                        ?: email.substringBefore("@").replaceFirstChar { it.uppercase() }
-                    isaiConnectManager.initialize(email, displayName)
-                }
+                    ?: "user_guest"
+                val displayName = profile?.displayName?.takeIf { it.isNotBlank() }
+                    ?: authService.getCurrentUser()?.displayName?.takeIf { it.isNotBlank() }
+                    ?: email.substringBefore("@").replaceFirstChar { it.uppercase() }
+                isaiConnectManager.initialize(email, displayName)
                 if (localStorage.recentlyPlayed.value.isNotEmpty()) {
                     isaiConnectManager.syncRecentlyPlayed(localStorage.recentlyPlayed.value)
                 }
@@ -366,10 +380,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        // Sync local playback state to ISAI Connect when this device is active player
+        // Sync local playback state to ISAI Connect when this device is active player and not in separate mode
         viewModelScope.launch {
             ytPlayerController.currentSong.collect { song ->
-                if (song != null && isaiConnectManager.isMyDeviceActive()) {
+                if (song != null && !localStorage.isMultiDevicePlaybackSeparate.value && isaiConnectManager.isMyDeviceActive()) {
                     isaiConnectManager.updatePlaybackState(
                         song = song,
                         isPlaying = ytPlayerController.isPlaying.value,
@@ -384,7 +398,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch {
             ytPlayerController.currentQueueIndex.collect { idx ->
-                if (isaiConnectManager.isMyDeviceActive()) {
+                if (!localStorage.isMultiDevicePlaybackSeparate.value && isaiConnectManager.isMyDeviceActive()) {
                     isaiConnectManager.updatePlaybackState(queueIndex = idx)
                 }
             }
@@ -392,7 +406,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch {
             ytPlayerController.isPlaying.collect { playing ->
-                if (isaiConnectManager.isMyDeviceActive()) {
+                if (!localStorage.isMultiDevicePlaybackSeparate.value && isaiConnectManager.isMyDeviceActive()) {
                     isaiConnectManager.updatePlaybackState(
                         isPlaying = playing,
                         positionMs = (ytPlayerController.currentPositionSec.value * 1000).toLong()
@@ -405,7 +419,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             while (isActive) {
                 delay(1500)
-                if (isaiConnectManager.isMyDeviceActive() && ytPlayerController.isPlaying.value) {
+                if (!localStorage.isMultiDevicePlaybackSeparate.value && isaiConnectManager.isMyDeviceActive() && ytPlayerController.isPlaying.value) {
                     val posMs = (ytPlayerController.currentPositionSec.value * 1000).toLong()
                     val durMs = (ytPlayerController.durationSec.value * 1000).toLong()
                     isaiConnectManager.updatePlaybackState(
@@ -421,6 +435,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             isaiConnectManager.playbackState.collect { syncState ->
                 if (syncState != null) {
+                    if (localStorage.isMultiDevicePlaybackSeparate.value) {
+                        // In Separate Multi-Device Mode:
+                        // Both devices play independently without pausing or hijacking each other!
+                        return@collect
+                    }
                     val isAnotherDeviceActivelyPlaying = !isaiConnectManager.isMyDeviceActive() &&
                         syncState.updatedByDeviceId != isaiConnectManager.deviceId &&
                         syncState.currentDeviceId != isaiConnectManager.deviceId &&
@@ -486,6 +505,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             isaiConnectManager.remoteCommand.collect { cmd ->
                 if (cmd.issuedByDeviceId != isaiConnectManager.deviceId) {
+                    val isSeparate = localStorage.isMultiDevicePlaybackSeparate.value
+                    if (isSeparate && (cmd.targetDeviceId.isBlank() || cmd.targetDeviceId != isaiConnectManager.deviceId)) {
+                        return@collect
+                    }
                     val isTargetedToMe = cmd.targetDeviceId.isEmpty() || cmd.targetDeviceId == isaiConnectManager.deviceId
                     val canExecute = when (cmd.action) {
                         "PLAY_SONG", "ADD_TO_QUEUE", "PLAY_NEXT_IN_QUEUE" -> isTargetedToMe
@@ -583,7 +606,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun loadPersonalizedRecommendations() {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             try {
                 val recentList = (localStorage.recentlyPlayed.value + isaiConnectManager.syncedRecentlyPlayed.value).distinctBy { it.videoId }
                 val favList = localStorage.favorites.value
@@ -634,7 +657,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun loadHomeData() {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             _isLoadingHome.value = true
             try {
                 val langs = _preferredLanguages.value.ifEmpty { listOf("tamil") }
@@ -706,7 +729,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun selectCategory(category: String) {
         _selectedCategory.value = category
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             _isLoadingHome.value = true
             try {
                 if (category == "Most Played" || category == "Trending") {
@@ -749,7 +772,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun refreshCategorySongs() {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             _isLoadingHome.value = true
             try {
                 if (_selectedCategory.value == "Most Played" || _selectedCategory.value == "Trending") {
@@ -765,7 +788,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun loadDailyMixes(preferredLanguages: List<String> = _preferredLanguages.value) {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             try {
                 val activeLangs = preferredLanguages.ifEmpty { listOf("tamil") }
                 val primaryLang = activeLangs.first().lowercase().trim()
@@ -916,94 +939,131 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
-        searchJob = viewModelScope.launch {
+        searchJob = viewModelScope.launch(Dispatchers.IO) {
             _isSearching.value = true
             _searchError.value = null
             delay(350)
             try {
                 val clean = newQuery.trim().lowercase()
 
-                // Smart Category / Keyword Router
+                // Special direct commands
                 if (clean == "trending" || clean == "trends" || clean == "charts") {
                     _searchResults.value = _trendingSongs.value
                     _searchError.value = null
                     return@launch
                 }
 
-                // 1. Check for Tamil Gaana / Folk intent
-                if (clean.contains("gana") || clean.contains("gaana")) {
-                    android.util.Log.i("ISAI_PLAYER", "[MainViewModel] Gaana intent detected for '$newQuery'")
-                    val ganaArtists = listOf(
-                        "Gana Bala", "Marana Gana Viji", "Gana Balachandar", "Vaathi Coming",
-                        "Anthony Daasan", "Aathangara Orathil", "Danga Maari Oodhari", "Aaluma Doluma",
-                        "Open the Tasmac", "Ora Kannala", "Marana Gaana"
-                    )
-                    val saavnSongsList = mutableListOf<YouTubeSong>()
-                    for (q in ganaArtists.take(8)) {
-                        val r = musicRepo.search(q).getOrNull()?.map { it.toYouTubeSong() } ?: emptyList()
-                        saavnSongsList.addAll(r)
-                    }
-                    
-                    val deduped = ytRepo.deduplicateSongs(saavnSongsList.distinctBy { it.videoId })
-                    val sorted = deduped.sortedByDescending { calculateSongRelevance(it, newQuery) }
-                    _searchResults.value = sorted
-                    _searchError.value = null
-                    return@launch
+                val activeLangFilter = _searchLanguageFilter.value
+                val userLangs = if (activeLangFilter != "All") {
+                    listOf(activeLangFilter.lowercase())
+                } else {
+                    _preferredLanguages.value.ifEmpty { listOf("tamil") }
                 }
 
-                val activeLang = _searchLanguageFilter.value
-                val langFilter = if (activeLang != "All") activeLang else ""
+                // Extract user favorite artists for non-invasive personalization
+                val favArtists = favorites.value.mapNotNull { it.channelTitle.takeIf { t -> t.isNotBlank() } }.distinct().take(10)
 
-                val queryOverride = when (clean) {
-                    "melody", "melodies" -> if (langFilter.isNotBlank()) "$langFilter melody hit songs" else "feel good melody hit songs"
-                    "romantic", "romance", "love" -> if (langFilter.isNotBlank()) "$langFilter romantic love songs" else "love romantic songs"
-                    "sad", "emotional" -> if (langFilter.isNotBlank()) "$langFilter sad emotional songs" else "sad emotional songs"
-                    "party", "dance" -> if (langFilter.isNotBlank()) "$langFilter party dance songs" else "party dance songs"
-                    "kuthu" -> "Tamil party kuthu mass dance songs"
-                    "workout", "gym" -> "gym workout bgm beats"
-                    "relax", "chill", "acoustic" -> if (langFilter.isNotBlank()) "$langFilter relaxing acoustic songs" else "relaxing acoustic melody songs"
-                    "folk" -> if (langFilter.isNotBlank()) "$langFilter folk songs" else "folk songs"
-                    "devotional", "god", "bhakti" -> if (langFilter.isNotBlank()) "$langFilter devotional songs" else "devotional songs"
-                    "kadhal" -> "Tamil love romantic songs"
-                    else -> {
-                        if (langFilter.isNotBlank() && !clean.contains(langFilter.lowercase())) {
-                            "${newQuery.trim()} $langFilter"
-                        } else {
-                            newQuery.trim()
+                // Parse query using ISAI Smart Search Engine
+                val parsedIntent = SmartSearchEngine.parseQuery(
+                    rawQuery = newQuery,
+                    userPreferredLanguages = userLangs,
+                    userFavoriteArtists = favArtists
+                )
+
+                android.util.Log.i("ISAI_SEARCH", "[SmartSearch] Query: '$newQuery' -> AudioQuery: '${parsedIntent.directAudioQuery}', YTQuery: '${parsedIntent.youtubeMusicQuery}', Intent: [lang=${parsedIntent.detectedLanguage}, art=${parsedIntent.detectedArtist}, mood=${parsedIntent.detectedMood}, genre=${parsedIntent.detectedGenre}, era=${parsedIntent.detectedYearOrEra}]")
+
+                val candidateList = mutableListOf<Pair<YouTubeSong, Int>>()
+
+                // Execute targeted search with primary YouTube Music rank preservation
+                coroutineScope {
+                    val ytDeferred = async {
+                        ytRepo.searchSongs(parsedIntent.youtubeMusicQuery, maxResults = 50).getOrDefault(emptyList())
+                    }
+                    val saavnDeferred = async {
+                        if (parsedIntent.directAudioQuery.isNotBlank()) {
+                            musicRepo.search(parsedIntent.directAudioQuery, limit = 30).getOrNull()?.map { it.toYouTubeSong() } ?: emptyList()
+                        } else emptyList()
+                    }
+
+                    val ytResults = ytDeferred.await()
+                    val saavnResults = saavnDeferred.await()
+
+                    // Add primary YouTube results retaining their original Innertube rank
+                    ytResults.forEachIndexed { index, song ->
+                        candidateList.add(Pair(song, index))
+                    }
+
+                    // If primary query had very few results, fallback to raw user query
+                    if (ytResults.size < 5) {
+                        val cleanRaw = newQuery.trim()
+                        if (!cleanRaw.equals(parsedIntent.youtubeMusicQuery, ignoreCase = true)) {
+                            val rawYt = ytRepo.searchSongs(cleanRaw, maxResults = 30).getOrDefault(emptyList())
+                            rawYt.forEachIndexed { index, song ->
+                                candidateList.add(Pair(song, ytResults.size + index))
+                            }
+                        }
+                    }
+
+                    // Add JioSaavn supplementary results with lower initial priority
+                    saavnResults.forEachIndexed { index, song ->
+                        candidateList.add(Pair(song, ytResults.size + 15 + index))
+                    }
+
+                    // Fallback to related queries ONLY if total candidate count is very low (< 5)
+                    if (candidateList.size < 5 && parsedIntent.relatedQueries.isNotEmpty()) {
+                        for (relQ in parsedIntent.relatedQueries.take(2)) {
+                            val fallbackList = ytRepo.searchSongs(relQ, maxResults = 20).getOrDefault(emptyList())
+                            fallbackList.forEachIndexed { index, song ->
+                                candidateList.add(Pair(song, 40 + index))
+                            }
+                            if (candidateList.size >= 15) break
                         }
                     }
                 }
 
-                // 2. Direct Audio Search (JioSaavn / NepoTune) - multi-lingual
-                val saavnResult = musicRepo.search(queryOverride)
-                val saavnSongs = saavnResult.getOrNull()?.map { it.toYouTubeSong() } ?: emptyList()
+                if (candidateList.isNotEmpty()) {
+                    // Deduplicate identical videoIds and identical (title, channel) pairs
+                    val seenIds = mutableSetOf<String>()
+                    val seenSignatures = mutableSetOf<String>()
+                    val uniqueCandidates = mutableListOf<Pair<YouTubeSong, Int>>()
 
-                if (saavnSongs.isNotEmpty() && isSearchRelevant(newQuery, saavnSongs)) {
-                    android.util.Log.i("ISAI_PLAYER", "[MainViewModel] Direct Audio search success & relevant: ${saavnSongs.size} songs found for '$queryOverride'")
-                    val sorted = saavnSongs.sortedByDescending { calculateSongRelevance(it, newQuery) }
-                    _searchResults.value = ytRepo.deduplicateSongs(sorted)
+                    for (pair in candidateList) {
+                        val song = pair.first
+                        val id = song.videoId.trim()
+                        val normTitle = song.title.lowercase(java.util.Locale.ROOT).replace(Regex("[^a-z0-9]"), "").take(25)
+                        val normChannel = song.channelTitle.lowercase(java.util.Locale.ROOT).replace(Regex("[^a-z0-9]"), "").take(15)
+                        val sig = "$normTitle|$normChannel"
+
+                        if (id.isNotBlank() && id in seenIds) continue
+                        if (sig.length > 5 && sig in seenSignatures) continue
+
+                        if (id.isNotBlank()) seenIds.add(id)
+                        seenSignatures.add(sig)
+                        uniqueCandidates.add(pair)
+                    }
+
+                    // Score and rank using SmartSearchEngine precision ranker
+                    val ranked = uniqueCandidates.sortedByDescending { (song, origRank) ->
+                        SmartSearchEngine.scoreAndRankSong(
+                            song = song,
+                            intent = parsedIntent,
+                            userPreferredLanguages = userLangs,
+                            userFavoriteArtists = favArtists,
+                            originalRank = origRank
+                        )
+                    }.map { it.first }
+
+                    _searchResults.value = ranked
                     _searchError.value = null
                 } else {
-                    // Fallback to YouTube Music (Multi-lingual & high precision)
-                    android.util.Log.i("ISAI_PLAYER", "[MainViewModel] Saavn results missing or irrelevant, querying YouTube Music for '$newQuery'")
-                    val result = ytRepo.searchSongs(newQuery.trim())
-                    val songs = result.getOrDefault(emptyList())
-                    if (songs.isNotEmpty()) {
-                        val sorted = songs.sortedByDescending { calculateSongRelevance(it, newQuery) }
-                        _searchResults.value = ytRepo.deduplicateSongs(sorted)
-                        _searchError.value = null
-                    } else if (saavnSongs.isNotEmpty()) {
-                        _searchResults.value = ytRepo.deduplicateSongs(saavnSongs)
-                        _searchError.value = null
-                    } else {
-                        _searchResults.value = emptyList()
-                        _searchError.value = "No songs found"
-                    }
+                    _searchResults.value = emptyList()
+                    _searchError.value = "No songs found for '$newQuery'"
                 }
             } catch (e: Exception) {
                 try {
                     val result = ytRepo.searchSongs(newQuery)
                     _searchResults.value = result.getOrDefault(emptyList())
+                    _searchError.value = null
                 } catch (_: Exception) {
                     _searchResults.value = emptyList()
                     _searchError.value = e.localizedMessage ?: "An error occurred while searching"
@@ -1078,15 +1138,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // Asynchronously load matching suggestions for this specific mood/genre
         loadSuggestionsForSong(song)
 
-        // Claim ISAI Connect active device status and sync song details and queue to Firebase
-        isaiConnectManager.updatePlaybackState(
-            song = song,
-            isPlaying = true,
-            positionMs = (startPositionSec * 1000).toLong(),
-            currentDeviceId = isaiConnectManager.deviceId,
-            queue = effectiveQueue,
-            queueIndex = 0
-        )
+        // Claim ISAI Connect active device status and sync song details and queue to Firebase (only when not in separate multi-device mode)
+        if (!localStorage.isMultiDevicePlaybackSeparate.value) {
+            isaiConnectManager.updatePlaybackState(
+                song = song,
+                isPlaying = true,
+                positionMs = (startPositionSec * 1000).toLong(),
+                currentDeviceId = isaiConnectManager.deviceId,
+                queue = effectiveQueue,
+                queueIndex = 0
+            )
+        }
 
         if (!song.audioUrl.isNullOrBlank()) {
             ytPlayerController.playSong(song, effectiveQueue, startPositionSec)
@@ -1219,22 +1281,127 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun removeFromQueue(index: Int) {
-        ytPlayerController.removeFromQueue(index)
-        if (isaiConnectManager.isMyDeviceActive()) {
-            isaiConnectManager.updatePlaybackState(
-                queue = ytPlayerController.playbackQueue.value,
-                queueIndex = ytPlayerController.currentQueueIndex.value
-            )
+        val remoteState = isaiConnectManager.playbackState.value
+        val isRemoteActive = remoteState != null &&
+                remoteState.currentDeviceId.isNotBlank() &&
+                remoteState.currentDeviceId != isaiConnectManager.deviceId &&
+                remoteState.currentTitle.isNotBlank() &&
+                (remoteState.isPlaying || Math.abs(System.currentTimeMillis() - remoteState.updatedAt) < 15 * 60_000L)
+
+        if (remoteState != null && isRemoteActive) {
+            val currentRemoteSongs = remoteState.queue.map { syncSong ->
+                YouTubeSong(
+                    videoId = syncSong.id,
+                    title = syncSong.title,
+                    channelTitle = syncSong.artist,
+                    thumbnailUrl = syncSong.artwork,
+                    audioUrl = syncSong.audioUrl.ifBlank { null }
+                )
+            }.toMutableList()
+            if (index in currentRemoteSongs.indices) {
+                currentRemoteSongs.removeAt(index)
+                var newQueueIndex = remoteState.queueIndex
+                if (index < newQueueIndex) {
+                    newQueueIndex = (newQueueIndex - 1).coerceAtLeast(0)
+                } else if (index == newQueueIndex) {
+                    if (currentRemoteSongs.isNotEmpty()) {
+                        newQueueIndex = newQueueIndex.coerceAtMost(currentRemoteSongs.size - 1)
+                        val nextSong = currentRemoteSongs[newQueueIndex]
+                        isaiConnectManager.sendCommand(
+                            action = "PLAY_SONG",
+                            song = nextSong,
+                            targetDeviceId = remoteState.currentDeviceId
+                        )
+                    } else {
+                        newQueueIndex = 0
+                    }
+                }
+                isaiConnectManager.updatePlaybackState(queue = currentRemoteSongs, queueIndex = newQueueIndex)
+            }
+        } else {
+            ytPlayerController.removeFromQueue(index)
+            if (isaiConnectManager.isMyDeviceActive()) {
+                isaiConnectManager.updatePlaybackState(
+                    queue = ytPlayerController.playbackQueue.value,
+                    queueIndex = ytPlayerController.currentQueueIndex.value
+                )
+            }
+        }
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            android.widget.Toast.makeText(getApplication(), "Removed from queue ✕", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun moveQueueItem(fromIndex: Int, toIndex: Int) {
+        val remoteState = isaiConnectManager.playbackState.value
+        val isRemoteActive = remoteState != null &&
+                remoteState.currentDeviceId.isNotBlank() &&
+                remoteState.currentDeviceId != isaiConnectManager.deviceId &&
+                remoteState.currentTitle.isNotBlank() &&
+                (remoteState.isPlaying || Math.abs(System.currentTimeMillis() - remoteState.updatedAt) < 15 * 60_000L)
+
+        if (remoteState != null && isRemoteActive) {
+            val currentRemoteSongs = remoteState.queue.map { syncSong ->
+                YouTubeSong(
+                    videoId = syncSong.id,
+                    title = syncSong.title,
+                    channelTitle = syncSong.artist,
+                    thumbnailUrl = syncSong.artwork,
+                    audioUrl = syncSong.audioUrl.ifBlank { null }
+                )
+            }.toMutableList()
+            if (fromIndex in currentRemoteSongs.indices && toIndex in currentRemoteSongs.indices && fromIndex != toIndex) {
+                val item = currentRemoteSongs.removeAt(fromIndex)
+                currentRemoteSongs.add(toIndex, item)
+                val currentIdx = remoteState.queueIndex
+                val newCurrentIdx = when {
+                    currentIdx == fromIndex -> toIndex
+                    fromIndex < currentIdx && toIndex >= currentIdx -> currentIdx - 1
+                    fromIndex > currentIdx && toIndex <= currentIdx -> currentIdx + 1
+                    else -> currentIdx
+                }
+                isaiConnectManager.updatePlaybackState(queue = currentRemoteSongs, queueIndex = newCurrentIdx)
+            }
+        } else {
+            ytPlayerController.moveQueueItem(fromIndex, toIndex)
+            if (isaiConnectManager.isMyDeviceActive()) {
+                isaiConnectManager.updatePlaybackState(
+                    queue = ytPlayerController.playbackQueue.value,
+                    queueIndex = ytPlayerController.currentQueueIndex.value
+                )
+            }
         }
     }
 
     fun clearQueue() {
-        ytPlayerController.clearQueue()
-        if (isaiConnectManager.isMyDeviceActive()) {
-            isaiConnectManager.updatePlaybackState(
-                queue = ytPlayerController.playbackQueue.value,
-                queueIndex = 0
-            )
+        val remoteState = isaiConnectManager.playbackState.value
+        val isRemoteActive = remoteState != null &&
+                remoteState.currentDeviceId.isNotBlank() &&
+                remoteState.currentDeviceId != isaiConnectManager.deviceId &&
+                remoteState.currentTitle.isNotBlank() &&
+                (remoteState.isPlaying || Math.abs(System.currentTimeMillis() - remoteState.updatedAt) < 15 * 60_000L)
+
+        if (remoteState != null && isRemoteActive) {
+            val currentSong = remoteState.queue.getOrNull(remoteState.queueIndex)
+            val newQueue = if (currentSong != null) listOf(YouTubeSong(
+                videoId = currentSong.id,
+                title = currentSong.title,
+                channelTitle = currentSong.artist,
+                thumbnailUrl = currentSong.artwork,
+                audioUrl = currentSong.audioUrl.ifBlank { null }
+            )) else emptyList()
+            isaiConnectManager.updatePlaybackState(queue = newQueue, queueIndex = 0)
+        } else {
+            ytPlayerController.clearQueue()
+            if (isaiConnectManager.isMyDeviceActive()) {
+                isaiConnectManager.updatePlaybackState(
+                    queue = ytPlayerController.playbackQueue.value,
+                    queueIndex = 0
+                )
+            }
+        }
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            android.widget.Toast.makeText(getApplication(), "Queue cleared", android.widget.Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -1258,14 +1425,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val artistResult = artistResultDeferred.await()
 
                 val pool = (searchResult + artistResult + _trendingSongs.value.take(25)).distinctBy { it.videoId }
-                val filteredPool = pool.filter { it.videoId != song.videoId }
+                val filteredPool = pool.filter { 
+                    it.videoId != song.videoId && com.saavn.music.util.RelevanceEngine.isSongInLanguage(it, activeLangs)
+                }
 
                 val relevantMatches = if (filteredPool.isNotEmpty()) {
                     com.saavn.music.util.RelevanceEngine.buildRelevantQueue(song, filteredPool, activeLangs, maxItems = 50).filter { it.videoId != song.videoId }
                 } else {
                     val ytResult = ytRepo.searchTamilSongs(query, maxResults = 35).getOrDefault(emptyList())
-                    val filteredYt = ytResult.filter { it.videoId != song.videoId }
-                    com.saavn.music.util.RelevanceEngine.buildRelevantQueue(song, filteredYt.ifEmpty { _trendingSongs.value }, activeLangs, maxItems = 50).filter { it.videoId != song.videoId }
+                    val filteredYt = ytResult.filter { 
+                        it.videoId != song.videoId && com.saavn.music.util.RelevanceEngine.isSongInLanguage(it, activeLangs)
+                    }
+                    com.saavn.music.util.RelevanceEngine.buildRelevantQueue(song, filteredYt.ifEmpty { _trendingSongs.value.filter { com.saavn.music.util.RelevanceEngine.isSongInLanguage(it, activeLangs) } }, activeLangs, maxItems = 50).filter { it.videoId != song.videoId }
                 }
 
                 _suggestions.value = relevantMatches
@@ -1325,6 +1496,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     for (candidate in combinedHits) {
                         if (candidate.videoId == song.videoId) continue
                         if (existingVideoIds.contains(candidate.videoId)) continue
+                        if (!com.saavn.music.util.RelevanceEngine.isSongInLanguage(candidate, activeLangs)) continue
                         val norm = candidate.title.lowercase().filter { ch: Char -> ch.isLetterOrDigit() }.take(15)
                         if (existingNormTitles.contains(norm) || seenInBatch.contains(norm)) continue
                         seenInBatch.add(norm)
@@ -1352,10 +1524,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun playNextAutoSuggestion() {
         viewModelScope.launch {
             android.util.Log.i("ISAI_PLAYER", "[MainViewModel] Auto-play triggered by onQueueExhausted!")
-            val currentSuggestions = _suggestions.value
+            val activeLangs = _preferredLanguages.value.ifEmpty { listOf("tamil") }
+            val currentSuggestions = _suggestions.value.filter { com.saavn.music.util.RelevanceEngine.isSongInLanguage(it, activeLangs) }
             val currentId = ytPlayerController.currentSong.value?.videoId
             val candidate = currentSuggestions.firstOrNull { it.videoId != currentId }
-                ?: _trendingSongs.value.firstOrNull { it.videoId != currentId }
+                ?: _trendingSongs.value.firstOrNull { it.videoId != currentId && com.saavn.music.util.RelevanceEngine.isSongInLanguage(it, activeLangs) }
 
             if (candidate != null) {
                 android.util.Log.i("ISAI_PLAYER", "[MainViewModel] Auto-advancing to: '${candidate.title}'")
@@ -1551,6 +1724,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         isaiConnectManager.syncPreferences(languages)
         loadHomeData()
+        val currentQueue = ytPlayerController.playbackQueue.value
+        val curIdx = ytPlayerController.currentQueueIndex.value
+        if (currentQueue.isNotEmpty()) {
+            val playedSoFar = currentQueue.take(curIdx + 1)
+            val upcoming = currentQueue.drop(curIdx + 1)
+            val validUpcoming = upcoming.filter { com.saavn.music.util.RelevanceEngine.isSongInLanguage(it, languages) }
+            ytPlayerController.setPlaybackQueue(playedSoFar + validUpcoming, curIdx)
+        }
+        ytPlayerController.currentSong.value?.let { current ->
+            loadSuggestionsForSong(current)
+        }
     }
 
     fun saveUserProfile(profile: UserProfile) {

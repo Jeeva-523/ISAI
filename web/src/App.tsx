@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState, useMemo } from 'react'
 
-import { musicApi } from '@shared/api/music-api'
+import { musicApi, detectSongLanguage } from '@shared/api/music-api'
 import { storageService } from '@shared/services/storageService'
 import type { Song, UserPlaylist } from '@shared/models/song'
 import { cleanHtmlTitle, isSameSongOrDuplicate, deduplicateSongs } from '@shared/utils/formatters'
+import { SmartSearchEngine } from '@shared/services/smartSearchEngine'
+
+import { LanguageSelectionModal } from './components/LanguageSelectionModal'
 
 import { WebPlayer } from './components/WebPlayer'
 import { logoutFirebaseUser } from './firebase'
@@ -15,6 +18,7 @@ import { SearchPage } from './pages/SearchPage'
 import { ProfilePage } from './pages/ProfilePage'
 import { LoginPage } from './pages/LoginPage'
 import { VerifyEmailPage } from './pages/VerifyEmailPage'
+import { UpdatePage } from './pages/UpdatePage'
 import { ArtistDetailPage } from './pages/ArtistDetailPage'
 import { PlaylistDetailPage } from './pages/PlaylistDetailPage'
 import { PlaylistModal } from './components/PlaylistModal'
@@ -140,6 +144,7 @@ export function App() {
   const [isPlaylistModalOpen, setIsPlaylistModalOpen] = useState(false)
   const [songToAddToPlaylist, setSongToAddToPlaylist] = useState<Song | null>(null)
   const [toast, setToast] = useState<ToastMessage | null>(null)
+  const [showLanguageModal, setShowLanguageModal] = useState(false)
 
   // Isai Connect Sync state
   const [remotePlaybackState, setRemotePlaybackState] = useState<PlaybackStateSync | null>(null)
@@ -152,12 +157,16 @@ export function App() {
     setToast({ id: Date.now().toString(), text, type })
   }
 
-  // Handle URL router for Email Verification callback
+  // Handle URL router for Email Verification callback and App Update Page
   const [isVerifyView, setIsVerifyView] = useState(false)
+  const [isUpdateView, setIsUpdateView] = useState(false)
   useEffect(() => {
     const path = window.location.pathname
     if (path === '/verify-email' || window.location.search.includes('mode=verifyEmail')) {
       setIsVerifyView(true)
+    }
+    if (path === '/update' || path.startsWith('/update') || window.location.search.includes('action=update')) {
+      setIsUpdateView(true)
     }
   }, [])
 
@@ -469,11 +478,18 @@ export function App() {
 
       const existingIds = new Set(currentQueue.map(s => s.videoId))
 
+      const activeLangs = (user.preferredLanguages && user.preferredLanguages.length > 0)
+        ? user.preferredLanguages.map(l => l.toLowerCase())
+        : ['tamil']
+
       const newSongs: Song[] = []
       for (const s of combined) {
         if (!s || !s.videoId || existingIds.has(s.videoId)) continue
         if (isSameSongOrDuplicate(seedSong, s)) continue
         if (currentQueue.some(item => isSameSongOrDuplicate(item, s))) continue
+
+        const songLang = (s.language || detectSongLanguage(s)).toLowerCase()
+        if (!activeLangs.includes(songLang)) continue
 
         existingIds.add(s.videoId)
         newSongs.push(s)
@@ -789,7 +805,7 @@ export function App() {
     })
   }
 
-  // Search handler
+  // Search handler powered by SmartSearchEngine & Keyword Master List
   const handleSearchChange = (query: string) => {
     setSearchQuery(query)
     if (searchTimerRef.current) {
@@ -806,8 +822,22 @@ export function App() {
 
     searchTimerRef.current = window.setTimeout(async () => {
       try {
-        const results = await musicApi.searchSongs(query)
-        setSearchResults(results)
+        const userLangs = user.preferredLanguages || ['tamil']
+        const favArtists = favorites.map(f => f.channelTitle).filter(Boolean)
+        const intent = SmartSearchEngine.parseQuery(query, userLangs, favArtists)
+
+        let results = await musicApi.searchSongs(intent.optimizedSearchQuery)
+        if (!results || results.length === 0) {
+          results = await musicApi.searchSongs(query)
+        }
+
+        const deduped = deduplicateSongs(results || [])
+        const ranked = [...deduped].sort((a, b) => {
+          return SmartSearchEngine.rankSong(b, intent, userLangs, favArtists) -
+                 SmartSearchEngine.rankSong(a, intent, userLangs, favArtists)
+        })
+
+        setSearchResults(ranked)
       } catch (error: any) {
         console.error('Search failed', error)
         setSearchResults([])
@@ -863,6 +893,10 @@ export function App() {
   const handleSelectPlaylistDetail = (title: string, subtitle: string, songs: Song[], coverUrl?: string, gradient?: string) => {
     setSelectedPlaylistDetail({ title, subtitle, songs, coverUrl, gradient })
     setCurrentTab('playlist-detail')
+  }
+
+  if (isUpdateView) {
+    return <UpdatePage />
   }
 
   if (isVerifyView) {
@@ -964,6 +998,7 @@ export function App() {
           favoritesCount={favorites.length}
           playlistsCount={userPlaylists.length}
           onUpdateProfile={handleUpdateProfile}
+          onOpenLanguageModal={() => setShowLanguageModal(true)}
           onNavigateToLogin={() => setCurrentTab('login')}
           onLogout={handleLogout}
           onNavigateHome={() => setCurrentTab('home')}
@@ -1093,6 +1128,19 @@ export function App() {
         userId={user.email || 'user_guest'}
         onTransferPlayback={(s) => handlePlaySong(s, [], true)}
       />
+
+      {showLanguageModal && (
+        <LanguageSelectionModal
+          isOpen={showLanguageModal}
+          initialSelected={user.preferredLanguages || ['tamil']}
+          onSave={(selected) => {
+            handleUpdateProfile({ preferredLanguages: selected })
+            setShowLanguageModal(false)
+            showToast(`Music language updated to ${selected.join(', ')}!`, 'success')
+          }}
+          onClose={() => setShowLanguageModal(false)}
+        />
+      )}
     </MainLayout>
   )
 }

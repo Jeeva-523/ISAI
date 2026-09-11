@@ -15,6 +15,7 @@ import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
 import com.google.firebase.firestore.FirebaseFirestore
 import com.saavn.music.BuildConfig
+import com.saavn.music.R
 import com.saavn.music.data.model.AppUpdateModel
 import kotlinx.coroutines.tasks.await
 
@@ -190,7 +191,7 @@ class AppUpdateService private constructor(private val context: Context) {
             )
 
             val builder = NotificationCompat.Builder(context, UPDATE_CHANNEL_ID)
-                .setSmallIcon(android.R.drawable.stat_sys_download_done)
+                .setSmallIcon(R.drawable.ic_notification_music)
                 .setContentTitle(updateInfo.updateTitle)
                 .setContentText("v${updateInfo.latestVersionName} is available! Tap to download.")
                 .setStyle(NotificationCompat.BigTextStyle().bigText("${updateInfo.updateMessage}\n\nTap here to update now."))

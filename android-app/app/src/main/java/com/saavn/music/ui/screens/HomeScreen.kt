@@ -101,29 +101,31 @@ fun HomeScreen(
 
     val heroSongs = remember(trendingSongs) { trendingSongs.take(4) }
     val displayPersonalizedRecs = remember(personalizedRecs, heroSongs) {
-        val deduped = viewModel.ytRepo.deduplicateSongs(personalizedRecs)
-        val filtered = deduped.filterNot { rec ->
-            heroSongs.any { hero -> viewModel.ytRepo.isSameSong(hero, rec) }
+        val heroIds = heroSongs.map { it.videoId }.toSet()
+        val filtered = personalizedRecs.filterNot { rec ->
+            heroIds.contains(rec.videoId) || heroSongs.any { hero -> viewModel.ytRepo.isSameSong(hero, rec) }
         }
-        if (filtered.isNotEmpty()) filtered else deduped
+        if (filtered.isNotEmpty()) filtered else personalizedRecs
     }
     val displayNewReleases = remember(latestReleases, trendingSongs, heroSongs, displayPersonalizedRecs) {
         val baseList = if (latestReleases.isNotEmpty()) latestReleases else trendingSongs.drop(4)
+        val excludeIds = (heroSongs.map { it.videoId } + displayPersonalizedRecs.map { it.videoId }).toSet()
         val filtered = baseList.filterNot { song ->
+            excludeIds.contains(song.videoId) ||
             heroSongs.any { hero -> viewModel.ytRepo.isSameSong(hero, song) } ||
             displayPersonalizedRecs.any { rec -> viewModel.ytRepo.isSameSong(rec, song) }
         }
-        viewModel.ytRepo.deduplicateSongs(if (filtered.isNotEmpty()) filtered else baseList).take(10)
+        (if (filtered.isNotEmpty()) filtered else baseList).take(10)
     }
     val displayCategorySongs = remember(categorySongs, selectedCategory, heroSongs) {
-        val deduped = viewModel.ytRepo.deduplicateSongs(categorySongs)
         if ((selectedCategory == "Most Played" || selectedCategory == "Trending") && heroSongs.isNotEmpty()) {
-            val filtered = deduped.filterNot { song ->
-                heroSongs.any { hero -> viewModel.ytRepo.isSameSong(hero, song) }
+            val heroIds = heroSongs.map { it.videoId }.toSet()
+            val filtered = categorySongs.filterNot { song ->
+                heroIds.contains(song.videoId) || heroSongs.any { hero -> viewModel.ytRepo.isSameSong(hero, song) }
             }
-            if (filtered.isNotEmpty()) filtered else deduped
+            if (filtered.isNotEmpty()) filtered else categorySongs
         } else {
-            deduped
+            categorySongs
         }
     }
 

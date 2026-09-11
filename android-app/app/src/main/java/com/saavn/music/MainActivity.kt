@@ -84,28 +84,19 @@ import com.saavn.music.service.IsaiFirebaseMessagingService
 class MainActivity : ComponentActivity() {
     private val mainViewModel: MainViewModel by viewModels()
 
-    private val notificationPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        if (isGranted) {
-            android.util.Log.d("MainActivity", "Notification permission granted")
-        } else {
-            android.util.Log.w("MainActivity", "Notification permission denied")
-        }
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        try {
+            enableEdgeToEdge()
+        } catch (e: Exception) {
+            android.util.Log.w("MainActivity", "enableEdgeToEdge warning: ${e.message}")
+        }
 
-        // Setup FCM Topics & Notification Channel
-        IsaiFirebaseMessagingService.setupFCMSubscriptions(this)
-
-        // Request POST_NOTIFICATIONS runtime permission on Android 13+ (API 33+)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-            }
+        // Setup FCM Topics & Notification Channel safely
+        try {
+            IsaiFirebaseMessagingService.setupFCMSubscriptions(this)
+        } catch (e: Exception) {
+            android.util.Log.w("MainActivity", "FCM setup warning: ${e.message}")
         }
 
         setContent {
@@ -116,8 +107,9 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        val isSeparateMode = mainViewModel.isMultiDevicePlaybackSeparate.value
         val syncState = mainViewModel.isaiConnectManager.playbackState.value
-        val isRemoteActive = syncState != null && 
+        val isRemoteActive = !isSeparateMode && syncState != null && 
             syncState.currentDeviceId.isNotBlank() && 
             !mainViewModel.isaiConnectManager.isMyDeviceActive() && 
             (syncState.isPlaying || Math.abs(System.currentTimeMillis() - syncState.updatedAt) < 15 * 60_000L)

@@ -42,8 +42,12 @@ class MusicPlaybackService : Service() {
     override fun onCreate() {
         super.onCreate()
         Log.i(TAG, "MusicPlaybackService onCreate")
-        createNotificationChannel()
-        setupMediaSession()
+        try {
+            createNotificationChannel()
+            setupMediaSession()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in MusicPlaybackService onCreate: ${e.message}", e)
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -52,46 +56,50 @@ class MusicPlaybackService : Service() {
         val action = intent?.action
         Log.i(TAG, "onStartCommand: action=$action")
 
-        when (action) {
-            ACTION_PLAY_PAUSE -> {
-                YouTubePlayerController.getInstance()?.togglePlayPause()
-            }
-            ACTION_NEXT -> {
-                YouTubePlayerController.getInstance()?.playNext()
-            }
-            ACTION_PREV -> {
-                YouTubePlayerController.getInstance()?.playPrevious()
-            }
-            ACTION_STOP -> {
-                YouTubePlayerController.getInstance()?.pause()
-                stopForegroundState()
-                stopSelf()
-                return START_NOT_STICKY
-            }
-            ACTION_START_OR_UPDATE -> {
-                val newTitle = intent.getStringExtra(EXTRA_TITLE) ?: currentTitle
-                val newArtist = intent.getStringExtra(EXTRA_ARTIST) ?: currentArtist
-                val newThumbnail = intent.getStringExtra(EXTRA_THUMBNAIL) ?: currentThumbnailUrl
-                val newPlaying = intent.getBooleanExtra(EXTRA_IS_PLAYING, isPlaying)
-                val newDur = intent.getFloatExtra(EXTRA_DURATION_SEC, currentDurationSec)
-                val newPos = intent.getFloatExtra(EXTRA_POSITION_SEC, currentPositionSec)
-
-                val thumbnailChanged = newThumbnail != currentThumbnailUrl
-                currentTitle = newTitle
-                currentArtist = newArtist
-                currentThumbnailUrl = newThumbnail
-                isPlaying = newPlaying
-                currentDurationSec = newDur
-                currentPositionSec = newPos
-
-                if (thumbnailChanged) {
-                    cachedArtwork = null
-                    loadArtwork(currentThumbnailUrl)
+        try {
+            when (action) {
+                ACTION_PLAY_PAUSE -> {
+                    YouTubePlayerController.getInstance()?.togglePlayPause()
                 }
+                ACTION_NEXT -> {
+                    YouTubePlayerController.getInstance()?.playNext()
+                }
+                ACTION_PREV -> {
+                    YouTubePlayerController.getInstance()?.playPrevious()
+                }
+                ACTION_STOP -> {
+                    YouTubePlayerController.getInstance()?.pause()
+                    stopForegroundState()
+                    stopSelf()
+                    return START_NOT_STICKY
+                }
+                ACTION_START_OR_UPDATE -> {
+                    val newTitle = intent.getStringExtra(EXTRA_TITLE) ?: currentTitle
+                    val newArtist = intent.getStringExtra(EXTRA_ARTIST) ?: currentArtist
+                    val newThumbnail = intent.getStringExtra(EXTRA_THUMBNAIL) ?: currentThumbnailUrl
+                    val newPlaying = intent.getBooleanExtra(EXTRA_IS_PLAYING, isPlaying)
+                    val newDur = intent.getFloatExtra(EXTRA_DURATION_SEC, currentDurationSec)
+                    val newPos = intent.getFloatExtra(EXTRA_POSITION_SEC, currentPositionSec)
 
-                updateForegroundNotification()
-                updateMediaSessionState()
+                    val thumbnailChanged = newThumbnail != currentThumbnailUrl
+                    currentTitle = newTitle
+                    currentArtist = newArtist
+                    currentThumbnailUrl = newThumbnail
+                    isPlaying = newPlaying
+                    currentDurationSec = newDur
+                    currentPositionSec = newPos
+
+                    if (thumbnailChanged) {
+                        cachedArtwork = null
+                        loadArtwork(currentThumbnailUrl)
+                    }
+
+                    updateForegroundNotification()
+                    updateMediaSessionState()
+                }
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error processing action $action: ${e.message}", e)
         }
 
         return START_STICKY
@@ -166,23 +174,35 @@ class MusicPlaybackService : Service() {
     }
 
     private fun updateForegroundNotification() {
-        val notification = buildNotification()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(
-                NOTIFICATION_ID,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
-            )
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
+        startForegroundSafely(buildNotification())
+    }
+
+    private fun startForegroundSafely(notification: Notification) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed startForeground with mediaPlayback type: ${e.message}")
+            try {
+                startForeground(NOTIFICATION_ID, notification)
+            } catch (inner: Exception) {
+                Log.e(TAG, "Complete startForeground fallback failed: ${inner.message}")
+            }
         }
     }
 
     private fun buildNotification(): Notification {
         val playPauseIcon = if (isPlaying) {
-            android.R.drawable.ic_media_pause
+            R.drawable.ic_noti_pause
         } else {
-            android.R.drawable.ic_media_play
+            R.drawable.ic_noti_play
         }
         val playPauseText = if (isPlaying) "Pause" else "Play"
 
@@ -230,7 +250,7 @@ class MusicPlaybackService : Service() {
             )
             .addAction(
                 Notification.Action.Builder(
-                    android.graphics.drawable.Icon.createWithResource(this, android.R.drawable.ic_media_previous),
+                    android.graphics.drawable.Icon.createWithResource(this, R.drawable.ic_noti_prev),
                     "Previous",
                     prevIntent
                 ).build()
@@ -244,14 +264,14 @@ class MusicPlaybackService : Service() {
             )
             .addAction(
                 Notification.Action.Builder(
-                    android.graphics.drawable.Icon.createWithResource(this, android.R.drawable.ic_media_next),
+                    android.graphics.drawable.Icon.createWithResource(this, R.drawable.ic_noti_next),
                     "Next",
                     nextIntent
                 ).build()
             )
             .addAction(
                 Notification.Action.Builder(
-                    android.graphics.drawable.Icon.createWithResource(this, android.R.drawable.ic_menu_close_clear_cancel),
+                    android.graphics.drawable.Icon.createWithResource(this, R.drawable.ic_noti_close),
                     "Close",
                     stopIntent
                 ).build()
@@ -376,6 +396,11 @@ class MusicPlaybackService : Service() {
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to start/update MusicPlaybackService: ${e.message}", e)
+                try {
+                    context.startService(intent)
+                } catch (inner: Exception) {
+                    Log.w(TAG, "Secondary startService fallback failed: ${inner.message}")
+                }
             }
         }
 

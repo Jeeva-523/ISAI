@@ -81,29 +81,30 @@ fun SearchScreen(
     val languages = listOf("All", "Tamil", "Hindi", "English", "Telugu", "Malayalam", "Punjabi", "Kannada")
 
     val quickQueries = listOf(
-        "Trending Hits",
-        "Melody Songs",
-        "Anirudh Hits",
-        "Arijit Singh",
-        "A. R. Rahman",
-        "Shape of You",
-        "Sid Sriram",
-        "Love Songs",
-        "Party Beats",
-        "Hindi Hits",
-        "Telugu Hits",
-        "English Pop"
+        "🔥 Trending",
+        "💖 Kadhal Melody",
+        "⚡ Anirudh Hits",
+        "🎼 A. R. Rahman",
+        "💔 Yuvan Sad",
+        "🥁 Tamil Kuthu",
+        "📻 90s Golden Hits",
+        "💪 Gym Workout",
+        "🌧️ Mazhai Songs",
+        "🎙️ Gaana Hits",
+        "🪔 Murugan Bhakti",
+        "🎧 Lo-Fi Chill"
     )
 
     val exploreCategories = listOf(
-        SearchCategory("🔥 Trending Hits", "Top Chartbusters", "Trending hit songs", listOf(Color(0xFFE91E63), Color(0xFF9C27B0))),
-        SearchCategory("🌙 Sweet Melodies", "Soulful Acoustic", "Melody hit songs", listOf(Color(0xFF3F51B5), Color(0xFF00BCD4))),
-        SearchCategory("💖 Romantic Hits", "Love Classics", "Romantic love songs", listOf(Color(0xFF9C27B0), Color(0xFF673AB7))),
-        SearchCategory("💃 Party & Dance", "High Energy Beats", "Party dance songs", listOf(Color(0xFFFF5722), Color(0xFFFF9800))),
-        SearchCategory("🌍 English & Pop", "Global Chartbusters", "English pop hit songs", listOf(Color(0xFF009688), Color(0xFF4CAF50))),
-        SearchCategory("🎬 Bollywood Hits", "Latest Hindi Music", "Hindi Bollywood hit songs", listOf(Color(0xFFE91E63), Color(0xFFFF5722))),
-        SearchCategory("🌟 South Superhits", "Tamil & Telugu Beats", "South Indian hit songs", listOf(Color(0xFF673AB7), Color(0xFF3F51B5))),
-        SearchCategory("✨ Devotional", "Spiritual Peace", "Devotional songs", listOf(Color(0xFF2196F3), Color(0xFF00E5FF)))
+        SearchCategory("🔥 Trending & Viral", "Top Chartbusters", "Trending hit songs", listOf(Color(0xFFE91E63), Color(0xFF9C27B0))),
+        SearchCategory("💖 Kadhal & Romance", "Love & Heartfelt Melodies", "kadhal romantic melody songs", listOf(Color(0xFFEC4899), Color(0xFF8B5CF6))),
+        SearchCategory("🌧️ Sad & Heartbreak", "Emotional & Sogam Hits", "sad heartbreak emotional songs", listOf(Color(0xFF3B82F6), Color(0xFF1E40AF))),
+        SearchCategory("🥁 Gaana & Kuthu", "High Energy Folk Beats", "tamil gaana kuthu songs", listOf(Color(0xFFFF5722), Color(0xFFFF9800))),
+        SearchCategory("📻 90s Golden Era", "Evergreen Raaja & ARR Classics", "90s tamil evergreen hit songs", listOf(Color(0xFFA855F7), Color(0xFFEC4899))),
+        SearchCategory("💪 Gym & Workout", "Pump-up Beats & Mass BGM", "gym workout motivational bgm beats", listOf(Color(0xFF10B981), Color(0xFF06B6D4))),
+        SearchCategory("🌧️ Rain & Mazhai", "Soulful Monsoon Melodies", "mazhai rain melody songs", listOf(Color(0xFF00BCD4), Color(0xFF3F51B5))),
+        SearchCategory("🪔 Devotional & Bhakti", "Murugan, Shiva & Temple Chants", "tamil devotional bhakti songs", listOf(Color(0xFFF97316), Color(0xFFEAB308))),
+        SearchCategory("🌙 Late Night Lo-Fi", "Acoustic & Midnight Beats", "tamil lofi acoustic chill songs", listOf(Color(0xFF673AB7), Color(0xFF2A124A)))
     )
 
     Column(

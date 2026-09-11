@@ -173,6 +173,17 @@ export class LocalMusicStorageService {
       }
     }
   }
+
+  isMultiDevicePlaybackSeparate(): boolean {
+    if (typeof window === 'undefined' || !window.localStorage) return true
+    const val = localStorage.getItem('isai_multi_device_separate')
+    return val === null ? true : val === 'true'
+  }
+
+  setMultiDevicePlaybackSeparate(enabled: boolean) {
+    if (typeof window === 'undefined' || !window.localStorage) return
+    localStorage.setItem('isai_multi_device_separate', String(enabled))
+  }
 }
 
 export const storageService = new LocalMusicStorageService()

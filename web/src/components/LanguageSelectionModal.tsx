@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Sparkles, Check, Globe } from 'lucide-react'
+import { Sparkles, Check, Globe, X } from 'lucide-react'
 
 export interface MusicLanguage {
   id: string
@@ -28,6 +28,7 @@ interface LanguageSelectionModalProps {
 
 export const LanguageSelectionModal: React.FC<LanguageSelectionModalProps> = ({
   isOpen,
+  onClose,
   onSave,
   initialSelected = ['tamil']
 }) => {
@@ -64,6 +65,7 @@ export const LanguageSelectionModal: React.FC<LanguageSelectionModalProps> = ({
       padding: '20px'
     }}>
       <div style={{
+        position: 'relative',
         background: 'linear-gradient(180deg, #1A1329 0%, #110B1D 100%)',
         border: '1px solid rgba(139, 92, 246, 0.35)',
         borderRadius: '24px',
@@ -72,6 +74,29 @@ export const LanguageSelectionModal: React.FC<LanguageSelectionModalProps> = ({
         padding: '32px 28px',
         boxShadow: '0 25px 60px rgba(0, 0, 0, 0.8), 0 0 40px rgba(139, 92, 246, 0.2)'
       }}>
+        {onClose && (
+          <button
+            onClick={onClose}
+            aria-label="Close modal"
+            style={{
+              position: 'absolute',
+              top: '20px',
+              right: '20px',
+              background: 'rgba(255, 255, 255, 0.08)',
+              border: 'none',
+              borderRadius: '50%',
+              width: '32px',
+              height: '32px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'var(--text-secondary)',
+              cursor: 'pointer'
+            }}
+          >
+            <X size={18} />
+          </button>
+        )}
         <div style={{ textAlign: 'center', marginBottom: '24px' }}>
           <div style={{
             display: 'inline-flex',

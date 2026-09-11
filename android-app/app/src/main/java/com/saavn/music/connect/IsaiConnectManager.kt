@@ -483,10 +483,20 @@ class IsaiConnectManager(private val context: Context) {
         stateRef.updateChildren(updates)
     }
 
-    fun transferPlaybackToDevice(targetDeviceId: String) {
+    fun transferPlaybackToDevice(
+        targetDeviceId: String,
+        song: YouTubeSong? = null,
+        positionMs: Long? = null,
+        isPlaying: Boolean = true
+    ) {
         if (userId.isEmpty()) return
         Log.d("IsaiConnect", "Transferring playback to device: $targetDeviceId")
-        updatePlaybackState(currentDeviceId = targetDeviceId)
+        updatePlaybackState(
+            song = song,
+            isPlaying = isPlaying,
+            positionMs = positionMs,
+            currentDeviceId = targetDeviceId
+        )
     }
 
     fun syncRecentlyPlayed(songs: List<com.saavn.music.data.model.YouTubeSong>) {
@@ -698,7 +708,10 @@ class IsaiConnectManager(private val context: Context) {
 
     fun isMyDeviceActive(): Boolean {
         val current = _playbackState.value
-        return current != null && current.currentDeviceId == deviceId
+        if (current == null || current.currentDeviceId.isBlank()) {
+            return true
+        }
+        return current.currentDeviceId == deviceId
     }
 
     fun disconnect() {

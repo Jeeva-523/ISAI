@@ -40,6 +40,16 @@ class LocalMusicStorage(context: Context) {
     private val _localDeviceSongs = MutableStateFlow<List<YouTubeSong>>(emptyList())
     val localDeviceSongs: StateFlow<List<YouTubeSong>> = _localDeviceSongs.asStateFlow()
 
+    private val _isMultiDevicePlaybackSeparate = MutableStateFlow<Boolean>(
+        prefs.getBoolean(KEY_MULTI_DEVICE_SEPARATE, false)
+    )
+    val isMultiDevicePlaybackSeparate: StateFlow<Boolean> = _isMultiDevicePlaybackSeparate.asStateFlow()
+
+    fun setMultiDevicePlaybackSeparate(enabled: Boolean) {
+        _isMultiDevicePlaybackSeparate.value = enabled
+        prefs.edit().putBoolean(KEY_MULTI_DEVICE_SEPARATE, enabled).apply()
+    }
+
     init {
         loadAll()
     }
@@ -185,5 +195,6 @@ class LocalMusicStorage(context: Context) {
         private const val KEY_PLAYLISTS = "isai_user_playlists"
         private const val KEY_RECENTLY_PLAYED = "isai_recent_20_songs"
         private const val KEY_USER_PROFILE = "isai_user_profile"
+        private const val KEY_MULTI_DEVICE_SEPARATE = "isai_multi_device_separate"
     }
 }

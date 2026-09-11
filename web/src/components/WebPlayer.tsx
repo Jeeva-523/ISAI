@@ -2,6 +2,7 @@ import React, { useRef, useState, useEffect } from 'react'
 import type { Song } from '@shared/models/song'
 import { musicApi } from '@shared/api/music-api'
 import { cleanHtmlTitle } from '@shared/utils/formatters'
+import { storageService } from '@shared/services/storageService'
 import { DeviceInfo, IsaiConnectService, PlaybackStateSync } from '../services/IsaiConnectService'
 import { recommendationService } from '../services/RecommendationService'
 import { IsaiConnectModal } from './IsaiConnectModal'
@@ -94,7 +95,8 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
 
   // Remote active determination (Spotify Connect mode)
   // Active when another device is set as the active player in Firebase playbackState
-  const isRemoteActive = Boolean(
+  const isSeparateMode = storageService.isMultiDevicePlaybackSeparate()
+  const isRemoteActive = !isSeparateMode && Boolean(
     remoteState &&
     remoteState.currentDeviceId &&
     remoteState.currentDeviceId !== myDeviceId &&
@@ -302,6 +304,11 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
   useEffect(() => {
     IsaiConnectService.initialize(userId)
     const unsub = IsaiConnectService.subscribePlaybackState((syncState) => {
+      const isSeparate = storageService.isMultiDevicePlaybackSeparate()
+      if (isSeparate) {
+        // In separate multi-device mode, do not auto-pause when another device plays!
+        return
+      }
       if (syncState && syncState.currentDeviceId) {
         if (syncState.currentDeviceId !== myDeviceId && syncState.updatedByDeviceId !== myDeviceId) {
           if (audioRef.current) audioRef.current.pause()
@@ -335,6 +342,10 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
   useEffect(() => {
     const unsubCmd = IsaiConnectService.subscribeCommands((cmd) => {
       if (cmd.issuedByDeviceId === myDeviceId) return
+      const isSeparate = storageService.isMultiDevicePlaybackSeparate()
+      if (isSeparate && (!cmd.targetDeviceId || cmd.targetDeviceId !== myDeviceId)) {
+        return
+      }
       if (cmd.targetDeviceId && cmd.targetDeviceId !== myDeviceId) return
       console.log('[WebPlayer] Incoming remote command from other device:', cmd.action, cmd)
 

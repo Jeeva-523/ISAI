@@ -45,32 +45,24 @@ class SearchService private constructor(context: Context) {
                 instance ?: SearchService(context.applicationContext).also { instance = it }
             }
         }
+    }
 
-        // Tanglish & Tamil Transliteration dictionary
-        val TRANSLITERATION_MAP = mapOf(
-            "anirud" to "Anirudh Ravichander",
-            "aniruth" to "Anirudh Ravichander",
-            "anirudh" to "Anirudh Ravichander",
-            "kadhal" to "காதல் (Love Songs)",
-            "kaadhal" to "காதல் (Love Songs)",
-            "kathal" to "காதல் (Love Songs)",
-            "vaathi" to "வாத்தி (Vaathi Coming)",
-            "ar rahman" to "A.R. Rahman",
-            "arr" to "A.R. Rahman",
-            "yuvan" to "Yuvan Shankar Raja",
-            "harris" to "Harris Jayaraj",
-            "vikram" to "🎬 Vikram (Movie Soundtrack)",
-            "leo" to "🎬 Leo (Movie Soundtrack)",
-            "jailer" to "🎬 Jailer (Movie Soundtrack)",
-            "sad" to "💔 Sad Songs",
-            "party" to "💃 Party Kuthu Hits",
-            "melody" to "🌙 Tamil Melodies"
-        )
+    fun parseSearchIntent(
+        rawQuery: String,
+        userPreferredLanguages: List<String> = listOf("tamil"),
+        userFavoriteArtists: List<String> = emptyList()
+    ): ParsedSearchIntent {
+        return SmartSearchEngine.parseQuery(rawQuery, userPreferredLanguages, userFavoriteArtists)
     }
 
     fun getSuggestedQuery(rawQuery: String): String {
-        val q = rawQuery.trim().lowercase()
-        return TRANSLITERATION_MAP[q] ?: rawQuery
+        val q = rawQuery.trim()
+        if (q.isBlank()) return ""
+        val entry = IsaiKeywordDictionary.findEntry(q)
+        if (entry != null) {
+            return "${entry.keyword} (${entry.category.replace('_', ' ').replaceFirstChar { it.uppercase() }})"
+        }
+        return SmartSearchEngine.normalizeText(q)
     }
 
     fun addSearchQuery(query: String) {

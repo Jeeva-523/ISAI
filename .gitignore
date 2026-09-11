@@ -114,4 +114,6 @@ android-app/.idea/
 .idea/
 *.iml
 .firebase/
+web/public/*.bin
+web/public/*.dat
 

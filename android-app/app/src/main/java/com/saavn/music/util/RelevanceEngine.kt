@@ -78,21 +78,84 @@ object RelevanceEngine {
             .trim()
     }
 
+    fun detectSongLanguage(song: YouTubeSong): String {
+        if (song.language.isNotBlank()) {
+            return song.language.lowercase().trim()
+        }
+
+        val combined = "${song.title} ${song.channelTitle}".lowercase()
+
+        // 1. Unicode script detection
+        if (Regex("[\\u0B80-\\u0BFF]").containsMatchIn(combined)) return "tamil"
+        if (Regex("[\\u0C00-\\u0C7F]").containsMatchIn(combined)) return "telugu"
+        if (Regex("[\\u0D00-\\u0D7F]").containsMatchIn(combined)) return "malayalam"
+        if (Regex("[\\u0C80-\\u0CFF]").containsMatchIn(combined)) return "kannada"
+        if (Regex("[\\u0900-\\u097F]").containsMatchIn(combined)) return "hindi"
+        if (Regex("[\\u0A00-\\u0A7F]").containsMatchIn(combined)) return "punjabi"
+
+        // 2. Language keyword tokens or brackets: e.g. [Tamil], (Telugu), "Tamil Song", etc.
+        val langPatterns = listOf(
+            "tamil" to listOf("tamil", "kollywood"),
+            "telugu" to listOf("telugu", "tollywood"),
+            "malayalam" to listOf("malayalam", "mollywood"),
+            "kannada" to listOf("kannada", "sandalwood"),
+            "hindi" to listOf("hindi", "bollywood"),
+            "punjabi" to listOf("punjabi"),
+            "english" to listOf("english", "hollywood")
+        )
+
+        for ((lang, keywords) in langPatterns) {
+            for (kw in keywords) {
+                if (Regex("\\b$kw\\b", RegexOption.IGNORE_CASE).containsMatchIn(combined)) {
+                    return lang
+                }
+            }
+        }
+
+        // 3. Prominent Artist / Label heuristic
+        if (Regex("anirudh|a\\.?r\\.?\\s?rahman|arr\\b|yuvan|u1\\b|harris jayaraj|vidyasagar|deva\\b|ilaiyaraaja|ilayaraja|santhosh narayanan|sana\\b|g\\.?v\\.?\\s?prakash|dhibu|sai abhyankkar|pradeep kumar|dhanush|sivaangi|jonita|gana bala|marana gana|anthony daasan|hiphop tamizha|sean roldan|sam cs|d imman|vijay antony", RegexOption.IGNORE_CASE).containsMatchIn(combined)) {
+            return "tamil"
+        }
+        if (Regex("thaman|devi sri prasad|dsp\\b|keeravani|ram miriyala|anurag kulkarni|mangli|aditya music|lahari music", RegexOption.IGNORE_CASE).containsMatchIn(combined)) {
+            return "telugu"
+        }
+        if (Regex("sushin shyam|dabzee|jassie gift|shaan rahman|gopi sundar|hesham|muzin|manorama music|satyam videos", RegexOption.IGNORE_CASE).containsMatchIn(combined)) {
+            return "malayalam"
+        }
+        if (Regex("arijit singh|pritam|badshah|shreya ghoshal|amitabh bhattacharya|armaan malik|neha kakkar|kumar sanu|kishore kumar|udit narayan|sonu nigam|atif aslam|t-series|zee music", RegexOption.IGNORE_CASE).containsMatchIn(combined)) {
+            return "hindi"
+        }
+        if (Regex("diljit dosanjh|sidhu moose|ap dhillon|karan aujla|honey singh|guru randhawa|ammy virk|b praak|speed records", RegexOption.IGNORE_CASE).containsMatchIn(combined)) {
+            return "punjabi"
+        }
+        if (Regex("ed sheeran|taylor swift|billie eilish|the weeknd|dua lipa|coldplay|eminem|drake|post malone|bruno mars|justin bieber|alan walker|maroon 5|imagine dragons", RegexOption.IGNORE_CASE).containsMatchIn(combined)) {
+            return "english"
+        }
+
+        return ""
+    }
+
     fun isSongInLanguage(song: YouTubeSong, preferredLanguages: List<String>): Boolean {
         val normLangs = preferredLanguages.map { it.lowercase().trim() }.filter { it.isNotEmpty() }
         if (normLangs.isEmpty()) return true
 
-        val text = "${song.title} ${song.channelTitle}".lowercase()
+        val detected = detectSongLanguage(song)
+        if (detected.isNotBlank()) {
+            return normLangs.contains(detected)
+        }
 
-        for (otherLang in NON_TAMIL_LANGUAGES) {
-            if (!normLangs.contains(otherLang)) {
-                val regex = Regex("\\b$otherLang\\b", RegexOption.IGNORE_CASE)
-                if (regex.containsMatchIn(text)) {
-                    return false
-                }
+        // If not clearly detected yet, reject if it explicitly contains any non-preferred language keyword
+        val allKnownLangs = listOf("tamil", "telugu", "hindi", "malayalam", "kannada", "punjabi", "english", "bhojpuri", "bengali", "marathi", "gujarati")
+        val nonPreferred = allKnownLangs.filter { !normLangs.contains(it) }
+        val text = "${song.title} ${song.channelTitle}".lowercase()
+        for (np in nonPreferred) {
+            val regex = Regex("\\b$np\\b", RegexOption.IGNORE_CASE)
+            if (regex.containsMatchIn(text)) {
+                return false
             }
         }
-        return true
+
+        return normLangs.contains("tamil")
     }
 
     fun extractPrimaryArtist(channelOrArtist: String?): String {

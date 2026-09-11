@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -76,6 +77,24 @@ fun LanguageSelectionDialog(
                 .border(1.dp, Color(0xFF8B5CF6).copy(alpha = 0.35f), RoundedCornerShape(28.dp))
                 .padding(24.dp)
         ) {
+            if (onDismiss != null) {
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF1E1730))
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Close",
+                        tint = Color(0xFFA78BFA),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.fillMaxWidth()
@@ -140,7 +159,7 @@ fun LanguageSelectionDialog(
                                 )
                                 .border(
                                     width = if (isSelected) 2.dp else 1.dp,
-                                    color = if (isSelected) Color.White.copy(alpha = 0.8f) else Color.White.copy(alpha = 0.1f),
+                                    color = if (isSelected) Color.White else Color(0xFF8B5CF6).copy(alpha = 0.2f),
                                     shape = RoundedCornerShape(16.dp)
                                 )
                                 .clickable {
@@ -152,19 +171,19 @@ fun LanguageSelectionDialog(
                                         selectedLanguages = selectedLanguages + item.id
                                     }
                                 }
-                                .padding(14.dp)
+                                .padding(horizontal = 14.dp, vertical = 12.dp)
                         ) {
-                            Column {
+                            Column(modifier = Modifier.fillMaxWidth()) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(text = item.icon, fontSize = 20.sp)
+                                    Text(text = item.icon, fontSize = 22.sp)
                                     if (isSelected) {
                                         Box(
                                             modifier = Modifier
-                                                .size(20.dp)
+                                                .size(22.dp)
                                                 .clip(CircleShape)
                                                 .background(Color.White),
                                             contentAlignment = Alignment.Center
@@ -172,7 +191,7 @@ fun LanguageSelectionDialog(
                                             Icon(
                                                 imageVector = Icons.Default.Check,
                                                 contentDescription = "Selected",
-                                                tint = Color.Black,
+                                                tint = Color(0xFF8B5CF6),
                                                 modifier = Modifier.size(14.dp)
                                             )
                                         }
@@ -200,7 +219,7 @@ fun LanguageSelectionDialog(
 
                 Spacer(modifier = Modifier.height(22.dp))
 
-                // Continue Button
+                // Continue / Save Button
                 Button(
                     onClick = {
                         if (selectedLanguages.isNotEmpty()) {
@@ -215,8 +234,13 @@ fun LanguageSelectionDialog(
                         containerColor = Color(0xFF8B5CF6)
                     )
                 ) {
+                    val btnLabel = if (onDismiss != null) {
+                        "Save Preferences 🚀 (${selectedLanguages.size} Selected)"
+                    } else {
+                        "Start Listening 🚀 (${selectedLanguages.size} Selected)"
+                    }
                     Text(
-                        text = "Start Listening 🚀 (${selectedLanguages.size} Selected)",
+                        text = btnLabel,
                         color = Color.White,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Bold

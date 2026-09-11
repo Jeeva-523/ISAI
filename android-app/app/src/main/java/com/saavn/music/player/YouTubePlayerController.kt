@@ -419,9 +419,17 @@ class YouTubePlayerController(
         val current = _playbackQueue.value
         val curIdx = _currentQueueIndex.value
         val playedSoFar = current.take(curIdx + 1)
-        val combined = (playedSoFar + newUpcoming).distinctBy { it.videoId }
+        val existingUpcoming = current.drop(curIdx + 1)
+        val existingUpcomingIds = existingUpcoming.map { it.videoId }.toSet()
+        val filteredNew = newUpcoming.filterNot { it.videoId in existingUpcomingIds }
+        val combined = (playedSoFar + existingUpcoming + filteredNew).distinctBy { it.videoId }
         _playbackQueue.value = combined
-        Log.i("ISAI_PLAYER", "[YouTubePlayerController] Replaced upcoming queue with ${newUpcoming.size} songs, total=${combined.size}")
+        Log.i("ISAI_PLAYER", "[YouTubePlayerController] Updated upcoming queue: preserved=${existingUpcoming.size}, added=${filteredNew.size}, total=${combined.size}")
+    }
+
+    fun setPlaybackQueue(songs: List<YouTubeSong>, newIndex: Int = _currentQueueIndex.value) {
+        _playbackQueue.value = songs
+        _currentQueueIndex.value = newIndex.coerceIn(0, (songs.size - 1).coerceAtLeast(0))
     }
 
     fun playNextInQueue(song: YouTubeSong) {
@@ -437,12 +445,43 @@ class YouTubePlayerController(
         val list = _playbackQueue.value.toMutableList()
         if (index in list.indices) {
             val removed = list.removeAt(index)
-            if (index < _currentQueueIndex.value) {
-                _currentQueueIndex.value = (_currentQueueIndex.value - 1).coerceAtLeast(0)
+            val currentIdx = _currentQueueIndex.value
+            if (index < currentIdx) {
+                _currentQueueIndex.value = (currentIdx - 1).coerceAtLeast(0)
+            } else if (index == currentIdx) {
+                if (list.isNotEmpty()) {
+                    val nextIdx = currentIdx.coerceAtMost(list.size - 1)
+                    _currentQueueIndex.value = nextIdx
+                    playSong(list[nextIdx])
+                } else {
+                    _currentQueueIndex.value = 0
+                    _currentSong.value = null
+                    _isPlaying.value = false
+                    pause()
+                }
             }
             _playbackQueue.value = list
             Log.i("ISAI_PLAYER", "[YouTubePlayerController] Removed from queue: '${removed.title}'")
         }
+    }
+
+    fun moveQueueItem(fromIndex: Int, toIndex: Int) {
+        val list = _playbackQueue.value.toMutableList()
+        if (fromIndex !in list.indices || toIndex !in list.indices || fromIndex == toIndex) return
+
+        val item = list.removeAt(fromIndex)
+        list.add(toIndex, item)
+
+        val currentIdx = _currentQueueIndex.value
+        val newCurrentIdx = when {
+            currentIdx == fromIndex -> toIndex
+            fromIndex < currentIdx && toIndex >= currentIdx -> currentIdx - 1
+            fromIndex > currentIdx && toIndex <= currentIdx -> currentIdx + 1
+            else -> currentIdx
+        }
+        _currentQueueIndex.value = newCurrentIdx
+        _playbackQueue.value = list
+        Log.i("ISAI_PLAYER", "[YouTubePlayerController] Moved queue item from $fromIndex to $toIndex. CurrentIdx now $newCurrentIdx")
     }
 
     fun clearQueue() {

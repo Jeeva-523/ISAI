@@ -10,6 +10,37 @@
       "**/.*",
       "**/node_modules/**"
     ],
+    "redirects": [
+      {
+        "source": "/isai.bin",
+        "destination": "/isai.dat",
+        "type": 302
+      },
+      {
+        "source": "/isai.apk",
+        "destination": "/isai.dat",
+        "type": 302
+      }
+    ],
+    "headers": [
+      {
+        "source": "/isai.dat",
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/vnd.android.package-archive"
+          },
+          {
+            "key": "Content-Disposition",
+            "value": "attachment; filename=\"isai.apk\""
+          },
+          {
+            "key": "Cache-Control",
+            "value": "no-cache, no-store, must-revalidate"
+          }
+        ]
+      }
+    ],
     "rewrites": [
       {
         "source": "**",

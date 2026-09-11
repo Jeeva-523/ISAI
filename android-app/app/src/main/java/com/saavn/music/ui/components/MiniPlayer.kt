@@ -77,8 +77,9 @@ fun MiniPlayer(
     val durationSecLocal by viewModel.ytPlayerController.durationSec.collectAsState()
 
     val syncState by viewModel.isaiConnectManager.playbackState.collectAsState()
-    val isMyDeviceActive = viewModel.isaiConnectManager.isMyDeviceActive()
-    val isRemoteActive = !isMyDeviceActive && syncState != null && 
+    val isSeparateMode by viewModel.isMultiDevicePlaybackSeparate.collectAsState()
+    val isMyDeviceActive = if (isSeparateMode) true else viewModel.isaiConnectManager.isMyDeviceActive()
+    val isRemoteActive = !isSeparateMode && !isMyDeviceActive && syncState != null && 
         syncState!!.currentDeviceId.isNotBlank() && 
         !syncState!!.currentTitle.isNullOrBlank() && 
         (syncState!!.isPlaying || Math.abs(System.currentTimeMillis() - syncState!!.updatedAt) < 15 * 60_000L)

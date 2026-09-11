@@ -138,26 +138,10 @@ export function isSameSongOrDuplicate(
 
   if (keyA && keyB && keyA === keyB) return true
 
-  if (keyA.length >= 4 && keyB.length >= 4) {
-    if (keyA.includes(keyB) || keyB.includes(keyA)) {
-      return true
-    }
-  }
-
   const tokensA = extractTitleTokens(songA.title || '')
   const tokensB = extractTitleTokens(songB.title || '')
 
   if (tokensA.size === 0 || tokensB.size === 0) return false
-
-  let aInB = true
-  for (const t of tokensA) {
-    if (!tokensB.has(t)) { aInB = false; break }
-  }
-
-  let bInA = true
-  for (const t of tokensB) {
-    if (!tokensA.has(t)) { bInA = false; break }
-  }
 
   const common: string[] = []
   for (const t of tokensA) {
@@ -165,12 +149,13 @@ export function isSameSongOrDuplicate(
   }
 
   const commonLen = common.reduce((acc, t) => acc + t.length, 0)
-  if ((aInB || bInA) && commonLen >= 4) {
-    return true
-  }
+  const maxLen = Math.max(
+    Array.from(tokensA).reduce((acc, t) => acc + t.length, 0),
+    Array.from(tokensB).reduce((acc, t) => acc + t.length, 0)
+  )
 
-  const significantCommon = common.filter(t => t.length >= 3)
-  if (significantCommon.length >= 2) {
+  // High similarity ratio (>= 80% character overlap): genuine duplicates (audio vs video / lyrics)
+  if (maxLen > 0 && (commonLen / maxLen) >= 0.80) {
     return true
   }
 

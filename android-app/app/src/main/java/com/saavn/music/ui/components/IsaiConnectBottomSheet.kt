@@ -127,7 +127,81 @@ fun IsaiConnectBottomSheet(
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Multi-Device Playback Mode Toggle
+            val isSeparatePlayback = viewModel?.isMultiDevicePlaybackSeparate?.collectAsState()?.value ?: true
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { viewModel?.setMultiDevicePlaybackSeparate(!isSeparatePlayback) },
+                shape = RoundedCornerShape(14.dp),
+                color = DarkBackground,
+                border = androidx.compose.foundation.BorderStroke(
+                    1.dp,
+                    if (isSeparatePlayback) Color(0xFF10B981).copy(alpha = 0.5f) else NeonCyan.copy(alpha = 0.35f)
+                )
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        modifier = Modifier.weight(1f).padding(end = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(if (isSeparatePlayback) Color(0xFF10B981).copy(alpha = 0.18f) else DarkSurfaceGlass),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Headset,
+                                contentDescription = null,
+                                tint = if (isSeparatePlayback) Color(0xFF10B981) else NeonCyan,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        Column {
+                            Text(
+                                text = "Multi-Device Separate Playback",
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = if (isSeparatePlayback)
+                                    "Active: Play separately on 2+ devices without pause"
+                                else
+                                    "Sync Mode: Single device handoff (Spotify Connect)",
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    color = if (isSeparatePlayback) Color(0xFF10B981) else TextSecondary,
+                                    fontSize = 11.5.sp
+                                )
+                            )
+                        }
+                    }
+
+                    Switch(
+                        checked = isSeparatePlayback,
+                        onCheckedChange = { viewModel?.setMultiDevicePlaybackSeparate(it) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = Color(0xFF10B981),
+                            uncheckedThumbColor = TextSecondary,
+                            uncheckedTrackColor = DarkSurfaceGlass
+                        )
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
 
             // Current Audio Output Banner
             Surface(
@@ -213,11 +287,12 @@ fun IsaiConnectBottomSheet(
                         Spacer(modifier = Modifier.height(12.dp))
                         Button(
                             onClick = {
+                                viewModel?.setMultiDevicePlaybackSeparate(false)
                                 val prevDevice = connectManager.playbackState.value?.currentDeviceId ?: ""
                                 if (prevDevice.isNotBlank() && prevDevice != myDeviceId) {
                                     connectManager.sendCommand("PAUSE", targetDeviceId = prevDevice)
                                 }
-                                connectManager.transferPlaybackToDevice(myDeviceId)
+                                connectManager.transferPlaybackToDevice(myDeviceId, isPlaying = true)
                                 if (viewModel != null) {
                                     val sync = connectManager.playbackState.value
                                     if (sync != null && sync.currentSongId.isNotBlank()) {
@@ -289,7 +364,12 @@ fun IsaiConnectBottomSheet(
                 presenceText = "Active now",
                 presenceColor = IsaiLime,
                 onClick = {
-                    connectManager.transferPlaybackToDevice(myDeviceId)
+                    viewModel?.setMultiDevicePlaybackSeparate(false)
+                    val prevRemote = currentActiveId
+                    if (prevRemote.isNotBlank() && prevRemote != myDeviceId) {
+                        connectManager.sendCommand("PAUSE", targetDeviceId = prevRemote)
+                    }
+                    connectManager.transferPlaybackToDevice(myDeviceId, isPlaying = true)
                     if (viewModel != null) {
                         val sync = connectManager.playbackState.value
                         if (sync != null && sync.currentSongId.isNotBlank()) {
@@ -361,6 +441,7 @@ fun IsaiConnectBottomSheet(
                             presenceText = pText,
                             presenceColor = pColor,
                             onClick = {
+                                viewModel?.setMultiDevicePlaybackSeparate(false)
                                 val currentSong = viewModel?.ytPlayerController?.currentSong?.value
                                 val posMs = ((viewModel?.ytPlayerController?.currentPositionSec?.value ?: 0f) * 1000).toLong()
                                 if (currentSong != null) {
@@ -370,9 +451,14 @@ fun IsaiConnectBottomSheet(
                                         song = currentSong,
                                         targetDeviceId = device.deviceId
                                     )
-                                    viewModel.ytPlayerController.pause()
+                                    viewModel?.ytPlayerController?.pause()
                                 }
-                                connectManager.transferPlaybackToDevice(device.deviceId)
+                                connectManager.transferPlaybackToDevice(
+                                    targetDeviceId = device.deviceId,
+                                    song = currentSong,
+                                    positionMs = posMs,
+                                    isPlaying = true
+                                )
                             }
                         )
                     }

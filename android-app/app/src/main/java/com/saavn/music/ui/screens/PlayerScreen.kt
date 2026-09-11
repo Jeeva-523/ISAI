@@ -47,6 +47,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -102,6 +103,7 @@ import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.views.YouTube
 import com.saavn.music.ui.MainViewModel
 import com.saavn.music.ui.components.EqualizerBars
 import com.saavn.music.ui.theme.DarkBackground
+import com.saavn.music.ui.theme.DarkSurfaceElevated
 import com.saavn.music.ui.theme.DarkSurfaceGlass
 import com.saavn.music.ui.theme.DarkSurfaceVariant
 import com.saavn.music.ui.theme.GlassBorder
@@ -138,8 +140,9 @@ fun PlayerScreen(
     val isRepeat by viewModel.ytPlayerController.isRepeat.collectAsState()
 
     val syncState by viewModel.isaiConnectManager.playbackState.collectAsState()
-    val isMyDeviceActive = viewModel.isaiConnectManager.isMyDeviceActive()
-    val isRemoteActive = !isMyDeviceActive && syncState != null &&
+    val isSeparateMode by viewModel.isMultiDevicePlaybackSeparate.collectAsState()
+    val isMyDeviceActive = if (isSeparateMode) true else viewModel.isaiConnectManager.isMyDeviceActive()
+    val isRemoteActive = !isSeparateMode && !isMyDeviceActive && syncState != null &&
         syncState!!.currentDeviceId.isNotBlank() &&
         !syncState!!.currentTitle.isNullOrBlank() &&
         (syncState!!.isPlaying || Math.abs(System.currentTimeMillis() - syncState!!.updatedAt) < 15 * 60_000L)
@@ -149,6 +152,7 @@ fun PlayerScreen(
 
     val queue by viewModel.playbackQueue.collectAsState()
     val currentQueueIdx by viewModel.currentQueueIndex.collectAsState()
+    val uiConfig by viewModel.dynamicUiConfig.collectAsState()
 
     val remoteQueueSongs = remember(syncState?.queue) {
         syncState?.queue?.map { syncSong ->
@@ -197,6 +201,17 @@ fun PlayerScreen(
             viewModel.closeFullPlayer()
         }
         return
+    }
+
+    val activePlayingIndex = remember(effectiveDisplayQueue, effectiveCurrentQueueIdx, currentSong.videoId) {
+        if (effectiveCurrentQueueIdx in effectiveDisplayQueue.indices &&
+            effectiveDisplayQueue[effectiveCurrentQueueIdx].videoId == currentSong.videoId
+        ) {
+            effectiveCurrentQueueIdx
+        } else {
+            val found = effectiveDisplayQueue.indexOfFirst { it.videoId == currentSong.videoId }
+            if (found != -1) found else effectiveCurrentQueueIdx
+        }
     }
 
     val isPlaying = if (isRemoteActive) (syncState?.isPlaying == true) else isPlayingLocal
@@ -328,48 +343,81 @@ fun PlayerScreen(
                     }
                 }
 
-                // ⋮ More Options Menu
-                Box {
+                // Top Right Action Buttons: Connected Devices + More Options Menu
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val isConnectedToOther = isRemoteActive
+
+                    // Connected Device Button
                     IconButton(
-                        onClick = { showMoreMenu = true },
+                        onClick = { showConnectSheet = true },
                         modifier = Modifier
                             .size(42.dp)
                             .clip(CircleShape)
-                            .background(DarkSurfaceGlass)
-                            .border(1.dp, GlassBorderSubtle, CircleShape)
+                            .background(
+                                if (isConnectedToOther) com.saavn.music.ui.theme.IsaiLime.copy(alpha = 0.2f)
+                                else DarkSurfaceGlass
+                            )
+                            .border(
+                                1.dp,
+                                if (isConnectedToOther) com.saavn.music.ui.theme.IsaiLime
+                                else GlassBorderSubtle,
+                                CircleShape
+                            )
                     ) {
                         Icon(
-                            imageVector = Icons.Default.MoreVert,
-                            contentDescription = "More Options",
-                            tint = TextPrimary,
-                            modifier = Modifier.size(24.dp)
+                            imageVector = Icons.Default.Devices,
+                            contentDescription = "Connect Devices",
+                            tint = if (isConnectedToOther) com.saavn.music.ui.theme.IsaiLime else TextPrimary,
+                            modifier = Modifier.size(22.dp)
                         )
                     }
 
-                    DropdownMenu(
-                        expanded = showMoreMenu,
-                        onDismissRequest = { showMoreMenu = false },
-                        modifier = Modifier.background(DarkSurfaceGlass)
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("➕ Add to Playlist", color = TextPrimary) },
-                            onClick = {
-                                showMoreMenu = false
-                                viewModel.openAddToPlaylistDialog(currentSong)
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("🔗 Share Track", color = TextPrimary) },
-                            onClick = {
-                                showMoreMenu = false
-                                val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                    type = "text/plain"
-                                    putExtra(Intent.EXTRA_SUBJECT, currentSong.title)
-                                    putExtra(Intent.EXTRA_TEXT, "Listening to ${currentSong.title} - ${currentSong.channelTitle} on ISAI Music!")
+                    // ⋮ More Options Menu
+                    Box {
+                        IconButton(
+                            onClick = { showMoreMenu = true },
+                            modifier = Modifier
+                                .size(42.dp)
+                                .clip(CircleShape)
+                                .background(DarkSurfaceGlass)
+                                .border(1.dp, GlassBorderSubtle, CircleShape)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = "More Options",
+                                tint = TextPrimary,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+
+                        DropdownMenu(
+                            expanded = showMoreMenu,
+                            onDismissRequest = { showMoreMenu = false },
+                            modifier = Modifier.background(DarkSurfaceGlass)
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("➕ Add to Playlist", color = TextPrimary) },
+                                onClick = {
+                                    showMoreMenu = false
+                                    viewModel.openAddToPlaylistDialog(currentSong)
                                 }
-                                context.startActivity(Intent.createChooser(shareIntent, "Share Track"))
-                            }
-                        )
+                            )
+                            DropdownMenuItem(
+                                text = { Text("🔗 Share Track", color = TextPrimary) },
+                                onClick = {
+                                    showMoreMenu = false
+                                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                        type = "text/plain"
+                                        putExtra(Intent.EXTRA_SUBJECT, currentSong.title)
+                                        putExtra(Intent.EXTRA_TEXT, "Listening to ${currentSong.title} - ${currentSong.channelTitle} on ISAI Music!")
+                                    }
+                                    context.startActivity(Intent.createChooser(shareIntent, "Share Track"))
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -777,48 +825,6 @@ fun PlayerScreen(
                     }
                 }
 
-                // ISAI Connect Action Bar
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    val isMyDeviceActive = viewModel.isaiConnectManager.isMyDeviceActive()
-
-                    // ISAI Connect Multi-Device Button
-                    Surface(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(20.dp))
-                            .clickable { showConnectSheet = true },
-                        shape = RoundedCornerShape(20.dp),
-                        color = if (!isMyDeviceActive) com.saavn.music.ui.theme.IsaiLime else DarkSurfaceGlass,
-                        border = androidx.compose.foundation.BorderStroke(
-                            1.dp,
-                            if (!isMyDeviceActive) com.saavn.music.ui.theme.IsaiLime else NeonCyan.copy(alpha = 0.5f)
-                        )
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 18.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Devices,
-                                contentDescription = "ISAI Connect",
-                                tint = if (!isMyDeviceActive) DarkBackground else com.saavn.music.ui.theme.IsaiLime,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Text(
-                                text = if (!isMyDeviceActive) "⚡ Connected" else "⚡ Connect Devices",
-                                style = androidx.compose.material3.MaterialTheme.typography.labelSmall.copy(
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = if (!isMyDeviceActive) DarkBackground else com.saavn.music.ui.theme.IsaiLime
-                                )
-                            )
-                        }
-                    }
-                }
-
                 // Up Next & Queue Bar
                 Row(
                     modifier = Modifier
@@ -855,7 +861,7 @@ fun PlayerScreen(
                                 fontWeight = FontWeight.ExtraBold,
                                 letterSpacing = 1.sp
                             )
-                            val nextSong = effectiveDisplayQueue.getOrNull(effectiveCurrentQueueIdx + 1)
+                            val nextSong = effectiveDisplayQueue.getOrNull(activePlayingIndex + 1)
                             if (nextSong != null) {
                                 Text(
                                     text = "Next: ${nextSong.title}",
@@ -925,7 +931,7 @@ fun PlayerScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 20.dp, vertical = 10.dp),
+                            .padding(horizontal = 20.dp, vertical = 8.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -937,16 +943,23 @@ fun PlayerScreen(
                                 modifier = Modifier.size(20.dp)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "PLAYING QUEUE (${effectiveDisplayQueue.size})",
-                                color = TextPrimary,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 1.sp
-                            )
+                            Column {
+                                Text(
+                                    text = "PLAYING QUEUE (${effectiveDisplayQueue.size})",
+                                    color = TextPrimary,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.sp
+                                )
+                                Text(
+                                    text = uiConfig.queueHeaderSubtitle,
+                                    color = TextMuted,
+                                    fontSize = 10.sp
+                                )
+                            }
                         }
 
-                        if (effectiveDisplayQueue.size > 1 && !isRemoteActive) {
+                        if (effectiveDisplayQueue.size > 1) {
                             Text(
                                 text = "Clear Queue",
                                 color = NeonPink,
@@ -986,7 +999,7 @@ fun PlayerScreen(
                                 .height(420.dp)
                         ) {
                             itemsIndexed(effectiveDisplayQueue) { idx, qSong ->
-                                val isCurrent = (idx == effectiveCurrentQueueIdx || qSong.videoId == currentSong.videoId)
+                                val isCurrent = (idx == activePlayingIndex)
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -1011,12 +1024,12 @@ fun PlayerScreen(
                                                 viewModel.playSong(qSong, effectiveDisplayQueue)
                                             }
                                         }
-                                        .padding(horizontal = 20.dp, vertical = 8.dp),
+                                        .padding(horizontal = 16.dp, vertical = 6.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     // Rank or Equalizer
                                     Box(
-                                        modifier = Modifier.width(28.dp),
+                                        modifier = Modifier.width(26.dp),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         if (isCurrent && isPlaying) {
@@ -1037,7 +1050,7 @@ fun PlayerScreen(
                                         }
                                     }
 
-                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
 
                                     // Thumbnail
                                     Box(
@@ -1053,18 +1066,37 @@ fun PlayerScreen(
                                         )
                                     }
 
-                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Spacer(modifier = Modifier.width(10.dp))
 
                                     // Details
                                     Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = qSong.title,
-                                            color = if (isCurrent) NeonCyan else TextPrimary,
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(
+                                                text = qSong.title,
+                                                color = if (isCurrent) NeonCyan else TextPrimary,
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.weight(1f, fill = false)
+                                            )
+                                            if (isCurrent) {
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Box(
+                                                    modifier = Modifier
+                                                        .clip(RoundedCornerShape(4.dp))
+                                                        .background(NeonCyan.copy(alpha = 0.2f))
+                                                        .padding(horizontal = 5.dp, vertical = 1.dp)
+                                                ) {
+                                                    Text(
+                                                        "PLAYING",
+                                                        color = NeonCyan,
+                                                        fontSize = 8.sp,
+                                                        fontWeight = FontWeight.ExtraBold
+                                                    )
+                                                }
+                                            }
+                                        }
                                         Text(
                                             text = qSong.channelTitle,
                                             color = TextSecondary,
@@ -1074,31 +1106,180 @@ fun PlayerScreen(
                                         )
                                     }
 
-                                    if (!isCurrent && !isRemoteActive) {
-                                        IconButton(
-                                            onClick = { viewModel.removeFromQueue(idx) },
-                                            modifier = Modifier.size(32.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.DeleteOutline,
-                                                contentDescription = "Remove",
-                                                tint = TextMuted,
-                                                modifier = Modifier.size(18.dp)
-                                            )
+                                    Spacer(modifier = Modifier.width(6.dp))
+
+                                    val accentColor = uiConfig.parseAccentColor(NeonCyan)
+                                    val deleteColor = uiConfig.parseDeleteColor(NeonPink)
+                                    val btnSize = uiConfig.capsulePillSize.dp
+
+                                    // Server-Driven Dynamic Queue Actions (Live Configurable via Firebase)
+                                    when (uiConfig.queueActionStyle) {
+                                        "three_dots" -> {
+                                            var showMenu by remember { mutableStateOf(false) }
+                                            Box {
+                                                IconButton(
+                                                    onClick = { showMenu = true },
+                                                    modifier = Modifier.size(btnSize)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.MoreVert,
+                                                        contentDescription = "Options",
+                                                        tint = TextSecondary,
+                                                        modifier = Modifier.size(20.dp)
+                                                    )
+                                                }
+                                                DropdownMenu(
+                                                    expanded = showMenu,
+                                                    onDismissRequest = { showMenu = false },
+                                                    modifier = Modifier
+                                                        .background(DarkSurfaceElevated)
+                                                        .border(1.dp, GlassBorderSubtle, RoundedCornerShape(12.dp))
+                                                ) {
+                                                    if (uiConfig.enableQueueReorder && idx > 0) {
+                                                        DropdownMenuItem(
+                                                            text = { Text("Move Up", color = TextPrimary) },
+                                                            leadingIcon = { Icon(Icons.Default.KeyboardArrowUp, null, tint = accentColor) },
+                                                            onClick = {
+                                                                showMenu = false
+                                                                viewModel.moveQueueItem(idx, idx - 1)
+                                                            }
+                                                        )
+                                                    }
+                                                    if (uiConfig.enableQueueReorder && idx < effectiveDisplayQueue.size - 1) {
+                                                        DropdownMenuItem(
+                                                            text = { Text("Move Down", color = TextPrimary) },
+                                                            leadingIcon = { Icon(Icons.Default.KeyboardArrowDown, null, tint = accentColor) },
+                                                            onClick = {
+                                                                showMenu = false
+                                                                viewModel.moveQueueItem(idx, idx + 1)
+                                                            }
+                                                        )
+                                                    }
+                                                    if (uiConfig.enableQueueDelete) {
+                                                        DropdownMenuItem(
+                                                            text = { Text("Remove from Queue", color = deleteColor) },
+                                                            leadingIcon = { Icon(Icons.Default.DeleteOutline, null, tint = deleteColor) },
+                                                            onClick = {
+                                                                showMenu = false
+                                                                viewModel.removeFromQueue(idx)
+                                                            }
+                                                        )
+                                                    }
+                                                }
+                                            }
                                         }
-                                    } else {
-                                        Box(
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(6.dp))
-                                                .background(NeonCyan.copy(alpha = 0.2f))
-                                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                                        ) {
-                                            Text(
-                                                "PLAYING",
-                                                color = NeonCyan,
-                                                fontSize = 9.sp,
-                                                fontWeight = FontWeight.ExtraBold
-                                            )
+                                        "minimal_delete" -> {
+                                            if (uiConfig.enableQueueDelete) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(btnSize)
+                                                        .clip(CircleShape)
+                                                        .background(deleteColor.copy(alpha = 0.16f))
+                                                        .border(0.5.dp, deleteColor.copy(alpha = 0.4f), CircleShape)
+                                                        .clickable { viewModel.removeFromQueue(idx) },
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.DeleteOutline,
+                                                        contentDescription = "Remove from queue",
+                                                        tint = deleteColor,
+                                                        modifier = Modifier.size(17.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        else -> {
+                                            // Modern Capsule Pill (default "capsule_pill")
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(20.dp))
+                                                    .background(
+                                                        Brush.horizontalGradient(
+                                                            listOf(
+                                                                Color(0xFF1E172E),
+                                                                Color(0xFF140F22)
+                                                            )
+                                                        )
+                                                    )
+                                                    .border(1.dp, GlassBorderSubtle, RoundedCornerShape(20.dp))
+                                                    .padding(horizontal = 3.dp, vertical = 2.dp)
+                                            ) {
+                                                if (uiConfig.enableQueueReorder) {
+                                                    // Move Up button
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(btnSize)
+                                                            .clip(CircleShape)
+                                                            .background(if (idx > 0) DarkSurfaceGlass else Color.Transparent)
+                                                            .clickable(enabled = idx > 0) {
+                                                                viewModel.moveQueueItem(idx, idx - 1)
+                                                            },
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.KeyboardArrowUp,
+                                                            contentDescription = "Move Up",
+                                                            tint = if (idx > 0) accentColor else TextMuted.copy(alpha = 0.25f),
+                                                            modifier = Modifier.size(20.dp)
+                                                        )
+                                                    }
+
+                                                    Spacer(modifier = Modifier.width(2.dp))
+
+                                                    // Move Down button
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(btnSize)
+                                                            .clip(CircleShape)
+                                                            .background(if (idx < effectiveDisplayQueue.size - 1) DarkSurfaceGlass else Color.Transparent)
+                                                            .clickable(enabled = idx < effectiveDisplayQueue.size - 1) {
+                                                                viewModel.moveQueueItem(idx, idx + 1)
+                                                            },
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.KeyboardArrowDown,
+                                                            contentDescription = "Move Down",
+                                                            tint = if (idx < effectiveDisplayQueue.size - 1) accentColor else TextMuted.copy(alpha = 0.25f),
+                                                            modifier = Modifier.size(20.dp)
+                                                        )
+                                                    }
+                                                }
+
+                                                if (uiConfig.enableQueueReorder && uiConfig.enableQueueDelete) {
+                                                    // Subtle vertical divider inside capsule
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .padding(horizontal = 4.dp)
+                                                            .width(1.dp)
+                                                            .height(18.dp)
+                                                            .background(Color(0x33FFFFFF))
+                                                    )
+                                                }
+
+                                                if (uiConfig.enableQueueDelete) {
+                                                    // Remove (Delete) button
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(btnSize)
+                                                            .clip(CircleShape)
+                                                            .background(deleteColor.copy(alpha = 0.16f))
+                                                            .border(0.5.dp, deleteColor.copy(alpha = 0.4f), CircleShape)
+                                                            .clickable {
+                                                                viewModel.removeFromQueue(idx)
+                                                            },
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.DeleteOutline,
+                                                            contentDescription = "Remove from queue",
+                                                            tint = deleteColor,
+                                                            modifier = Modifier.size(17.dp)
+                                                        )
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 }

@@ -51,10 +51,10 @@ class YouTubeMusicRepository {
         return BuildConfig.YOUTUBE_API_KEY
     }
 
-    suspend fun searchSongs(query: String, maxResults: Int = 20): Result<List<YouTubeSong>> =
+    suspend fun searchSongs(query: String, maxResults: Int = 50): Result<List<YouTubeSong>> =
         searchTamilSongs(query, maxResults)
 
-    suspend fun searchTamilSongs(query: String, maxResults: Int = 20): Result<List<YouTubeSong>> =
+    suspend fun searchTamilSongs(query: String, maxResults: Int = 50): Result<List<YouTubeSong>> =
         withContext(Dispatchers.IO) {
             val cacheKey = query.trim().lowercase()
             searchCache[cacheKey]?.let {
@@ -375,6 +375,18 @@ class YouTubeMusicRepository {
         private val STOPWORDS = setOf(
             "the", "a", "an", "in", "of", "to", "and", "from", "with", "by", "on", "for", "at", "is", "it"
         )
+
+        private val PARENTHESES_REGEX = Regex("\\([^)]*\\)")
+        private val BRACKETS_REGEX = Regex("\\[[^\\]]*\\]")
+        private val FROM_QUOTED_REGEX = Regex("(?i)\\bfrom\\s+[\"'].*?[\"']")
+        private val FROM_RAW_REGEX = Regex("(?i)\\bfrom\\s+[A-Za-z0-9\\s:]+")
+        private val NON_ALPHANUM_REGEX = Regex("[^a-zA-Z0-9\\s]")
+        private val WHITESPACE_REGEX = Regex("\\s+")
+        private val PHONETIC_CLEAN_REGEX = Regex("[^a-z0-9]")
+
+        // Global in-memory cache to prevent re-parsing identical song titles
+        private val titleKeyCache = ConcurrentHashMap<String, String>()
+        private val titleTokensCache = ConcurrentHashMap<String, Set<String>>()
     }
 
     /**
@@ -389,44 +401,48 @@ class YouTubeMusicRepository {
 
         if (keyA.isNotBlank() && keyB.isNotBlank() && keyA == keyB) return true
 
-        if (keyA.length >= 4 && keyB.length >= 4) {
-            if (keyA.contains(keyB) || keyB.contains(keyA)) {
-                return true
-            }
-        }
-
         val tokensA = extractTitleTokens(songA.title)
         val tokensB = extractTitleTokens(songB.title)
 
         if (tokensA.isEmpty() || tokensB.isEmpty()) return false
 
-        val aInB = tokensA.all { tokensB.contains(it) }
-        val bInA = tokensB.all { tokensA.contains(it) }
         val common = tokensA.intersect(tokensB)
         val commonLen = common.sumOf { it.length }
+        val maxLen = maxOf(tokensA.sumOf { it.length }, tokensB.sumOf { it.length })
 
-        if ((aInB || bInA) && commonLen >= 4) {
-            return true
-        }
-
-        val significantCommon = common.filter { it.length >= 3 }
-        if (significantCommon.size >= 2) {
+        // High similarity ratio (>= 80% character overlap): genuine duplicates (audio vs video / lyrics)
+        if (maxLen > 0 && (commonLen.toFloat() / maxLen.toFloat()) >= 0.80f) {
             return true
         }
 
         return false
     }
 
+    /**
+     * High-speed song deduplication using O(1) set lookups for exact IDs and Title keys,
+     * followed by fuzzy matching only on genuinely distinct songs.
+     */
     fun deduplicateSongs(songs: List<YouTubeSong>): List<YouTubeSong> {
         if (songs.isEmpty()) return emptyList()
-        val result = mutableListOf<YouTubeSong>()
+        val result = ArrayList<YouTubeSong>(songs.size)
+        val seenIds = HashSet<String>(songs.size)
+        val seenKeys = HashSet<String>(songs.size)
 
         for (song in songs) {
             val vid = song.videoId.trim()
             if (vid.isBlank() || song.title.isBlank()) continue
+            if (!seenIds.add(vid)) continue
 
-            val isDuplicate = result.any { existing ->
-                isSameSong(existing, song)
+            val key = normalizeTitleKey(song.title)
+            if (key.isNotBlank() && !seenKeys.add(key)) continue
+
+            // Fuzzy comparison against accepted songs
+            var isDuplicate = false
+            for (existing in result) {
+                if (isSameSong(existing, song)) {
+                    isDuplicate = true
+                    break
+                }
             }
 
             if (!isDuplicate) {
@@ -437,36 +453,38 @@ class YouTubeMusicRepository {
     }
 
     fun extractTitleTokens(rawTitle: String): Set<String> {
-        val cleaned = cleanRawTitle(rawTitle)
-        return cleaned.split(Regex("\\s+"))
-            .map { phoneticNormalize(it) }
-            .filter { it.length >= 2 && !STOPWORDS.contains(it) }
-            .toSet()
+        return titleTokensCache.getOrPut(rawTitle) {
+            val cleaned = cleanRawTitle(rawTitle)
+            cleaned.split(WHITESPACE_REGEX)
+                .map { phoneticNormalize(it) }
+                .filter { it.length >= 2 && !STOPWORDS.contains(it) }
+                .toSet()
+        }
     }
 
     fun normalizeTitleKey(rawTitle: String): String {
-        val tokens = extractTitleTokens(rawTitle)
-        return tokens.sorted().joinToString("")
+        return titleKeyCache.getOrPut(rawTitle) {
+            val tokens = extractTitleTokens(rawTitle)
+            tokens.sorted().joinToString("")
+        }
     }
 
     private fun cleanRawTitle(raw: String): String {
         if (raw.isBlank()) return ""
         val unescaped = cleanHtmlTitle(raw)
-        return unescaped
-            .replace(Regex("\\([^)]*\\)"), " ")
-            .replace(Regex("\\[[^\\]]*\\]"), " ")
-            .replace(Regex("(?i)\\bfrom\\s+[\"'].*?[\"']"), " ")
-            .replace(Regex("(?i)\\bfrom\\s+[A-Za-z0-9\\s:]+"), " ")
-            .replace(NOISE_REGEX, " ")
-            .replace(Regex("[^a-zA-Z0-9\\s]"), " ")
-            .replace(Regex("\\s+"), " ")
-            .trim()
+        var s = PARENTHESES_REGEX.replace(unescaped, " ")
+        s = BRACKETS_REGEX.replace(s, " ")
+        s = FROM_QUOTED_REGEX.replace(s, " ")
+        s = FROM_RAW_REGEX.replace(s, " ")
+        s = NOISE_REGEX.replace(s, " ")
+        s = NON_ALPHANUM_REGEX.replace(s, " ")
+        s = WHITESPACE_REGEX.replace(s, " ")
+        return s.trim()
     }
 
     private fun phoneticNormalize(raw: String): String {
         if (raw.isBlank()) return ""
-        return raw
-            .lowercase()
+        val clean = raw.lowercase()
             .replace("th", "t")
             .replace("zh", "l")
             .replace("dh", "d")
@@ -478,8 +496,7 @@ class YouTubeMusicRepository {
             .replace("oo", "u")
             .replace("ii", "i")
             .replace("uu", "u")
-            .replace(Regex("[^a-z0-9]"), "")
-            .trim()
+        return PHONETIC_CLEAN_REGEX.replace(clean, "").trim()
     }
 
     private fun getThumbnailKey(url: String, videoId: String): String {

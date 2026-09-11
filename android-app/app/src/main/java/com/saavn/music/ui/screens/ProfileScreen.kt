@@ -51,6 +51,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -76,6 +78,7 @@ import coil.compose.AsyncImage
 import com.saavn.music.ui.AppScreen
 import com.saavn.music.ui.MainViewModel
 import com.saavn.music.ui.components.IsaiConnectBottomSheet
+import com.saavn.music.ui.components.IsaiPremiumBottomSheet
 import com.saavn.music.ui.theme.DarkBackground
 import com.saavn.music.ui.theme.DarkSurface
 import com.saavn.music.ui.theme.DarkSurfaceGlass
@@ -112,6 +115,7 @@ fun ProfileScreen(
     var showEditNameDialog by remember { mutableStateOf(false) }
     var editNameInput by remember { mutableStateOf(currentDisplayName) }
     var showConnectSheet by remember { mutableStateOf(false) }
+    var showPremiumSheet by remember { mutableStateOf(false) }
 
     val favorites by viewModel.favorites.collectAsState()
     val playlists by viewModel.playlists.collectAsState()
@@ -319,20 +323,21 @@ fun ProfileScreen(
 
                             Spacer(modifier = Modifier.width(10.dp))
 
-                            // ISAI Premium Badge
+                            // ISAI Premium Badge (Clickable to view VIP & Offline download perks)
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(20.dp))
                                     .background(
                                         Brush.horizontalGradient(
-                                            listOf(NeonPurple.copy(alpha = 0.3f), IsaiLime.copy(alpha = 0.3f))
+                                            listOf(NeonPurple.copy(alpha = 0.35f), IsaiLime.copy(alpha = 0.35f))
                                         )
                                     )
                                     .border(
                                         1.dp,
-                                        NeonCyan.copy(alpha = 0.6f),
+                                        NeonCyan.copy(alpha = 0.7f),
                                         RoundedCornerShape(20.dp)
                                     )
+                                    .clickable { showPremiumSheet = true }
                                     .padding(horizontal = 12.dp, vertical = 6.dp)
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -344,7 +349,7 @@ fun ProfileScreen(
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
-                                        text = "ISAI Premium Listener",
+                                        text = "👑 ISAI Premium Listener",
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = NeonCyan
@@ -383,6 +388,109 @@ fun ProfileScreen(
                 }
             }
 
+            // Music Language Preferences Section
+            item {
+                val chosenLangs by viewModel.preferredLanguages.collectAsState()
+                ProfileSectionContainer(title = "Music Language Preferences") {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { viewModel.openLanguageDialog() }
+                            .padding(vertical = 12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFF8B5CF6).copy(alpha = 0.2f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Language,
+                                        contentDescription = null,
+                                        tint = Color(0xFFA78BFA),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(14.dp))
+                                Column {
+                                    Text(
+                                        text = "Language Selection",
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = TextPrimary
+                                    )
+                                    Text(
+                                        text = "Customizes Home feed and auto-playing queue",
+                                        fontSize = 11.sp,
+                                        color = TextMuted
+                                    )
+                                }
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color(0xFF8B5CF6).copy(alpha = 0.2f))
+                                    .border(1.dp, Color(0xFF8B5CF6).copy(alpha = 0.45f), RoundedCornerShape(8.dp))
+                                    .padding(horizontal = 10.dp, vertical = 4.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.Edit,
+                                        contentDescription = "Edit",
+                                        tint = Color(0xFFA78BFA),
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "Change",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFFA78BFA)
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Active Language Chips
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            val displayLangs = if (chosenLangs.isNotEmpty()) chosenLangs else listOf("tamil")
+                            displayLangs.forEach { lang ->
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(DarkSurfaceVariant)
+                                        .border(1.dp, Color(0xFF8B5CF6).copy(alpha = 0.35f), RoundedCornerShape(12.dp))
+                                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                                ) {
+                                    Text(
+                                        text = "🎵 ${lang.replaceFirstChar { it.uppercase() }}",
+                                        color = Color.White,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // 4. Section: Audio & Streaming Preferences
             item {
                 ProfileSectionContainer(title = "Audio & Playback Quality") {
@@ -411,7 +519,8 @@ fun ProfileScreen(
                     ProfileDetailRow(
                         icon = Icons.Default.MusicNote,
                         label = "Offline Storage",
-                        value = "Extreme High Quality Cache"
+                        value = "Extreme High Quality Cache",
+                        onRowClick = { showPremiumSheet = true }
                     )
                 }
             }
@@ -425,10 +534,29 @@ fun ProfileScreen(
                         value = "${viewModel.isaiConnectManager.deviceName} (Current)"
                     )
                     HorizontalDivider(color = GlassBorderSubtle, thickness = 1.dp)
+                    val isSeparatePlayback by viewModel.isMultiDevicePlaybackSeparate.collectAsState()
+                    ProfileSwitchRow(
+                        icon = Icons.Default.Headset,
+                        label = "Multi-Device Playback",
+                        subtitle = if (isSeparatePlayback)
+                            "Separate: Play on 2+ devices simultaneously 🎧"
+                        else
+                            "Sync Mode: Single device (Spotify Connect) ⚡",
+                        checked = isSeparatePlayback,
+                        onCheckedChange = { enabled ->
+                            viewModel.setMultiDevicePlaybackSeparate(enabled)
+                            android.widget.Toast.makeText(
+                                context,
+                                if (enabled) "Dual Device Mode: Both devices can play songs separately!" else "Sync Mode: Devices sync playback together",
+                                android.widget.Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    )
+                    HorizontalDivider(color = GlassBorderSubtle, thickness = 1.dp)
                     ProfileDetailRow(
                         icon = Icons.Default.CloudSync,
                         label = "ISAI Connect",
-                        value = "Device Sync Ready",
+                        value = if (isSeparatePlayback) "Dual Independent 🎧" else "Device Sync Ready ⚡",
                         onRowClick = { showConnectSheet = true }
                     )
                     HorizontalDivider(color = GlassBorderSubtle, thickness = 1.dp)
@@ -474,105 +602,93 @@ fun ProfileScreen(
                         .fillMaxWidth()
                         .padding(horizontal = 20.dp, vertical = 12.dp)
                 ) {
-                    // ISAI Connect Launcher Button
-                    Button(
-                        onClick = { showConnectSheet = true },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(52.dp)
-                            .shadow(8.dp, RoundedCornerShape(16.dp), spotColor = NeonCyan.copy(alpha = 0.3f)),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = DarkSurfaceGlass
-                        ),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)
+                    // Top Row: Switch Account - Logout
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.CloudSync,
-                                contentDescription = null,
-                                tint = NeonCyan,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Text(
-                                text = "📱 Open ISAI Connect Multi-Device",
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = TextPrimary
-                            )
+                        // Switch Account / Sign In
+                        Button(
+                            onClick = { viewModel.openLoginDialog() },
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(48.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = DarkSurfaceGlass
+                            ),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, NeonCyan.copy(alpha = 0.4f)),
+                            contentPadding = PaddingValues(horizontal = 8.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Lock,
+                                    contentDescription = null,
+                                    tint = NeonCyan,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = if (isUserLoggedIn) "Switch Account" else "Sign In",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = NeonCyan,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
                         }
-                    }
 
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    // Dedicated Logout Button in Settings
-                    Button(
-                        onClick = {
-                            viewModel.logoutUser()
-                            android.widget.Toast.makeText(context, "Logged out successfully", android.widget.Toast.LENGTH_SHORT).show()
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(52.dp)
-                            .shadow(8.dp, RoundedCornerShape(16.dp), spotColor = Color(0xFFEF4444).copy(alpha = 0.3f)),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF2A1215)
-                        ),
-                        border = androidx.compose.foundation.BorderStroke(1.2.dp, Color(0xFFEF4444).copy(alpha = 0.6f))
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ExitToApp,
-                                contentDescription = null,
-                                tint = Color(0xFFEF4444),
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Text(
-                                text = "🚪 Logout",
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFFEF4444)
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    // Switch Account / Sign In Button
-                    Button(
-                        onClick = { viewModel.openLoginDialog() },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(50.dp),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = DarkSurfaceGlass
-                        ),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, NeonCyan.copy(alpha = 0.4f))
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Lock,
-                                contentDescription = null,
-                                tint = NeonCyan,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = if (isUserLoggedIn) "🔑 Switch Account" else "🔑 Sign In / Register",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = NeonCyan
-                            )
+                        // Logout
+                        Button(
+                            onClick = {
+                                if (isUserLoggedIn) {
+                                    viewModel.logoutUser()
+                                    android.widget.Toast.makeText(context, "Logged out successfully", android.widget.Toast.LENGTH_SHORT).show()
+                                } else {
+                                    android.widget.Toast.makeText(context, "Not logged in", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(48.dp)
+                                .shadow(6.dp, RoundedCornerShape(14.dp), spotColor = Color(0xFFEF4444).copy(alpha = 0.25f)),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF2A1215)
+                            ),
+                            border = androidx.compose.foundation.BorderStroke(1.2.dp, Color(0xFFEF4444).copy(alpha = 0.6f)),
+                            contentPadding = PaddingValues(horizontal = 8.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ExitToApp,
+                                    contentDescription = null,
+                                    tint = Color(0xFFEF4444),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Logout",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFEF4444),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
                         }
                     }
 
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    // Dedicated Check for Updates Button at the bottom of Profile
+                    // Bottom Row: Dedicated Check for Updates Button
                     Button(
                         onClick = {
                             if (currentUpdateInfo != null) {
@@ -633,7 +749,7 @@ fun ProfileScreen(
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = "🔄 Check for Updates",
+                                    text = "🔄 Check for Update",
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     color = NeonCyan
@@ -708,6 +824,13 @@ fun ProfileScreen(
             connectManager = viewModel.isaiConnectManager,
             viewModel = viewModel,
             onDismissRequest = { showConnectSheet = false }
+        )
+    }
+
+    // ISAI Premium Perks Bottom Sheet
+    if (showPremiumSheet) {
+        IsaiPremiumBottomSheet(
+            onDismissRequest = { showPremiumSheet = false }
         )
     }
 }
@@ -788,15 +911,108 @@ private fun ProfileDetailRow(
             )
         }
 
-        Text(
-            text = value,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = TextPrimary,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = androidx.compose.ui.text.style.TextAlign.End,
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.End,
             modifier = Modifier.weight(1f)
+        ) {
+            Text(
+                text = value,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = TextPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = androidx.compose.ui.text.style.TextAlign.End
+            )
+            if (onRowClick != null) {
+                Spacer(modifier = Modifier.width(8.dp))
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color(0xFF8B5CF6).copy(alpha = 0.18f))
+                        .border(1.dp, Color(0xFF8B5CF6).copy(alpha = 0.4f), RoundedCornerShape(6.dp))
+                        .padding(horizontal = 7.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = "Edit",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFA78BFA)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProfileSwitchRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onCheckedChange(!checked) }
+            .padding(vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .weight(1f)
+                .padding(end = 12.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(CircleShape)
+                    .background(com.saavn.music.ui.theme.DarkSurfaceVariant),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = NeonCyan,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(14.dp))
+            Column {
+                Text(
+                    text = label,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = com.saavn.music.ui.theme.TextPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = subtitle,
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.Normal,
+                    color = if (checked) Color(0xFF10B981) else TextSecondary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = Color.White,
+                checkedTrackColor = Color(0xFF10B981),
+                uncheckedThumbColor = TextSecondary,
+                uncheckedTrackColor = com.saavn.music.ui.theme.DarkSurfaceVariant
+            )
         )
     }
 }
