@@ -287,7 +287,6 @@ fun IsaiConnectBottomSheet(
                         Spacer(modifier = Modifier.height(12.dp))
                         Button(
                             onClick = {
-                                viewModel?.setMultiDevicePlaybackSeparate(false)
                                 val prevDevice = connectManager.playbackState.value?.currentDeviceId ?: ""
                                 if (prevDevice.isNotBlank() && prevDevice != myDeviceId) {
                                     connectManager.sendCommand("PAUSE", targetDeviceId = prevDevice)
@@ -364,7 +363,6 @@ fun IsaiConnectBottomSheet(
                 presenceText = "Active now",
                 presenceColor = IsaiLime,
                 onClick = {
-                    viewModel?.setMultiDevicePlaybackSeparate(false)
                     val prevRemote = currentActiveId
                     if (prevRemote.isNotBlank() && prevRemote != myDeviceId) {
                         connectManager.sendCommand("PAUSE", targetDeviceId = prevRemote)

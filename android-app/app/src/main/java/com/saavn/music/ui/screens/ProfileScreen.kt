@@ -49,6 +49,7 @@ import androidx.compose.material3.HorizontalDivider
 import com.saavn.music.BuildConfig
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Switch
@@ -116,6 +117,7 @@ fun ProfileScreen(
     var editNameInput by remember { mutableStateOf(currentDisplayName) }
     var showConnectSheet by remember { mutableStateOf(false) }
     var showPremiumSheet by remember { mutableStateOf(false) }
+    var showCancelSubDialog by remember { mutableStateOf(false) }
 
     val favorites by viewModel.favorites.collectAsState()
     val playlists by viewModel.playlists.collectAsState()
@@ -323,36 +325,58 @@ fun ProfileScreen(
 
                             Spacer(modifier = Modifier.width(10.dp))
 
-                            // ISAI Premium Badge (Clickable to view VIP & Offline download perks)
+                            val isUserPremium = userProfile?.isPremium == true
+                            val planLabel = if (isUserPremium) "💎 ISAI Premium" else "🆓 ISAI Free"
+                            val planColor = if (isUserPremium) NeonCyan else IsaiLime
+
+                            // ISAI Plan Badge (Clickable to switch / upgrade plan)
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(20.dp))
                                     .background(
                                         Brush.horizontalGradient(
-                                            listOf(NeonPurple.copy(alpha = 0.35f), IsaiLime.copy(alpha = 0.35f))
+                                            listOf(NeonPurple.copy(alpha = 0.35f), planColor.copy(alpha = 0.25f))
                                         )
                                     )
                                     .border(
                                         1.dp,
-                                        NeonCyan.copy(alpha = 0.7f),
+                                        planColor.copy(alpha = 0.7f),
                                         RoundedCornerShape(20.dp)
                                     )
-                                    .clickable { showPremiumSheet = true }
+                                    .clickable { viewModel.openPlanSelectionDialog() }
                                     .padding(horizontal = 12.dp, vertical = 6.dp)
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Icon(
                                         imageVector = Icons.Default.Star,
                                         contentDescription = null,
-                                        tint = NeonCyan,
+                                        tint = planColor,
                                         modifier = Modifier.size(14.dp)
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
-                                        text = "👑 ISAI Premium Listener",
+                                        text = "$planLabel (Change)",
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = NeonCyan
+                                        color = planColor
+                                    )
+                                }
+                            }
+
+                            if (userProfile?.isTester == true) {
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(20.dp))
+                                        .background(Color(0xFF3B1E54))
+                                        .border(1.dp, Color(0xFFA855F7), RoundedCornerShape(20.dp))
+                                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                                ) {
+                                    Text(
+                                        text = "🧪 Beta Tester",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFFD8B4FE)
                                     )
                                 }
                             }
@@ -385,6 +409,120 @@ fun ProfileScreen(
                         label = "Security Status",
                         value = if (isEmailVerified) "Email Verified ✓" else "Verification Pending ⚠️"
                     )
+                }
+            }
+
+            // 3.5. Section: Subscription & Billing Status
+            item {
+                val isPrem = userProfile?.isPremium == true
+                val subStatus = userProfile?.subscriptionStatus ?: if (isPrem) "PREMIUM" else "FREE"
+                val plan = userProfile?.planType ?: userProfile?.selectedPlan ?: "FREE"
+                val expiry = userProfile?.subscriptionExpiry ?: 0L
+                val start = userProfile?.subscriptionStart ?: 0L
+                val dateFormat = remember { java.text.SimpleDateFormat("dd MMM yyyy", java.util.Locale.getDefault()) }
+
+                val displayPlan = when {
+                    plan.equals("YEARLY", ignoreCase = true) -> "💎 Premium Yearly (₹399/yr)"
+                    plan.equals("MONTHLY", ignoreCase = true) -> "💎 Premium Monthly (₹49/mo)"
+                    isPrem -> "💎 ISAI Premium"
+                    else -> "🆓 ISAI Free (₹0)"
+                }
+
+                val statusLabel = when {
+                    isPrem && expiry > 0L && System.currentTimeMillis() > expiry -> "Expired"
+                    isPrem && subStatus.equals("CANCELLED", ignoreCase = true) -> "Cancelled (Active until expiry)"
+                    isPrem && expiry > 0L && (expiry - System.currentTimeMillis() < 3L * 86400000L) -> "Expiring Soon"
+                    isPrem -> "Active"
+                    subStatus.equals("CANCELLED", ignoreCase = true) -> "Cancelled"
+                    subStatus.equals("EXPIRED", ignoreCase = true) -> "Expired"
+                    else -> "Free Tier Active"
+                }
+
+                ProfileSectionContainer(title = "ISAI Subscription & Membership") {
+                    ProfileDetailRow(
+                        icon = Icons.Default.Star,
+                        label = "Current Plan",
+                        value = displayPlan
+                    )
+                    HorizontalDivider(color = GlassBorderSubtle, thickness = 1.dp)
+                    ProfileDetailRow(
+                        icon = Icons.Default.Verified,
+                        label = "Membership Status",
+                        value = statusLabel
+                    )
+                    if (start > 0L) {
+                        HorizontalDivider(color = GlassBorderSubtle, thickness = 1.dp)
+                        ProfileDetailRow(
+                            icon = Icons.Default.CloudSync,
+                            label = "Start Date",
+                            value = dateFormat.format(java.util.Date(start))
+                        )
+                    }
+                    if (expiry > 0L) {
+                        HorizontalDivider(color = GlassBorderSubtle, thickness = 1.dp)
+                        ProfileDetailRow(
+                            icon = Icons.Default.SystemUpdate,
+                            label = if (subStatus.equals("CANCELLED", ignoreCase = true)) "Access Expires On" else "Next Billing / Expiry Date",
+                            value = dateFormat.format(java.util.Date(expiry))
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        if (isPrem) {
+                            OutlinedButton(
+                                onClick = { showCancelSubDialog = true },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(42.dp),
+                                shape = RoundedCornerShape(12.dp),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.6f)),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFEF4444))
+                            ) {
+                                Text(
+                                    text = "Cancel Subscription",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        } else {
+                            Button(
+                                onClick = { viewModel.openPlanSelectionDialog() },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(44.dp),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = NeonCyan)
+                            ) {
+                                Text(
+                                    text = "✨ Upgrade to Premium",
+                                    color = Color.Black,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+
+                        OutlinedButton(
+                            onClick = { viewModel.openPlanSelectionDialog() },
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(if (isPrem) 42.dp else 44.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, NeonCyan.copy(alpha = 0.5f)),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = NeonCyan)
+                        ) {
+                            Text(
+                                text = "View All Plans",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
                 }
             }
 
@@ -590,6 +728,17 @@ fun ProfileScreen(
                                     android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
                                 }
                             }
+                        }
+                    )
+                    HorizontalDivider(color = GlassBorderSubtle, thickness = 1.dp)
+                    val isTesterUser = userProfile?.isTester == true
+                    ProfileSwitchRow(
+                        icon = Icons.Default.Shield,
+                        label = "Beta Tester Channel",
+                        subtitle = if (isTesterUser) "🧪 Early tester updates enabled (Beta Channel)" else "🟢 Standard stable release channel",
+                        checked = isTesterUser,
+                        onCheckedChange = { enabled ->
+                            viewModel.setTesterMode(enabled)
                         }
                     )
                 }
@@ -831,6 +980,47 @@ fun ProfileScreen(
     if (showPremiumSheet) {
         IsaiPremiumBottomSheet(
             onDismissRequest = { showPremiumSheet = false }
+        )
+    }
+
+    // Cancel Subscription Confirmation Dialog
+    if (showCancelSubDialog) {
+        AlertDialog(
+            onDismissRequest = { showCancelSubDialog = false },
+            title = {
+                Text(
+                    text = "Cancel Subscription?",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp
+                )
+            },
+            text = {
+                Text(
+                    text = "Are you sure you want to cancel your ISAI Premium subscription? Your VIP privileges will remain active until your current paid billing period ends.",
+                    color = TextSecondary,
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.cancelSubscription()
+                        showCancelSubDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
+                ) {
+                    Text("Confirm Cancel", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCancelSubDialog = false }) {
+                    Text("Keep Premium", color = TextSecondary)
+                }
+            },
+            containerColor = DarkSurface,
+            shape = RoundedCornerShape(20.dp)
         )
     }
 }

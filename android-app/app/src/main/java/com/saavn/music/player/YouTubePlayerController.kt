@@ -255,6 +255,21 @@ class YouTubePlayerController(
         })
     }
 
+    fun prepareForPlayback(song: YouTubeSong, queue: List<YouTubeSong>? = null) {
+        _currentSong.value = song
+        val targetQueue = when {
+            queue != null -> queue
+            _playbackQueue.value.any { it.videoId == song.videoId } -> _playbackQueue.value
+            _playbackQueue.value.isNotEmpty() -> _playbackQueue.value + song
+            else -> listOf(song)
+        }
+        _playbackQueue.value = targetQueue
+        val idx = targetQueue.indexOfFirst { it.videoId == song.videoId }
+        _currentQueueIndex.value = if (idx >= 0) idx else 0
+        _isBuffering.value = true
+        Log.i("ISAI_PLAYER", "[YouTubePlayerController] prepareForPlayback: '${song.title}' at index ${_currentQueueIndex.value}")
+    }
+
     fun playSong(song: YouTubeSong, queue: List<YouTubeSong>? = null, startPositionSec: Float = 0f) {
         Log.i("ISAI_PLAYER", "[YouTubePlayerController] playSong: '${song.title}' (${song.videoId}) | startPos=${startPositionSec}s | audioUrl=${song.audioUrl}")
         _currentSong.value = song
@@ -371,6 +386,13 @@ class YouTubePlayerController(
         }
     }
 
+    fun setPlaybackSpeed(speed: Float) {
+        val clamped = speed.coerceIn(0.5f, 2.0f)
+        if (isUsingExoPlayer) {
+            exoPlayer.setPlaybackSpeed(clamped)
+        }
+    }
+
     fun setVolume(volumePercent: Int) {
         val clamped = volumePercent.coerceIn(0, 100)
         _volume.value = clamped
@@ -391,11 +413,18 @@ class YouTubePlayerController(
 
     fun addToQueue(song: YouTubeSong) {
         val list = _playbackQueue.value.toMutableList()
-        if (list.none { it.videoId == song.videoId }) {
-            list.add(song)
-            _playbackQueue.value = list
-            Log.i("ISAI_PLAYER", "[YouTubePlayerController] Added to queue: '${song.title}', total=${list.size}")
+        list.removeAll { it.videoId == song.videoId }
+        val currentSongId = _currentSong.value?.videoId
+        val curIdx = if (!currentSongId.isNullOrBlank()) {
+            val idx = list.indexOfFirst { it.videoId == currentSongId }
+            if (idx >= 0) idx else _currentQueueIndex.value
+        } else {
+            _currentQueueIndex.value
         }
+        val insertPos = (curIdx + 1).coerceIn(0, list.size)
+        list.add(insertPos, song)
+        _playbackQueue.value = list
+        Log.i("ISAI_PLAYER", "[YouTubePlayerController] Added to queue after current song ($currentSongId at $curIdx -> $insertPos): '${song.title}', total=${list.size}")
     }
 
     fun appendQueue(songs: List<YouTubeSong>) {
@@ -435,7 +464,14 @@ class YouTubePlayerController(
     fun playNextInQueue(song: YouTubeSong) {
         val list = _playbackQueue.value.toMutableList()
         list.removeAll { it.videoId == song.videoId }
-        val insertPos = (_currentQueueIndex.value + 1).coerceAtMost(list.size)
+        val currentSongId = _currentSong.value?.videoId
+        val curIdx = if (!currentSongId.isNullOrBlank()) {
+            val idx = list.indexOfFirst { it.videoId == currentSongId }
+            if (idx >= 0) idx else _currentQueueIndex.value
+        } else {
+            _currentQueueIndex.value
+        }
+        val insertPos = (curIdx + 1).coerceIn(0, list.size)
         list.add(insertPos, song)
         _playbackQueue.value = list
         Log.i("ISAI_PLAYER", "[YouTubePlayerController] Play Next inserted at $insertPos: '${song.title}', total=${list.size}")

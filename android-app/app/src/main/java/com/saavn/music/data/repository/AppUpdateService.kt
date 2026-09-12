@@ -17,7 +17,20 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.saavn.music.BuildConfig
 import com.saavn.music.R
 import com.saavn.music.data.model.AppUpdateModel
+import com.saavn.music.data.model.UserProfile
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
+import java.io.File
+import android.os.Environment
+import android.provider.Settings
+
+sealed class UpdateDownloadState {
+    object Idle : UpdateDownloadState()
+    data class Downloading(val progress: Float, val currentMb: String, val totalMb: String) : UpdateDownloadState()
+    data class ReadyToInstall(val apkFile: File) : UpdateDownloadState()
+    data class Error(val message: String) : UpdateDownloadState()
+}
 
 class AppUpdateService private constructor(private val context: Context) {
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance()
@@ -39,17 +52,55 @@ class AppUpdateService private constructor(private val context: Context) {
     }
 
     /**
-     * Checks if a new version is available on Firebase.
+     * Evaluates if the current user profile qualifies to receive this update based on targetMode:
+     * - "ALL" -> All users receive update
+     * - "TESTERS_ONLY" or "BETA" -> Only users with isTester = true, updateChannel = "BETA", or listed in targetEmails/targetUserIds
+     * - "SPECIFIC_USERS" -> Only users whose email or userId is explicitly listed in targetEmails/targetUserIds
+     */
+    fun isUserEligibleForUpdate(updateInfo: AppUpdateModel, user: UserProfile?): Boolean {
+        val mode = updateInfo.targetMode.uppercase().trim()
+        if (mode == "ALL" || mode.isBlank()) {
+            return true
+        }
+
+        val userEmail = user?.email?.trim()?.lowercase() ?: ""
+        val userId = user?.id?.trim() ?: ""
+        val emails = updateInfo.targetEmails.map { it.trim().lowercase() }
+        val ids = updateInfo.targetUserIds.map { it.trim() }
+
+        val isDirectlyTargeted = (userEmail.isNotBlank() && emails.contains(userEmail)) ||
+                (userId.isNotBlank() && ids.contains(userId))
+
+        if (mode == "SPECIFIC_USERS") {
+            return isDirectlyTargeted
+        }
+
+        if (mode == "TESTERS_ONLY" || mode == "BETA") {
+            val isTesterUser = user?.isTester == true || user?.updateChannel.equals("BETA", ignoreCase = true)
+            return isTesterUser || isDirectlyTargeted
+        }
+
+        return true
+    }
+
+    /**
+     * Checks if a new version is available on Firebase and eligible for this user.
      * Returns AppUpdateModel if an update is required or available, null otherwise.
      */
-    suspend fun checkForUpdate(): AppUpdateModel? {
+    suspend fun checkForUpdate(user: UserProfile? = null): AppUpdateModel? {
         return try {
             val updateInfo = fetchUpdateConfig() ?: return null
             val currentVersionCode = BuildConfig.VERSION_CODE
 
-            Log.d(TAG, "Current VersionCode: $currentVersionCode, Latest: ${updateInfo.latestVersionCode}")
+            Log.d(TAG, "Current VersionCode: $currentVersionCode, Latest: ${updateInfo.latestVersionCode}, Mode: ${updateInfo.targetMode}")
 
             if (updateInfo.latestVersionCode > currentVersionCode) {
+                // Check if user is eligible for targeted update
+                if (!isUserEligibleForUpdate(updateInfo, user)) {
+                    Log.d(TAG, "Update v${updateInfo.latestVersionName} available, but user is not in targeted group (${updateInfo.targetMode}). Skipping.")
+                    return null
+                }
+
                 // If current version is less than minRequiredVersionCode, force update
                 val isStrictlyForced = updateInfo.isForceUpdate || (currentVersionCode < updateInfo.minRequiredVersionCode)
                 val finalInfo = updateInfo.copy(isForceUpdate = isStrictlyForced)
@@ -83,6 +134,9 @@ class AppUpdateService private constructor(private val context: Context) {
                 val notes = (snapshot.get("releaseNotes") as? List<*>)?.mapNotNull { it?.toString() } ?: emptyList()
                 val downloadUrl = snapshot.getString("downloadUrl") ?: ""
                 val forceUpdate = snapshot.getBoolean("isForceUpdate") ?: false
+                val targetMode = snapshot.getString("targetMode") ?: "ALL"
+                val targetEmails = (snapshot.get("targetEmails") as? List<*>)?.mapNotNull { it?.toString() } ?: emptyList()
+                val targetUserIds = (snapshot.get("targetUserIds") as? List<*>)?.mapNotNull { it?.toString() } ?: emptyList()
 
                 return AppUpdateModel(
                     latestVersionCode = latestCode,
@@ -92,7 +146,10 @@ class AppUpdateService private constructor(private val context: Context) {
                     updateMessage = message,
                     releaseNotes = notes,
                     downloadUrl = downloadUrl,
-                    isForceUpdate = forceUpdate
+                    isForceUpdate = forceUpdate,
+                    targetMode = targetMode,
+                    targetEmails = targetEmails,
+                    targetUserIds = targetUserIds
                 )
             }
         } catch (e: Exception) {
@@ -111,6 +168,9 @@ class AppUpdateService private constructor(private val context: Context) {
                 val notes = (rtdbSnapshot.child("releaseNotes").value as? List<*>)?.mapNotNull { it?.toString() } ?: emptyList()
                 val downloadUrl = rtdbSnapshot.child("downloadUrl").value?.toString() ?: ""
                 val forceUpdate = rtdbSnapshot.child("isForceUpdate").value as? Boolean ?: false
+                val targetMode = rtdbSnapshot.child("targetMode").value?.toString() ?: "ALL"
+                val targetEmails = (rtdbSnapshot.child("targetEmails").value as? List<*>)?.mapNotNull { it?.toString() } ?: emptyList()
+                val targetUserIds = (rtdbSnapshot.child("targetUserIds").value as? List<*>)?.mapNotNull { it?.toString() } ?: emptyList()
 
                 return AppUpdateModel(
                     latestVersionCode = latestCode,
@@ -120,7 +180,10 @@ class AppUpdateService private constructor(private val context: Context) {
                     updateMessage = message,
                     releaseNotes = notes,
                     downloadUrl = downloadUrl,
-                    isForceUpdate = forceUpdate
+                    isForceUpdate = forceUpdate,
+                    targetMode = targetMode,
+                    targetEmails = targetEmails,
+                    targetUserIds = targetUserIds
                 )
             }
         } catch (e: Exception) {
@@ -131,13 +194,143 @@ class AppUpdateService private constructor(private val context: Context) {
     }
 
     /**
-     * Opens the download link or Play Store / browser to download the updated APK.
+     * Downloads the APK directly inside the app with live byte streaming progress,
+     * then immediately launches the Android package installer.
+     */
+    suspend fun downloadAndInstallApk(
+        context: Context,
+        rawUrl: String,
+        onStateChange: (UpdateDownloadState) -> Unit
+    ) = withContext(Dispatchers.IO) {
+        val targetUrl = when {
+            rawUrl.endsWith("/update") || rawUrl.isBlank() || rawUrl == "https://isaihub.web.app" -> "https://isaihub.web.app/isai.dat"
+            rawUrl.endsWith(".apk") || rawUrl.endsWith(".dat") -> rawUrl
+            else -> "https://isaihub.web.app/isai.dat"
+        }
+
+        try {
+            onStateChange(UpdateDownloadState.Downloading(0.02f, "0 MB", "..."))
+
+            val request = okhttp3.Request.Builder()
+                .url(targetUrl)
+                .addHeader("User-Agent", "ISAI-InApp-Updater")
+                .build()
+
+            val client = okhttp3.OkHttpClient.Builder()
+                .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(120, java.util.concurrent.TimeUnit.SECONDS)
+                .followRedirects(true)
+                .followSslRedirects(true)
+                .build()
+
+            val response = client.newCall(request).execute()
+            if (!response.isSuccessful) {
+                val err = "Download failed (HTTP ${response.code})"
+                Log.e(TAG, err)
+                onStateChange(UpdateDownloadState.Error(err))
+                return@withContext
+            }
+
+            val body = response.body
+            if (body == null) {
+                val err = "Empty server response"
+                Log.e(TAG, err)
+                onStateChange(UpdateDownloadState.Error(err))
+                return@withContext
+            }
+
+            val contentLength = body.contentLength()
+            val totalMbStr = if (contentLength > 0) String.format("%.1f MB", contentLength / (1024.0 * 1024.0)) else ""
+
+            val updateDir = File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.cacheDir, "updates")
+            if (!updateDir.exists()) updateDir.mkdirs()
+
+            val apkFile = File(updateDir, "isai_latest.apk")
+            if (apkFile.exists()) apkFile.delete()
+
+            body.byteStream().use { input ->
+                apkFile.outputStream().use { output ->
+                    val buffer = ByteArray(16 * 1024)
+                    var bytesRead: Long = 0
+                    var read: Int
+                    var lastReportedTime = System.currentTimeMillis()
+
+                    while (input.read(buffer).also { read = it } != -1) {
+                        output.write(buffer, 0, read)
+                        bytesRead += read
+
+                        val now = System.currentTimeMillis()
+                        if (now - lastReportedTime > 150 || bytesRead == contentLength) {
+                            lastReportedTime = now
+                            val progress = if (contentLength > 0) {
+                                (bytesRead.toFloat() / contentLength.toFloat()).coerceIn(0.05f, 0.99f)
+                            } else 0.5f
+
+                            val currentMbStr = String.format("%.1f MB", bytesRead / (1024.0 * 1024.0))
+                            onStateChange(UpdateDownloadState.Downloading(progress, currentMbStr, totalMbStr))
+                        }
+                    }
+                }
+            }
+
+            Log.i(TAG, "APK download finished successfully: ${apkFile.length()} bytes")
+            onStateChange(UpdateDownloadState.ReadyToInstall(apkFile))
+
+            withContext(Dispatchers.Main) {
+                installApk(context, apkFile)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "In-app update download error", e)
+            onStateChange(UpdateDownloadState.Error(e.localizedMessage ?: "Download failed. Please check internet connection."))
+        }
+    }
+
+    /**
+     * Prompts the Android Package Installer to install or update the app.
+     */
+    fun installApk(context: Context, apkFile: File) {
+        try {
+            if (!apkFile.exists() || apkFile.length() <= 0) {
+                Log.e(TAG, "Cannot install: APK file does not exist or is empty")
+                return
+            }
+
+            // Android 8.0+ Unknown Sources Permission Check
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                if (!context.packageManager.canRequestPackageInstalls()) {
+                    val settingsIntent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+                        data = Uri.parse("package:${context.packageName}")
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                    context.startActivity(settingsIntent)
+                    return
+                }
+            }
+
+            val apkUri = androidx.core.content.FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                apkFile
+            )
+
+            val installIntent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(apkUri, "application/vnd.android.package-archive")
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
+            }
+            context.startActivity(installIntent)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to launch package installer", e)
+            openUpdateUrl(context, "https://isaihub.web.app")
+        }
+    }
+
+    /**
+     * Fallback: Opens the download link or Play Store / browser.
      */
     fun openUpdateUrl(context: Context, downloadUrl: String) {
         val targetUrl = if (downloadUrl.isNotBlank()) {
             downloadUrl
         } else {
-            // Default to ISAI Web App or Play Store if not specified
             "https://isaihub.web.app"
         }
 
@@ -211,7 +404,7 @@ class AppUpdateService private constructor(private val context: Context) {
      * Attaches a Realtime Database listener so updates posted to Firebase
      * immediately trigger the in-app notification & dialog even while the app is active.
      */
-    fun listenForRealtimeUpdates(onUpdateDetected: (AppUpdateModel) -> Unit) {
+    fun listenForRealtimeUpdates(getUser: (() -> UserProfile?)? = null, onUpdateDetected: (AppUpdateModel) -> Unit) {
         val ref = rtdb.getReference("app_config/version")
         ref.addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
@@ -227,6 +420,9 @@ class AppUpdateService private constructor(private val context: Context) {
                     val notes = (snapshot.child("releaseNotes").value as? List<*>)?.mapNotNull { it?.toString() } ?: emptyList()
                     val downloadUrl = snapshot.child("downloadUrl").value?.toString() ?: ""
                     val forceUpdate = snapshot.child("isForceUpdate").value as? Boolean ?: false
+                    val targetMode = snapshot.child("targetMode").value?.toString() ?: "ALL"
+                    val targetEmails = (snapshot.child("targetEmails").value as? List<*>)?.mapNotNull { it?.toString() } ?: emptyList()
+                    val targetUserIds = (snapshot.child("targetUserIds").value as? List<*>)?.mapNotNull { it?.toString() } ?: emptyList()
 
                     val model = AppUpdateModel(
                         latestVersionCode = latestCode,
@@ -236,11 +432,19 @@ class AppUpdateService private constructor(private val context: Context) {
                         updateMessage = message,
                         releaseNotes = notes,
                         downloadUrl = downloadUrl,
-                        isForceUpdate = forceUpdate || (currentVersionCode < minCode)
+                        isForceUpdate = forceUpdate || (currentVersionCode < minCode),
+                        targetMode = targetMode,
+                        targetEmails = targetEmails,
+                        targetUserIds = targetUserIds
                     )
 
-                    showUpdateNotification(model)
-                    onUpdateDetected(model)
+                    val user = getUser?.invoke()
+                    if (isUserEligibleForUpdate(model, user)) {
+                        showUpdateNotification(model)
+                        onUpdateDetected(model)
+                    } else {
+                        Log.d(TAG, "Realtime update detected but user not in targeted group ($targetMode). Ignoring.")
+                    }
                 }
             }
 

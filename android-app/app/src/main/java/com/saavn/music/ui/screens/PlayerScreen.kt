@@ -48,6 +48,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -102,6 +103,7 @@ import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.listeners.You
 import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.views.YouTubePlayerView
 import com.saavn.music.ui.MainViewModel
 import com.saavn.music.ui.components.EqualizerBars
+import com.saavn.music.ui.components.NowPlayingNativeAdCard
 import com.saavn.music.ui.theme.DarkBackground
 import com.saavn.music.ui.theme.DarkSurfaceElevated
 import com.saavn.music.ui.theme.DarkSurfaceGlass
@@ -138,6 +140,7 @@ fun PlayerScreen(
     val localVolume by viewModel.ytPlayerController.volume.collectAsState()
     val isShuffle by viewModel.ytPlayerController.isShuffle.collectAsState()
     val isRepeat by viewModel.ytPlayerController.isRepeat.collectAsState()
+    val userProfile by viewModel.userProfile.collectAsState()
 
     val syncState by viewModel.isaiConnectManager.playbackState.collectAsState()
     val isSeparateMode by viewModel.isMultiDevicePlaybackSeparate.collectAsState()
@@ -178,6 +181,8 @@ fun PlayerScreen(
 
     var showQueueSheet by remember { mutableStateOf(false) }
     var showConnectSheet by remember { mutableStateOf(false) }
+    var showListenTogetherSheet by remember { mutableStateOf(false) }
+    val currentRoom by viewModel.listenTogetherManager.currentRoom.collectAsState()
     var showMoreMenu by remember { mutableStateOf(false) }
     var showLyricsSheet by remember { mutableStateOf(false) }
     var isDraggingSlider by remember { mutableStateOf(false) }
@@ -375,6 +380,32 @@ fun PlayerScreen(
                         )
                     }
 
+                    // Listen Together Button
+                    val isRoomActive = currentRoom != null
+                    IconButton(
+                        onClick = { showListenTogetherSheet = true },
+                        modifier = Modifier
+                            .size(42.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (isRoomActive) com.saavn.music.ui.theme.IsaiLime.copy(alpha = 0.2f)
+                                else DarkSurfaceGlass
+                            )
+                            .border(
+                                1.dp,
+                                if (isRoomActive) com.saavn.music.ui.theme.IsaiLime
+                                else GlassBorderSubtle,
+                                CircleShape
+                            )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CloudSync,
+                            contentDescription = "Listen Together",
+                            tint = if (isRoomActive) com.saavn.music.ui.theme.IsaiLime else TextPrimary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+
                     // ⋮ More Options Menu
                     Box {
                         IconButton(
@@ -421,6 +452,14 @@ fun PlayerScreen(
                     }
                 }
             }
+
+            // Clearly identifiable AdMob Native Ad placement above Artwork (FREE users only, collapses on fail)
+            NowPlayingNativeAdCard(
+                userProfile = userProfile,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 2.dp)
+            )
 
             // Visual Showcase Center Area - Hero Album Cover Card
             Box(
@@ -1296,6 +1335,14 @@ fun PlayerScreen(
             connectManager = viewModel.isaiConnectManager,
             viewModel = viewModel,
             onDismissRequest = { showConnectSheet = false }
+        )
+    }
+
+    if (showListenTogetherSheet) {
+        com.saavn.music.ui.components.ListenTogetherBottomSheet(
+            listenManager = viewModel.listenTogetherManager,
+            currentSong = currentSong,
+            onDismissRequest = { showListenTogetherSheet = false }
         )
     }
 }

@@ -2,6 +2,7 @@ import { serve } from '@hono/node-server'
 import { AlbumController, ArtistController, SearchController, SongController } from '#modules/index'
 import { PlaylistController } from '#modules/playlists/controllers'
 import { YouTubeController } from './modules/youtube/controllers'
+import { PaymentController } from './modules/payments/controllers'
 import { App } from './app'
 
 const app = new App([
@@ -10,7 +11,8 @@ const app = new App([
   new AlbumController(),
   new ArtistController(),
   new PlaylistController(),
-  new YouTubeController()
+  new YouTubeController(),
+  new PaymentController()
 ]).getApp()
 
 const port = Number(process.env.PORT) || 3000

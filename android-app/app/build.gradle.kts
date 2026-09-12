@@ -23,8 +23,8 @@ android {
         applicationId = "com.company.isai"
         minSdk = 26
         targetSdk = 34
-        versionCode = 5
-        versionName = "1.3.1"
+        versionCode = 7
+        versionName = "1.3.3"
 
         buildConfigField("String", "YOUTUBE_API_KEY", "\"$youtubeApiKey\"")
 
@@ -119,6 +119,12 @@ dependencies {
     implementation("com.google.firebase:firebase-analytics")
     implementation("com.google.firebase:firebase-database-ktx")
     implementation("com.google.firebase:firebase-messaging-ktx")
+
+    // Google AdMob (Mobile Ads SDK)
+    implementation("com.google.android.gms:play-services-ads:23.3.0")
+
+    // Razorpay Android Standard Checkout SDK
+    implementation("com.razorpay:checkout:1.6.38")
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")

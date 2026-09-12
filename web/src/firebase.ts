@@ -14,7 +14,7 @@ import {
   onAuthStateChanged
 } from 'firebase/auth'
 import { getFirestore, doc, setDoc } from 'firebase/firestore'
-import { getDatabase } from 'firebase/database'
+import { getDatabase, ref as rtdbRef, onValue as rtdbOnValue, off as rtdbOff } from 'firebase/database'
 import { getStorage } from 'firebase/storage'
 
 // Official Firebase configuration for ISAI Music (Project: isai-49b51)
@@ -225,5 +225,25 @@ function mapFirebaseError(err: any): string {
 }
 
 export { onAuthStateChanged }
+
+/**
+ * Real-time listener for user subscription from Firebase RTDB.
+ * Syncs multi-device Premium status between Android app & Web seamlessly.
+ */
+export function subscribeToSubscription(userId: string, onUpdate: (data: any) => void): () => void {
+  if (!userId) return () => {}
+  try {
+    const subRef = rtdbRef(rtdb, `subscriptions/${encodeURIComponent(userId)}`)
+    rtdbOnValue(subRef, (snapshot) => {
+      if (snapshot.exists()) {
+        onUpdate(snapshot.val())
+      }
+    })
+    return () => rtdbOff(subRef)
+  } catch (err) {
+    console.warn('[Firebase RTDB] Subscription listen warning:', err)
+    return () => {}
+  }
+}
 
 

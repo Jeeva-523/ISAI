@@ -8,9 +8,10 @@ import { buildRelevantQueue, getRelevantSearchQuery, scoreSongRelevance } from '
 import { SmartSearchEngine } from '@shared/services/smartSearchEngine'
 
 import { LanguageSelectionModal } from './components/LanguageSelectionModal'
+import { PlanSelectionModal } from './components/PlanSelectionModal'
 
 import { WebPlayer } from './components/WebPlayer'
-import { logoutFirebaseUser } from './firebase'
+import { logoutFirebaseUser, subscribeToSubscription } from './firebase'
 import { type UserProfile } from './components/LoginModal'
 import { MainLayout, type PageTab } from './layouts/MainLayout'
 import { HomePage } from './pages/HomePage'
@@ -26,6 +27,7 @@ import { PlaylistModal } from './components/PlaylistModal'
 import { Toast, type ToastMessage } from './components/Toast'
 import { type Artist } from './components/ArtistCard'
 import { IsaiConnectService, PlaybackStateSync, DeviceInfo } from './services/IsaiConnectService'
+import { ListenTogetherService } from './services/ListenTogetherService'
 
 // Curated fallback songs with direct 320kbps audio streams
 const INITIAL_CURATED_SONGS: Song[] = [
@@ -146,10 +148,12 @@ export function App() {
   const [songToAddToPlaylist, setSongToAddToPlaylist] = useState<Song | null>(null)
   const [toast, setToast] = useState<ToastMessage | null>(null)
   const [showLanguageModal, setShowLanguageModal] = useState(false)
+  const [showPlanModal, setShowPlanModal] = useState(false)
 
   // Isai Connect Sync state
   const [remotePlaybackState, setRemotePlaybackState] = useState<PlaybackStateSync | null>(null)
   const [connectedDevices, setConnectedDevices] = useState<DeviceInfo[]>([])
+  const [isSeparatePlayback, setIsSeparatePlayback] = useState<boolean>(() => storageService.isMultiDevicePlaybackSeparate())
   const myDeviceId = IsaiConnectService.getMyDeviceId()
 
   const searchTimerRef = useRef<number | null>(null)
@@ -169,6 +173,22 @@ export function App() {
     if (path === '/update' || path.startsWith('/update') || window.location.search.includes('action=update')) {
       setIsUpdateView(true)
     }
+
+    const searchParams = new URLSearchParams(window.location.search)
+    const roomParam = searchParams.get('room')
+    let roomCodeToJoin = roomParam
+    if (!roomCodeToJoin && path.startsWith('/room/')) {
+      roomCodeToJoin = path.replace('/room/', '').trim()
+    }
+    if (roomCodeToJoin) {
+      ListenTogetherService.joinRoom(roomCodeToJoin)
+        .then((joined) => {
+          showToast(`Joined Room: ${joined.roomCode} 🎧`, 'success')
+        })
+        .catch((err) => {
+          showToast(err.message || 'Unable to join room.', 'error')
+        })
+    }
   }, [])
 
   // Ref to handlePlaySong to avoid circular useEffect dependencies
@@ -178,6 +198,7 @@ export function App() {
 
   // Initialize ISAI Connect service
   useEffect(() => {
+    if (!user) return
     const activeUserId = user.email || 'user_guest'
     IsaiConnectService.initialize(activeUserId, user.name)
 
@@ -187,6 +208,10 @@ export function App() {
 
     const unsubState = IsaiConnectService.subscribePlaybackState((state) => {
       setRemotePlaybackState(state)
+      // In separate multi-device mode, never hijack or auto-play transferred state
+      if (storageService.isMultiDevicePlaybackSeparate()) {
+        return
+      }
       // When another device transfers playback to this Web instance
       if (state && state.currentDeviceId === myDeviceId && state.updatedByDeviceId && state.updatedByDeviceId !== myDeviceId) {
         if (state.currentTitle) {
@@ -216,10 +241,18 @@ export function App() {
         })
         loadTrending(prefs.preferredLanguages)
       }
+      if (typeof prefs.isMultiDevicePlaybackSeparate === 'boolean') {
+        storageService.setMultiDevicePlaybackSeparate(prefs.isMultiDevicePlaybackSeparate)
+        setIsSeparatePlayback(prefs.isMultiDevicePlaybackSeparate)
+      }
     })
 
     const unsubCmd = IsaiConnectService.subscribeCommands((cmd) => {
       if (cmd.issuedByDeviceId === myDeviceId) return
+      // In separate multi-device mode, only accept commands explicitly targeted to this device
+      if (storageService.isMultiDevicePlaybackSeparate() && (!cmd.targetDeviceId || cmd.targetDeviceId !== myDeviceId)) {
+        return
+      }
       const isTargetedToMe = !cmd.targetDeviceId ||
         cmd.targetDeviceId === myDeviceId ||
         cmd.targetDeviceId.includes('web') ||
@@ -263,8 +296,11 @@ export function App() {
 
         if (targetSong) {
           setPlaybackQueue(prev => {
-            if (prev.some(s => s.videoId === targetSong.videoId)) return prev
-            const updated = [...prev, targetSong]
+            const filtered = prev.filter(s => s.videoId !== targetSong.videoId)
+            const curIdx = currentPlayingSong ? filtered.findIndex(s => s.videoId === currentPlayingSong.videoId) : -1
+            const insertIdx = curIdx >= 0 ? curIdx + 1 : (currentQueueIndex >= 0 ? currentQueueIndex + 1 : 0)
+            const updated = [...filtered]
+            updated.splice(insertIdx, 0, targetSong)
             IsaiConnectService.updatePlaybackState({
               queue: updated.map(item => ({
                 id: item.videoId,
@@ -275,7 +311,7 @@ export function App() {
             })
             return updated
           })
-          showToast(`Added "${targetSong.title.slice(0, 20)}..." to Queue 🎵`)
+          showToast(`Added "${targetSong.title.slice(0, 20)}..." next in Queue 🎵`)
         }
       } else if (cmd.action === 'PLAY_NEXT_IN_QUEUE') {
         const s = cmd.song as any
@@ -341,6 +377,26 @@ export function App() {
       }
     })
 
+    // Real-time synchronization of Razorpay verified Premium subscription from RTDB
+    const unsubSub = subscribeToSubscription(activeUserId, (subData) => {
+      if (subData) {
+        const isPrem = subData.subscription_status === 'PREMIUM' &&
+          (!subData.subscription_expiry || Date.now() <= subData.subscription_expiry)
+        setUser((prev) => {
+          if (prev.isPremium !== isPrem || (isPrem && prev.selectedPlan !== subData.plan_type)) {
+            const updated = {
+              ...prev,
+              isPremium: isPrem,
+              selectedPlan: isPrem ? (subData.plan_type || 'PREMIUM') : 'FREE'
+            }
+            storageService.setUserProfile(updated)
+            return updated
+          }
+          return prev
+        })
+      }
+    })
+
     return () => {
       unsubDevices()
       unsubState()
@@ -348,6 +404,7 @@ export function App() {
       unsubCmd()
       unsubHome()
       unsubFavs()
+      unsubSub()
     }
   }, [user.email])
 
@@ -402,7 +459,8 @@ export function App() {
       name: newUser.name || user.name || 'JEEVA ⚡',
       email: newUser.email || user.email || 'kongujeeva523@gmail.com',
       avatar: newUser.avatar || (newUser.name ? newUser.name.charAt(0).toUpperCase() : 'J'),
-      isPremium: true,
+      isPremium: newUser.isPremium ?? user.isPremium ?? false,
+      selectedPlan: newUser.selectedPlan || user.selectedPlan || 'FREE',
       preferredLanguages: newUser.preferredLanguages || user.preferredLanguages || ['tamil']
     }
     setUser(updatedUser)
@@ -412,6 +470,25 @@ export function App() {
     }
     loadTrending(updatedUser.preferredLanguages)
     showToast(`Welcome back, ${updatedUser.name}!`)
+    // Ask user which plan they choose right after login
+    setShowPlanModal(true)
+  }
+
+  const handlePlanSelect = (plan: 'FREE' | 'PREMIUM') => {
+    const isPrem = plan === 'PREMIUM'
+    const updatedUser: UserProfile = {
+      ...user,
+      isPremium: isPrem,
+      selectedPlan: plan
+    }
+    setUser(updatedUser)
+    storageService.setUserProfile(updatedUser)
+    setShowPlanModal(false)
+    showToast(
+      isPrem
+        ? '💎 ISAI Premium activated! Enjoy High Quality Audio, Multi-Sync & more!'
+        : '🆓 ISAI Free selected! Enjoy unlimited music streaming!'
+    )
   }
 
   const handleLogout = async () => {
@@ -505,15 +582,17 @@ export function App() {
           const toAdd = newSongs.filter(item => !prevIds.has(item.videoId) && !isSameSongOrDuplicate(seedSong, item))
           if (toAdd.length === 0) return prevQueue
           const updated = deduplicateSongs([...prevQueue, ...toAdd])
-          IsaiConnectService.updatePlaybackState({
-            queue: updated.map(item => ({
-              id: item.videoId,
-              title: item.title,
-              artist: item.channelTitle,
-              artwork: item.thumbnailUrl,
-              audioUrl: item.audioUrl || ''
-            }))
-          })
+          if (!storageService.isMultiDevicePlaybackSeparate()) {
+            IsaiConnectService.updatePlaybackState({
+              queue: updated.map(item => ({
+                id: item.videoId,
+                title: item.title,
+                artist: item.channelTitle,
+                artwork: item.thumbnailUrl,
+                audioUrl: item.audioUrl || ''
+              }))
+            })
+          }
           return updated
         })
       }
@@ -654,7 +733,7 @@ export function App() {
   }
 
   const handleNextSong = async () => {
-    const isRemoteActive = Boolean(
+    const isRemoteActive = !isSeparatePlayback && Boolean(
       remotePlaybackState &&
       remotePlaybackState.currentDeviceId &&
       remotePlaybackState.currentDeviceId !== myDeviceId &&
@@ -682,7 +761,7 @@ export function App() {
   }
 
   const handlePrevSong = () => {
-    const isRemoteActive = Boolean(
+    const isRemoteActive = !isSeparatePlayback && Boolean(
       remotePlaybackState &&
       remotePlaybackState.currentDeviceId &&
       remotePlaybackState.currentDeviceId !== myDeviceId &&
@@ -734,11 +813,11 @@ export function App() {
     }
 
     setPlaybackQueue((prev) => {
-      if (prev.some((s) => s.videoId === song.videoId)) {
-        showToast('Song already in queue ℹ️', 'info')
-        return prev
-      }
-      const updated = [...prev, song]
+      const filtered = prev.filter((s) => s.videoId !== song.videoId)
+      const curIdx = currentPlayingSong ? filtered.findIndex(item => item.videoId === currentPlayingSong.videoId) : -1
+      const insertIdx = curIdx >= 0 ? curIdx + 1 : (currentQueueIndex >= 0 ? currentQueueIndex + 1 : 0)
+      const updated = [...filtered]
+      updated.splice(insertIdx, 0, song)
       IsaiConnectService.updatePlaybackState({
         queue: updated.map(item => ({
           id: item.videoId,
@@ -748,7 +827,7 @@ export function App() {
           audioUrl: item.audioUrl || ''
         }))
       })
-      showToast(`Added to Queue 🎵`)
+      showToast(`Added "${song.title.slice(0, 20)}..." next in Queue 🎵`)
       return updated
     })
   }
@@ -1015,6 +1094,7 @@ export function App() {
           playlistsCount={userPlaylists.length}
           onUpdateProfile={handleUpdateProfile}
           onOpenLanguageModal={() => setShowLanguageModal(true)}
+          onOpenPlanModal={() => setShowPlanModal(true)}
           onNavigateToLogin={() => setCurrentTab('login')}
           onLogout={handleLogout}
           onNavigateHome={() => setCurrentTab('home')}
@@ -1099,21 +1179,9 @@ export function App() {
         onSelectQueueItem={(s) => handlePlaySong(s, playbackQueue.length > 0 ? playbackQueue : trendingSongs)}
         onReorderQueue={(newQueue) => {
           setPlaybackQueue(newQueue)
-          IsaiConnectService.updatePlaybackState({
-            queue: newQueue.map(item => ({
-              id: item.videoId,
-              title: item.title,
-              artist: item.channelTitle,
-              artwork: item.thumbnailUrl,
-              audioUrl: item.audioUrl || ''
-            }))
-          })
-        }}
-        onRemoveQueueItem={(indexToRemove) => {
-          setPlaybackQueue((prev) => {
-            const updated = prev.filter((_, i) => i !== indexToRemove)
+          if (!storageService.isMultiDevicePlaybackSeparate()) {
             IsaiConnectService.updatePlaybackState({
-              queue: updated.map(item => ({
+              queue: newQueue.map(item => ({
                 id: item.videoId,
                 title: item.title,
                 artist: item.channelTitle,
@@ -1121,23 +1189,43 @@ export function App() {
                 audioUrl: item.audioUrl || ''
               }))
             })
+          }
+        }}
+        onRemoveQueueItem={(indexToRemove) => {
+          setPlaybackQueue((prev) => {
+            const updated = prev.filter((_, i) => i !== indexToRemove)
+            if (!storageService.isMultiDevicePlaybackSeparate()) {
+              IsaiConnectService.updatePlaybackState({
+                queue: updated.map(item => ({
+                  id: item.videoId,
+                  title: item.title,
+                  artist: item.channelTitle,
+                  artwork: item.thumbnailUrl,
+                  audioUrl: item.audioUrl || ''
+                }))
+              })
+            }
             return updated
           })
         }}
         onClearQueue={() => {
           if (currentPlayingSong) {
             setPlaybackQueue([currentPlayingSong])
-            IsaiConnectService.updatePlaybackState({
-              queue: [{
-                id: currentPlayingSong.videoId,
-                title: currentPlayingSong.title,
-                artist: currentPlayingSong.channelTitle,
-                artwork: currentPlayingSong.thumbnailUrl
-              }]
-            })
+            if (!storageService.isMultiDevicePlaybackSeparate()) {
+              IsaiConnectService.updatePlaybackState({
+                queue: [{
+                  id: currentPlayingSong.videoId,
+                  title: currentPlayingSong.title,
+                  artist: currentPlayingSong.channelTitle,
+                  artwork: currentPlayingSong.thumbnailUrl
+                }]
+              })
+            }
           } else {
             setPlaybackQueue([])
-            IsaiConnectService.updatePlaybackState({ queue: [] })
+            if (!storageService.isMultiDevicePlaybackSeparate()) {
+              IsaiConnectService.updatePlaybackState({ queue: [] })
+            }
           }
           showToast('Queue cleared 🗑️')
         }}
@@ -1155,6 +1243,15 @@ export function App() {
             showToast(`Music language updated to ${selected.join(', ')}!`, 'success')
           }}
           onClose={() => setShowLanguageModal(false)}
+        />
+      )}
+
+      {showPlanModal && (
+        <PlanSelectionModal
+          isOpen={showPlanModal}
+          currentPlan={(user.selectedPlan as 'FREE' | 'PREMIUM') || (user.isPremium ? 'PREMIUM' : 'FREE')}
+          onSelectPlan={handlePlanSelect}
+          onClose={() => setShowPlanModal(false)}
         />
       )}
     </MainLayout>

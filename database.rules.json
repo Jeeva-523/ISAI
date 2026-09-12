@@ -4,9 +4,17 @@
       ".read": true,
       ".write": true
     },
+    "rooms": {
+      ".read": true,
+      ".write": true
+    },
     "app_config": {
       ".read": true,
       ".write": false
+    },
+    "subscriptions": {
+      ".read": true,
+      ".write": true
     }
   }
 }

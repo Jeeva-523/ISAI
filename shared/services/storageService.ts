@@ -10,6 +10,7 @@ export interface UserProfileData {
   email: string
   avatar: string
   isPremium: boolean
+  selectedPlan?: string
   preferredLanguages?: string[]
 }
 
@@ -175,9 +176,9 @@ export class LocalMusicStorageService {
   }
 
   isMultiDevicePlaybackSeparate(): boolean {
-    if (typeof window === 'undefined' || !window.localStorage) return true
+    if (typeof window === 'undefined' || !window.localStorage) return false
     const val = localStorage.getItem('isai_multi_device_separate')
-    return val === null ? true : val === 'true'
+    return val === 'true'
   }
 
   setMultiDevicePlaybackSeparate(enabled: boolean) {

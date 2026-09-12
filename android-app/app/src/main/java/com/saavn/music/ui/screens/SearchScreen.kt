@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.saavn.music.ui.AppScreen
 import com.saavn.music.ui.MainViewModel
+import com.saavn.music.ui.components.SongListNativeAdItem
 import com.saavn.music.ui.theme.DarkBackground
 import com.saavn.music.ui.theme.DarkSurfaceGlass
 import com.saavn.music.ui.theme.DarkSurfaceVariant
@@ -77,6 +78,18 @@ fun SearchScreen(
     val currentSong by viewModel.ytPlayerController.currentSong.collectAsState()
     val isPlaying by viewModel.ytPlayerController.isPlaying.collectAsState()
     val selectedLang by viewModel.searchLanguageFilter.collectAsState()
+    val userProfile by viewModel.userProfile.collectAsState()
+
+    val syncState by viewModel.isaiConnectManager.playbackState.collectAsState()
+    val isSeparateMode by viewModel.isMultiDevicePlaybackSeparate.collectAsState()
+    val isMyDeviceActive = if (isSeparateMode) true else viewModel.isaiConnectManager.isMyDeviceActive()
+    val isRemoteActive = !isSeparateMode && !isMyDeviceActive && syncState != null &&
+        syncState!!.currentDeviceId.isNotBlank() &&
+        !syncState!!.currentTitle.isNullOrBlank() &&
+        (syncState!!.isPlaying || Math.abs(System.currentTimeMillis() - syncState!!.updatedAt) < 15 * 60_000L)
+
+    val effectivePlayingId = if (isRemoteActive) syncState?.currentSongId else currentSong?.videoId
+    val effectiveIsPlaying = if (isRemoteActive) (syncState?.isPlaying == true) else isPlaying
 
     val languages = listOf("All", "Tamil", "Hindi", "English", "Telugu", "Malayalam", "Punjabi", "Kannada")
 
@@ -390,13 +403,13 @@ fun SearchScreen(
                 }
 
                 itemsIndexed(results) { index, song ->
-                        val isThisPlaying = (currentSong?.videoId == song.videoId)
+                        val isThisPlaying = (effectivePlayingId == song.videoId)
                         val isFav = viewModel.isFavorite(song.videoId)
                         YouTubeSongRowItem(
                             index = index + 1,
                             song = song,
                             isCurrent = isThisPlaying,
-                            isPlaying = isThisPlaying && isPlaying,
+                            isPlaying = isThisPlaying && effectiveIsPlaying,
                             onClick = { viewModel.playSong(song) },
                             onPlayPauseClick = {
                                 if (isThisPlaying) {
@@ -411,6 +424,15 @@ fun SearchScreen(
                             onAddToQueue = { viewModel.addToQueue(song) },
                             onPlayNext = { viewModel.playNextInQueue(song) }
                         )
+
+                        // AdMob Native Ad after every 5 songs (FREE users only, collapse on fail)
+                        if ((index + 1) % 5 == 0) {
+                            SongListNativeAdItem(
+                                userProfile = userProfile,
+                                slotIndex = (index + 1) / 5,
+                                modifier = Modifier.padding(vertical = 4.dp)
+                            )
+                        }
                     }
                 }
         } else {

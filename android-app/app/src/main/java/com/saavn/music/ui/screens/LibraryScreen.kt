@@ -60,6 +60,8 @@ import coil.compose.AsyncImage
 import com.saavn.music.data.local.UserPlaylist
 import com.saavn.music.data.model.YouTubeSong
 import com.saavn.music.ui.MainViewModel
+import com.saavn.music.ui.components.SongListNativeAdItem
+import com.saavn.music.ui.components.PlaylistNativeAdCard
 import com.saavn.music.ui.theme.DarkBackground
 import com.saavn.music.ui.theme.DarkBorder
 import com.saavn.music.ui.theme.DarkSurface
@@ -91,6 +93,7 @@ fun LibraryScreen(
     val playlists by viewModel.playlists.collectAsState()
     val recentlyPlayed by viewModel.recentlyPlayed.collectAsState()
     val localDeviceSongs by viewModel.localStorage.localDeviceSongs.collectAsState()
+    val userProfile by viewModel.userProfile.collectAsState()
 
     var showCreatePlaylistDialog by remember { mutableStateOf(false) }
     var selectedPlaylistForView by remember { mutableStateOf<UserPlaylist?>(null) }
@@ -223,6 +226,15 @@ fun LibraryScreen(
                                 onAddToQueue = { viewModel.addToQueue(song) },
                                 onPlayNext = { viewModel.playNextInQueue(song) }
                             )
+
+                            // AdMob Native Ad after every 5 songs (FREE users only)
+                            if ((index + 1) % 5 == 0) {
+                                SongListNativeAdItem(
+                                    userProfile = userProfile,
+                                    slotIndex = 200 + ((index + 1) / 5),
+                                    modifier = Modifier.padding(vertical = 4.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -284,6 +296,15 @@ fun LibraryScreen(
                                         onAddToQueue = { viewModel.addToQueue(song) },
                                         onPlayNext = { viewModel.playNextInQueue(song) }
                                     )
+
+                                    // AdMob Native Ad in Playlist page (FREE users only, after first group / every 5 songs)
+                                    if ((index + 1) == 3 || ((index + 1) > 3 && (index + 1) % 5 == 0)) {
+                                        PlaylistNativeAdCard(
+                                            userProfile = userProfile,
+                                            playlistId = "${activeViewPlaylist.id}_${index + 1}",
+                                            modifier = Modifier.padding(vertical = 6.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -337,6 +358,15 @@ fun LibraryScreen(
                                 onAddToQueue = { viewModel.addToQueue(song) },
                                 onPlayNext = { viewModel.playNextInQueue(song) }
                             )
+
+                            // AdMob Native Ad after every 5 songs
+                            if ((index + 1) % 5 == 0) {
+                                SongListNativeAdItem(
+                                    userProfile = userProfile,
+                                    slotIndex = 400 + ((index + 1) / 5),
+                                    modifier = Modifier.padding(vertical = 4.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -383,6 +413,15 @@ fun LibraryScreen(
                                 onAddToQueue = { viewModel.addToQueue(song) },
                                 onPlayNext = { viewModel.playNextInQueue(song) }
                             )
+
+                            // AdMob Native Ad after every 5 songs
+                            if ((index + 1) % 5 == 0) {
+                                SongListNativeAdItem(
+                                    userProfile = userProfile,
+                                    slotIndex = 500 + ((index + 1) / 5),
+                                    modifier = Modifier.padding(vertical = 4.dp)
+                                )
+                            }
                         }
                     }
                 }

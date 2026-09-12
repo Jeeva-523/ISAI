@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import type { Song } from '@shared/models/song'
+import { storageService } from '@shared/services/storageService'
 import { IsaiConnectService, DeviceInfo, PlaybackStateSync } from '../services/IsaiConnectService'
 
 interface IsaiConnectModalProps {
@@ -21,15 +22,23 @@ export const IsaiConnectModal: React.FC<IsaiConnectModalProps> = ({
 }) => {
   const [devices, setDevices] = useState<DeviceInfo[]>([])
   const [playbackState, setPlaybackState] = useState<PlaybackStateSync | null>(null)
+  const [isSeparateMode, setIsSeparateMode] = useState<boolean>(() => storageService.isMultiDevicePlaybackSeparate())
   const myDeviceId = IsaiConnectService.getMyDeviceId()
 
   useEffect(() => {
     if (!isOpen) return
     const unsubDevices = IsaiConnectService.subscribeDevices(setDevices)
     const unsubState = IsaiConnectService.subscribePlaybackState(setPlaybackState)
+    const unsubPrefs = IsaiConnectService.subscribePreferences((prefs) => {
+      if (typeof prefs.isMultiDevicePlaybackSeparate === 'boolean') {
+        setIsSeparateMode(prefs.isMultiDevicePlaybackSeparate)
+        storageService.setMultiDevicePlaybackSeparate(prefs.isMultiDevicePlaybackSeparate)
+      }
+    })
     return () => {
       unsubDevices()
       unsubState()
+      unsubPrefs()
     }
   }, [isOpen])
 
@@ -136,6 +145,62 @@ export const IsaiConnectModal: React.FC<IsaiConnectModalProps> = ({
             cursor: 'pointer',
             padding: '4px'
           }}>✕</button>
+        </div>
+
+        {/* Multi-Device Playback Mode Toggle Switch */}
+        <div style={{
+          backgroundColor: '#0B0B0F',
+          borderRadius: '16px',
+          padding: '14px 16px',
+          border: isSeparateMode ? '1px solid rgba(16, 185, 129, 0.5)' : '1px solid rgba(6, 182, 212, 0.35)',
+          marginBottom: '16px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          cursor: 'pointer'
+        }} onClick={() => {
+          const next = !isSeparateMode
+          setIsSeparateMode(next)
+          storageService.setMultiDevicePlaybackSeparate(next)
+          IsaiConnectService.setMultiDevicePlaybackSeparate(next)
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <span style={{ fontSize: '20px' }}>🎧</span>
+            <div>
+              <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#FFFFFF' }}>
+                Multi-Device Separate Playback
+              </div>
+              <div style={{ fontSize: '11.5px', color: isSeparateMode ? '#10B981' : '#9CA3AF', marginTop: '2px' }}>
+                {isSeparateMode
+                  ? 'Active: Web and Phone play different songs simultaneously'
+                  : 'Sync Mode: Single device handoff (Spotify Connect)'}
+              </div>
+            </div>
+          </div>
+          <div
+            style={{
+              width: '44px',
+              height: '24px',
+              borderRadius: '12px',
+              backgroundColor: isSeparateMode ? '#10B981' : '#374151',
+              position: 'relative',
+              transition: 'background-color 0.2s',
+              flexShrink: 0
+            }}
+          >
+            <div
+              style={{
+                width: '18px',
+                height: '18px',
+                borderRadius: '50%',
+                backgroundColor: '#FFFFFF',
+                position: 'absolute',
+                top: '3px',
+                left: isSeparateMode ? '23px' : '3px',
+                transition: 'left 0.2s'
+              }}
+            />
+          </div>
         </div>
 
         {/* Current Active Device Status Banner */}

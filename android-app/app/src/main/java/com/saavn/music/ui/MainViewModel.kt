@@ -39,6 +39,7 @@ import com.saavn.music.data.search.IsaiKeywordDictionary
 import com.saavn.music.data.trending.TrendingService
 import com.saavn.music.util.RelevanceEngine
 import com.saavn.music.util.SongMood
+import com.saavn.music.data.repository.UpdateDownloadState
 
 enum class AppScreen {
     HOME,
@@ -63,6 +64,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val ytRepo = YouTubeMusicRepository()
     val ytPlayerController = YouTubePlayerController.initialize(application.applicationContext, localStorage)
     val isaiConnectManager = com.saavn.music.connect.IsaiConnectManager(application.applicationContext)
+    val listenTogetherManager = com.saavn.music.connect.ListenTogetherManager.getInstance(application.applicationContext, ytPlayerController)
 
     // Firebase & Discovery Services
     val analyticsService = AnalyticsService.getInstance(application.applicationContext)
@@ -76,8 +78,161 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // User Authentication Profile
     val userProfile: StateFlow<UserProfile?> = localStorage.userProfile
 
+    // Subscription & Payment Management
+    val subscriptionRepo = com.saavn.music.payment.SubscriptionRepository(application.applicationContext, localStorage)
+    private val _isPaymentLoading = MutableStateFlow(false)
+    val isPaymentLoading: StateFlow<Boolean> = _isPaymentLoading.asStateFlow()
+    private val _paymentMessage = MutableStateFlow<String?>(null)
+    val paymentMessage: StateFlow<String?> = _paymentMessage.asStateFlow()
+    private var pendingPlanType: String = "MONTHLY"
+
     private val _showLoginDialog = MutableStateFlow(false)
     val showLoginDialog: StateFlow<Boolean> = _showLoginDialog.asStateFlow()
+
+    private val _showPlanSelectionDialog = MutableStateFlow(false)
+    val showPlanSelectionDialog: StateFlow<Boolean> = _showPlanSelectionDialog.asStateFlow()
+
+    fun openPlanSelectionDialog() {
+        _showPlanSelectionDialog.value = true
+    }
+
+    fun closePlanSelectionDialog() {
+        _showPlanSelectionDialog.value = false
+    }
+
+    fun selectUserPlan(plan: String) {
+        val isPrem = plan.equals("PREMIUM", ignoreCase = true)
+        val current = localStorage.userProfile.value ?: UserProfile(
+            id = authService.getCurrentUserId(),
+            displayName = authService.getCurrentUser()?.displayName ?: "ISAI Listener",
+            email = authService.getCurrentUser()?.email ?: "user@isaimusic.com",
+            isLoggedIn = true
+        )
+        val updated = current.copy(
+            isLoggedIn = true,
+            isPremium = isPrem,
+            selectedPlan = plan
+        )
+        localStorage.saveUserProfile(updated)
+        closePlanSelectionDialog()
+
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            val msg = if (isPrem) "👑 Welcome to ISAI Premium! VIP features unlocked." else "🎵 Welcome to ISAI Free! Unlimited ad-free listening."
+            android.widget.Toast.makeText(getApplication(), msg, android.widget.Toast.LENGTH_SHORT).show()
+        }
+
+        if (updated.preferredLanguages.isEmpty()) {
+            openLanguageDialog()
+        } else {
+            _preferredLanguages.value = updated.preferredLanguages
+            isaiConnectManager.syncPreferences(updated.preferredLanguages)
+            loadHomeData()
+        }
+    }
+
+    fun initiateSubscription(activity: android.app.Activity, planType: String) {
+        val user = userProfile.value
+        val userId = user?.id?.ifBlank { null } ?: authService.getCurrentUserId().ifBlank { "user_${System.currentTimeMillis()}" }
+        val email = user?.email?.ifBlank { null } ?: authService.getCurrentUser()?.email ?: "user@isaimusic.com"
+        val name = user?.displayName?.ifBlank { null } ?: authService.getCurrentUser()?.displayName ?: "ISAI Listener"
+
+        pendingPlanType = planType
+        _isPaymentLoading.value = true
+        _paymentMessage.value = "Preparing checkout..."
+
+        viewModelScope.launch {
+            val orderResult = subscriptionRepo.createOrder(planType, userId, email, name)
+            _isPaymentLoading.value = false
+            orderResult.onSuccess { order ->
+                val keyId = order.keyId ?: com.saavn.music.payment.PaymentConfig.RAZORPAY_KEY_ID
+                val orderId = order.orderId ?: ""
+                com.saavn.music.payment.RazorpayManager.openCheckout(
+                    activity = activity,
+                    keyId = keyId,
+                    orderId = orderId,
+                    amount = order.amount,
+                    planType = planType,
+                    userEmail = email,
+                    userName = name
+                )
+            }
+            orderResult.onFailure { err ->
+                _paymentMessage.value = "Failed to create order: ${err.message}"
+                android.widget.Toast.makeText(getApplication(), "Failed to create order: ${err.message}", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    fun handlePaymentSuccess(paymentData: com.razorpay.PaymentData) {
+        val user = userProfile.value
+        val userId = user?.id?.ifBlank { null } ?: authService.getCurrentUserId().ifBlank { "user_${System.currentTimeMillis()}" }
+        val paymentId = paymentData.paymentId ?: ""
+        val orderId = paymentData.orderId ?: ""
+        val signature = paymentData.signature ?: ""
+
+        _isPaymentLoading.value = true
+        _paymentMessage.value = "Verifying payment with Razorpay..."
+
+        viewModelScope.launch {
+            val verifyReq = com.saavn.music.payment.VerifyPaymentApiRequest(
+                razorpayPaymentId = paymentId,
+                razorpayOrderId = orderId,
+                razorpaySignature = signature,
+                userId = userId,
+                planType = pendingPlanType,
+                userEmail = user?.email,
+                userName = user?.displayName
+            )
+
+            val verifyRes = subscriptionRepo.verifyPayment(verifyReq)
+            _isPaymentLoading.value = false
+
+            verifyRes.onSuccess { res ->
+                closePlanSelectionDialog()
+                _paymentMessage.value = "💎 Premium activated successfully!"
+                android.widget.Toast.makeText(
+                    getApplication(),
+                    "💎 Premium activated successfully! Enjoy Ad-free music & all VIP features!",
+                    android.widget.Toast.LENGTH_LONG
+                ).show()
+
+                // Immediately stop AdMob ads
+                com.saavn.music.ads.AdManager.clearCachedAds()
+            }
+
+            verifyRes.onFailure { err ->
+                _paymentMessage.value = "Payment verification failed: ${err.message}"
+                android.widget.Toast.makeText(
+                    getApplication(),
+                    "Payment verification failed: ${err.message}. You remain on ISAI Free.",
+                    android.widget.Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+    }
+
+    fun handlePaymentError(code: Int, response: String?, paymentData: com.razorpay.PaymentData?) {
+        _isPaymentLoading.value = false
+        _paymentMessage.value = "Payment cancelled or failed."
+        android.widget.Toast.makeText(
+            getApplication(),
+            "Payment cancelled or failed. You remain on ISAI Free.",
+            android.widget.Toast.LENGTH_SHORT
+        ).show()
+    }
+
+    fun cancelSubscription() {
+        val user = userProfile.value ?: return
+        viewModelScope.launch {
+            val res = subscriptionRepo.cancelSubscription(user.id)
+            res.onSuccess {
+                android.widget.Toast.makeText(getApplication(), "Subscription cancelled.", android.widget.Toast.LENGTH_SHORT).show()
+            }
+            res.onFailure {
+                android.widget.Toast.makeText(getApplication(), "Failed to cancel subscription.", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
 
     // In-App Auto Update State
     private val _appUpdateInfo = MutableStateFlow<AppUpdateModel?>(null)
@@ -86,11 +241,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _isCheckingUpdate = MutableStateFlow(false)
     val isCheckingUpdate: StateFlow<Boolean> = _isCheckingUpdate.asStateFlow()
 
+    private val _updateDownloadState = MutableStateFlow<UpdateDownloadState>(UpdateDownloadState.Idle)
+    val updateDownloadState: StateFlow<UpdateDownloadState> = _updateDownloadState.asStateFlow()
+
     // Multi-Device Playback Mode: Separate (independent on 2+ devices) vs Sync (Spotify Connect)
     val isMultiDevicePlaybackSeparate: StateFlow<Boolean> = localStorage.isMultiDevicePlaybackSeparate
 
     fun setMultiDevicePlaybackSeparate(enabled: Boolean) {
         localStorage.setMultiDevicePlaybackSeparate(enabled)
+        isaiConnectManager.syncMultiDeviceSeparate(enabled)
     }
 
     // Server-Driven Dynamic UI Config (Cloud-driven real-time design updates)
@@ -119,7 +278,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             email = user.email ?: existing?.email ?: "",
                             photoUrl = user.photoUrl?.toString() ?: existing?.photoUrl,
                             isLoggedIn = true,
-                            preferredLanguages = langs
+                            preferredLanguages = langs,
+                            isPremium = existing?.isPremium ?: false,
+                            selectedPlan = existing?.selectedPlan ?: "FREE",
+                            subscriptionStatus = existing?.subscriptionStatus ?: "FREE",
+                            planType = existing?.planType ?: "FREE",
+                            subscriptionStart = existing?.subscriptionStart ?: 0L,
+                            subscriptionExpiry = existing?.subscriptionExpiry ?: 0L,
+                            isTester = existing?.isTester ?: false,
+                            updateChannel = existing?.updateChannel ?: "STABLE"
                         )
                         localStorage.saveUserProfile(profile)
                         _preferredLanguages.value = langs
@@ -139,12 +306,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun checkForAppUpdates() {
         viewModelScope.launch {
-            val update = appUpdateService.checkForUpdate()
+            val update = appUpdateService.checkForUpdate(userProfile.value)
             if (update != null) {
                 _appUpdateInfo.value = update
             }
         }
-        appUpdateService.listenForRealtimeUpdates { update ->
+        appUpdateService.listenForRealtimeUpdates(getUser = { userProfile.value }) { update ->
             _appUpdateInfo.value = update
         }
     }
@@ -157,7 +324,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _isCheckingUpdate.value = true
             try {
-                val update = appUpdateService.checkForUpdate()
+                val update = appUpdateService.checkForUpdate(userProfile.value)
                 if (update != null) {
                     _appUpdateInfo.value = update
                     onResult(true, "New update available: v${update.latestVersionName}")
@@ -172,10 +339,45 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun setTesterMode(enabled: Boolean) {
+        val current = userProfile.value ?: return
+        val updated = current.copy(
+            isTester = enabled,
+            updateChannel = if (enabled) "BETA" else "STABLE"
+        )
+        localStorage.saveUserProfile(updated)
+
+        // Sync tester status to Firebase RTDB
+        try {
+            if (current.id.isNotBlank()) {
+                val rtdb = com.google.firebase.database.FirebaseDatabase.getInstance()
+                rtdb.getReference("users").child(current.id).child("isTester").setValue(enabled)
+                rtdb.getReference("users").child(current.id).child("updateChannel").setValue(if (enabled) "BETA" else "STABLE")
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("MainViewModel", "Could not sync tester status to RTDB: ${e.message}")
+        }
+
+        android.widget.Toast.makeText(
+            getApplication(),
+            if (enabled) "🧪 Beta Tester Mode Enabled! Early tester updates unlocked." else "Switched to Stable Channel.",
+            android.widget.Toast.LENGTH_SHORT
+        ).show()
+
+        // Immediately re-evaluate update availability with new tester status
+        checkForAppUpdates()
+    }
+
     fun launchAppUpdate(context: android.content.Context) {
-        val update = _appUpdateInfo.value
-        if (update != null) {
-            appUpdateService.openUpdateUrl(context, update.downloadUrl)
+        val update = _appUpdateInfo.value ?: return
+        viewModelScope.launch {
+            appUpdateService.downloadAndInstallApk(
+                context = context,
+                rawUrl = update.downloadUrl,
+                onStateChange = { state ->
+                    _updateDownloadState.value = state
+                }
+            )
         }
     }
 
@@ -345,6 +547,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         viewModelScope.launch {
+            isaiConnectManager.syncedMultiDeviceSeparate.collect { isSeparate ->
+                if (isSeparate != null && isSeparate != localStorage.isMultiDevicePlaybackSeparate.value) {
+                    localStorage.setMultiDevicePlaybackSeparate(isSeparate)
+                }
+            }
+        }
+
+        viewModelScope.launch {
             isaiConnectManager.syncedHomeSongs.collect { remoteHome ->
                 if (remoteHome.isNotEmpty() && _trendingSongs.value.isEmpty()) {
                     _trendingSongs.value = remoteHome
@@ -386,6 +596,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 if (_preferredLanguages.value.isNotEmpty()) {
                     isaiConnectManager.syncPreferences(_preferredLanguages.value)
                 }
+                isaiConnectManager.syncMultiDeviceSeparate(localStorage.isMultiDevicePlaybackSeparate.value)
                 if (_trendingSongs.value.isNotEmpty()) {
                     isaiConnectManager.syncHomeSongs(_trendingSongs.value)
                 }
@@ -483,11 +694,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         )
                     }
 
-                    if ((syncState.currentDeviceId == isaiConnectManager.deviceId || isaiConnectManager.isMyDeviceActive() || ytPlayerController.isPlaying.value) && syncState.updatedByDeviceId != isaiConnectManager.deviceId) {
-                        if (!syncState.isPlaying && ytPlayerController.isPlaying.value) {
-                            android.util.Log.i("ISAI_CONNECT", "[MainViewModel] Pausing playback from remote syncState updated by ${syncState.updatedByDeviceId}")
-                            ytPlayerController.pause()
-                        } else if (syncState.isPlaying && !ytPlayerController.isPlaying.value && syncState.currentDeviceId == isaiConnectManager.deviceId) {
+                    if (!isaiConnectManager.isMyDeviceActive() && syncState.currentDeviceId == isaiConnectManager.deviceId && syncState.updatedByDeviceId != isaiConnectManager.deviceId) {
+                        if (syncState.isPlaying && !ytPlayerController.isPlaying.value) {
                             android.util.Log.i("ISAI_CONNECT", "[MainViewModel] Resuming playback from remote syncState updated by ${syncState.updatedByDeviceId}")
                             ytPlayerController.play()
                         }
@@ -544,7 +752,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         "NEXT" -> playNext()
                         "PREV" -> playPrevious()
                         "SEEK" -> seekTo(cmd.positionMs / 1000f)
-                        "ADD_TO_QUEUE" -> {
+                        "ADD_TO_QUEUE", "PLAY_NEXT_IN_QUEUE" -> {
                             if (cmd.songId.isNotBlank()) {
                                 val song = YouTubeSong(
                                     videoId = cmd.songId,
@@ -556,27 +764,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                 ytPlayerController.addToQueue(song)
                                 isaiConnectManager.updatePlaybackState(
                                     queue = ytPlayerController.playbackQueue.value,
-                                    queueIndex = ytPlayerController.currentQueueIndex.value
+                                    queueIndex = ytPlayerController.currentQueueIndex.value,
+                                    currentDeviceId = isaiConnectManager.deviceId
                                 )
                                 android.os.Handler(android.os.Looper.getMainLooper()).post {
-                                    android.widget.Toast.makeText(getApplication(), "Added to queue from Web 🌐", android.widget.Toast.LENGTH_SHORT).show()
+                                    android.widget.Toast.makeText(getApplication(), "Added next in queue from Web 🌐", android.widget.Toast.LENGTH_SHORT).show()
                                 }
-                            }
-                        }
-                        "PLAY_NEXT_IN_QUEUE" -> {
-                            if (cmd.songId.isNotBlank()) {
-                                val song = YouTubeSong(
-                                    videoId = cmd.songId,
-                                    title = cmd.songTitle,
-                                    channelTitle = cmd.songArtist,
-                                    thumbnailUrl = cmd.songArtwork,
-                                    audioUrl = cmd.songAudioUrl.ifBlank { null }
-                                )
-                                ytPlayerController.playNextInQueue(song)
-                                isaiConnectManager.updatePlaybackState(
-                                    queue = ytPlayerController.playbackQueue.value,
-                                    queueIndex = ytPlayerController.currentQueueIndex.value
-                                )
                             }
                         }
                         "PLAY_SONG" -> {
@@ -1208,8 +1401,48 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         openFullPlayer: Boolean = true,
         forceLocal: Boolean = false
     ) {
+        val remoteState = isaiConnectManager.playbackState.value
+        val isRemoteActive = !localStorage.isMultiDevicePlaybackSeparate.value &&
+                remoteState != null &&
+                remoteState.currentDeviceId.isNotBlank() &&
+                remoteState.currentDeviceId != isaiConnectManager.deviceId &&
+                (remoteState.isPlaying || Math.abs(System.currentTimeMillis() - remoteState.updatedAt) < 15 * 60_000L)
+
+        if (isRemoteActive && remoteState != null) {
+            android.util.Log.i("ISAI_CONNECT", "[MainViewModel] Remote is active on ${remoteState.currentDeviceId}. Routing song to Web: ${song.title}")
+            isaiConnectManager.sendCommand(
+                action = "PLAY_SONG",
+                song = song,
+                positionMs = (startPositionSec * 1000).toLong(),
+                targetDeviceId = remoteState.currentDeviceId
+            )
+            isaiConnectManager.updatePlaybackState(
+                song = song,
+                isPlaying = true,
+                positionMs = (startPositionSec * 1000).toLong(),
+                currentDeviceId = remoteState.currentDeviceId
+            )
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                val devName = if (remoteState.currentDeviceId.contains("web", ignoreCase = true)) "Web 💻" else "Remote Device"
+                android.widget.Toast.makeText(getApplication(), "Playing on $devName: ${song.title.take(25)}...", android.widget.Toast.LENGTH_SHORT).show()
+            }
+            if (openFullPlayer) {
+                _showFullPlayer.value = true
+            }
+            return
+        }
+
         // Claim ISAI Connect active device status for this phone
-        isaiConnectManager.transferPlaybackToDevice(isaiConnectManager.deviceId)
+        isaiConnectManager.transferPlaybackToDevice(
+            targetDeviceId = isaiConnectManager.deviceId,
+            song = song,
+            positionMs = (startPositionSec * 1000).toLong(),
+            isPlaying = true
+        )
+
+        if (listenTogetherManager.isHost()) {
+            listenTogetherManager.hostChangeSong(song)
+        }
 
         android.util.Log.i("ISAI_PLAYER", "========================================")
         android.util.Log.i("ISAI_PLAYER", "[MainViewModel] playSong triggered! startPositionSec=$startPositionSec, openFullPlayer=$openFullPlayer")
@@ -1261,10 +1494,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             )
         }
 
+        ytPlayerController.prepareForPlayback(song, effectiveQueue)
+
         if (!song.audioUrl.isNullOrBlank()) {
             ytPlayerController.playSong(song, effectiveQueue, startPositionSec)
         } else {
-            ytPlayerController.setBuffering(true)
             // Asynchronously resolve direct 320kbps audio stream
             viewModelScope.launch {
                 try {
@@ -1279,7 +1513,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         android.util.Log.i("ISAI_PLAYER", "[MainViewModel] Resolved direct 320kbps audio: $directUrl")
                         val updatedSong = song.copy(audioUrl = directUrl)
                         val updatedQueue = effectiveQueue.map { if (it.videoId == song.videoId) updatedSong else it }
-                        isaiConnectManager.updatePlaybackState(song = updatedSong, isPlaying = true, queue = updatedQueue)
+                        isaiConnectManager.updatePlaybackState(
+                            song = updatedSong,
+                            isPlaying = true,
+                            queue = updatedQueue,
+                            currentDeviceId = isaiConnectManager.deviceId
+                        )
                         ytPlayerController.playSong(updatedSong, updatedQueue, startPositionSec)
                         return@launch
                     }
@@ -1314,12 +1553,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     audioUrl = syncSong.audioUrl.ifBlank { null }
                 )
             }.toMutableList()
-            if (currentRemoteSongs.none { it.videoId == song.videoId }) {
-                currentRemoteSongs.add(song)
-                isaiConnectManager.updatePlaybackState(queue = currentRemoteSongs)
+            currentRemoteSongs.removeAll { it.videoId == song.videoId }
+            val currentPlayingId = remoteState.currentSongId
+            val curIdx = if (!currentPlayingId.isNullOrBlank()) {
+                val found = currentRemoteSongs.indexOfFirst { it.videoId == currentPlayingId }
+                if (found >= 0) found else remoteState.queueIndex
+            } else {
+                remoteState.queueIndex
             }
+            val insertPos = (curIdx + 1).coerceIn(0, currentRemoteSongs.size)
+            currentRemoteSongs.add(insertPos, song)
+            isaiConnectManager.updatePlaybackState(
+                queue = currentRemoteSongs,
+                currentDeviceId = remoteState.currentDeviceId
+            )
             android.os.Handler(android.os.Looper.getMainLooper()).post {
-                android.widget.Toast.makeText(getApplication(), "Added to Remote Queue 📱", android.widget.Toast.LENGTH_SHORT).show()
+                android.widget.Toast.makeText(getApplication(), "Added next in queue 🎵", android.widget.Toast.LENGTH_SHORT).show()
             }
         } else {
             if (ytPlayerController.currentSong.value == null) {
@@ -1328,8 +1577,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     android.widget.Toast.makeText(getApplication(), "Playing ${song.title.take(20)}... 🎵", android.widget.Toast.LENGTH_SHORT).show()
                 }
             } else {
-                val currentQueue = ytPlayerController.playbackQueue.value
-                val isAlreadyInQueue = currentQueue.any { it.videoId == song.videoId }
                 ytPlayerController.addToQueue(song)
                 isaiConnectManager.updatePlaybackState(
                     currentDeviceId = isaiConnectManager.deviceId,
@@ -1337,11 +1584,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     queueIndex = ytPlayerController.currentQueueIndex.value
                 )
                 android.os.Handler(android.os.Looper.getMainLooper()).post {
-                    if (isAlreadyInQueue) {
-                        android.widget.Toast.makeText(getApplication(), "Song already in queue ℹ️", android.widget.Toast.LENGTH_SHORT).show()
-                    } else {
-                        android.widget.Toast.makeText(getApplication(), "Added to queue 🎵", android.widget.Toast.LENGTH_SHORT).show()
-                    }
+                    android.widget.Toast.makeText(getApplication(), "Added next in queue 🎵", android.widget.Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -1371,9 +1614,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }.toMutableList()
             currentRemoteSongs.removeAll { it.videoId == song.videoId }
-            val insertPos = (remoteState.queueIndex + 1).coerceAtMost(currentRemoteSongs.size)
+            val currentPlayingId = remoteState.currentSongId
+            val curIdx = if (!currentPlayingId.isNullOrBlank()) {
+                val found = currentRemoteSongs.indexOfFirst { it.videoId == currentPlayingId }
+                if (found >= 0) found else remoteState.queueIndex
+            } else {
+                remoteState.queueIndex
+            }
+            val insertPos = (curIdx + 1).coerceIn(0, currentRemoteSongs.size)
             currentRemoteSongs.add(insertPos, song)
-            isaiConnectManager.updatePlaybackState(queue = currentRemoteSongs)
+            isaiConnectManager.updatePlaybackState(
+                queue = currentRemoteSongs,
+                currentDeviceId = remoteState.currentDeviceId
+            )
         } else {
             if (ytPlayerController.currentSong.value == null) {
                 playSong(song, listOf(song))
@@ -1696,6 +1949,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             isaiConnectManager.updatePlaybackState(isPlaying = !isPlaying)
             return
         }
+        if (listenTogetherManager.isHost()) {
+            if (ytPlayerController.isPlaying.value) {
+                listenTogetherManager.hostPause(ytPlayerController.currentPositionSec.value)
+            } else {
+                listenTogetherManager.hostPlay(ytPlayerController.currentPositionSec.value)
+            }
+        }
         ytPlayerController.togglePlayPause()
     }
 
@@ -1745,6 +2005,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             isaiConnectManager.sendCommand("SEEK", positionMs = ms, targetDeviceId = syncState?.currentDeviceId ?: "")
             isaiConnectManager.updatePlaybackState(positionMs = ms)
             return
+        }
+        if (listenTogetherManager.isHost()) {
+            listenTogetherManager.hostSeek(seconds)
         }
         ytPlayerController.seekTo(seconds)
     }
@@ -1878,14 +2141,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun saveUserProfile(profile: UserProfile) {
         val withLogin = profile.copy(isLoggedIn = true)
         localStorage.saveUserProfile(withLogin)
+        subscriptionRepo.attachSubscriptionListener(withLogin.id)
         closeLoginDialog()
-        if (withLogin.preferredLanguages.isEmpty()) {
-            openLanguageDialog()
-        } else {
-            _preferredLanguages.value = withLogin.preferredLanguages
-            isaiConnectManager.syncPreferences(withLogin.preferredLanguages)
-            loadHomeData()
-        }
+        openPlanSelectionDialog()
     }
 
     fun updateUsername(newUsername: String) {
@@ -1912,16 +2170,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             preferredLanguages = langs
         )
         localStorage.saveUserProfile(profile)
+        subscriptionRepo.attachSubscriptionListener(profile.id)
         closeLoginDialog()
-        if (langs.isEmpty()) {
-            openLanguageDialog()
-        } else {
-            _preferredLanguages.value = langs
-            loadHomeData()
-        }
+        openPlanSelectionDialog()
     }
 
     fun logoutUser() {
+        subscriptionRepo.detachSubscriptionListener()
         authService.logout()
         localStorage.clearUserProfile()
         _preferredLanguages.value = emptyList()
@@ -1942,6 +2197,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     override fun onCleared() {
         super.onCleared()
+        subscriptionRepo.detachSubscriptionListener()
         ytPlayerController.detachPlayer()
     }
 }

@@ -13,6 +13,7 @@ export interface UserProfile {
   avatar: string
   isLoggedIn: boolean
   isPremium: boolean
+  selectedPlan?: string
   preferredLanguages?: string[]
 }
 

@@ -8,5 +8,8 @@ data class AppUpdateModel(
     val updateMessage: String = "A fresh version of ISAI is ready with new features and improvements.",
     val releaseNotes: List<String> = emptyList(),
     val downloadUrl: String = "",
-    val isForceUpdate: Boolean = false
+    val isForceUpdate: Boolean = false,
+    val targetMode: String = "ALL", // "ALL", "TESTERS_ONLY", "SPECIFIC_USERS"
+    val targetEmails: List<String> = emptyList(),
+    val targetUserIds: List<String> = emptyList()
 )

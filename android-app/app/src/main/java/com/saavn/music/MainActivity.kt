@@ -67,7 +67,9 @@ import androidx.compose.foundation.layout.width
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.saavn.music.ui.components.AdBannerView
 import com.saavn.music.ui.components.LoginDialog
+import com.saavn.music.ui.components.PlanSelectionDialog
 import com.saavn.music.ui.components.LanguageSelectionDialog
 import com.saavn.music.ui.components.UpdateDialog
 import com.saavn.music.ui.screens.LoginScreen
@@ -81,7 +83,7 @@ import android.os.Build
 import androidx.core.content.ContextCompat
 import com.saavn.music.service.IsaiFirebaseMessagingService
 
-class MainActivity : ComponentActivity() {
+class MainActivity : ComponentActivity(), com.razorpay.PaymentResultWithDataListener {
     private val mainViewModel: MainViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -99,11 +101,37 @@ class MainActivity : ComponentActivity() {
             android.util.Log.w("MainActivity", "FCM setup warning: ${e.message}")
         }
 
+        // Initialize AdMob SDK safely
+        try {
+            com.saavn.music.ads.AdManager.initialize(this)
+        } catch (e: Exception) {
+            android.util.Log.w("MainActivity", "AdMob init warning: ${e.message}")
+        }
+
+        // Initialize Razorpay Standard Checkout safely
+        try {
+            com.saavn.music.payment.RazorpayManager.init(this)
+        } catch (e: Exception) {
+            android.util.Log.w("MainActivity", "Razorpay init warning: ${e.message}")
+        }
+
         setContent {
             SaavnMusicTheme {
                 IsaiApp(mainViewModel)
             }
         }
+    }
+
+    override fun onPaymentSuccess(razorpayPaymentId: String?, paymentData: com.razorpay.PaymentData?) {
+        android.util.Log.d("MainActivity", "Razorpay payment success: $razorpayPaymentId")
+        if (paymentData != null) {
+            mainViewModel.handlePaymentSuccess(paymentData)
+        }
+    }
+
+    override fun onPaymentError(errorCode: Int, response: String?, paymentData: com.razorpay.PaymentData?) {
+        android.util.Log.e("MainActivity", "Razorpay payment error: code=$errorCode, resp=$response")
+        mainViewModel.handlePaymentError(errorCode, response, paymentData)
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
@@ -144,10 +172,14 @@ fun IsaiApp(viewModel: MainViewModel = viewModel()) {
     val showFullPlayer by viewModel.showFullPlayer.collectAsState()
     val addToPlaylistSong by viewModel.showAddToPlaylistDialog.collectAsState()
     val showLoginDialog by viewModel.showLoginDialog.collectAsState()
+    val showPlanSelectionDialog by viewModel.showPlanSelectionDialog.collectAsState()
     val userProfile by viewModel.userProfile.collectAsState()
     val showLanguageDialog by viewModel.showLanguageDialog.collectAsState()
     val preferredLanguages by viewModel.preferredLanguages.collectAsState()
     val appUpdateInfo by viewModel.appUpdateInfo.collectAsState()
+    val updateDownloadState by viewModel.updateDownloadState.collectAsState()
+    val isPaymentLoading by viewModel.isPaymentLoading.collectAsState()
+    val paymentMessage by viewModel.paymentMessage.collectAsState()
 
     val context = androidx.compose.ui.platform.LocalContext.current
 
@@ -228,6 +260,7 @@ fun IsaiApp(viewModel: MainViewModel = viewModel()) {
     appUpdateInfo?.let { update ->
         UpdateDialog(
             updateInfo = update,
+            downloadState = updateDownloadState,
             onUpdateClick = { viewModel.launchAppUpdate(context) },
             onDismiss = { viewModel.dismissUpdateDialog() }
         )
@@ -301,6 +334,14 @@ fun IsaiApp(viewModel: MainViewModel = viewModel()) {
                 currentScreen = currentScreen,
                 onSelectScreen = { viewModel.setScreen(it) }
             )
+
+            // Responsive AdMob Bottom Banner (FREE users only, collapses on fail, never covers controls)
+            AdBannerView(
+                userProfile = userProfile,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 2.dp, bottom = 2.dp)
+            )
         }
 
         // Full Screen Embedded YouTube Player Modal
@@ -348,6 +389,27 @@ fun IsaiApp(viewModel: MainViewModel = viewModel()) {
                 onDismissRequest = {
                     viewModel.closeLoginDialog()
                 }
+            )
+        }
+
+        // Plan Selection Dialog (Free vs Premium Monthly vs Premium Yearly)
+        if (showPlanSelectionDialog) {
+            val activity = context as? android.app.Activity
+            PlanSelectionDialog(
+                currentPlan = userProfile?.selectedPlan ?: "FREE",
+                isPaymentLoading = isPaymentLoading,
+                paymentMessage = paymentMessage,
+                onSelectFreePlan = {
+                    viewModel.selectUserPlan("FREE")
+                },
+                onInitiatePayment = { planType ->
+                    if (activity != null) {
+                        viewModel.initiateSubscription(activity, planType)
+                    } else {
+                        android.widget.Toast.makeText(context, "Payment error: Activity not attached", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                },
+                onDismissRequest = { viewModel.closePlanSelectionDialog() }
             )
         }
 

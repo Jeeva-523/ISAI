@@ -458,13 +458,13 @@ class IsaiConnectServiceManager {
     return () => off(historyRef)
   }
 
-  public syncPreferences(prefs: { preferredLanguages?: string[] }) {
+  public syncPreferences(prefs: { preferredLanguages?: string[]; isMultiDevicePlaybackSeparate?: boolean }) {
     if (!this.userId) return
     const prefRef = ref(rtdb, `connect/${this.userId}/preferences`)
     update(prefRef, prefs).catch(e => console.warn('[ISAI Connect] syncPreferences warning:', e))
   }
 
-  public subscribePreferences(callback: (prefs: { preferredLanguages?: string[] }) => void): () => void {
+  public subscribePreferences(callback: (prefs: { preferredLanguages?: string[]; isMultiDevicePlaybackSeparate?: boolean }) => void): () => void {
     if (!this.userId) return () => {}
     const prefRef = ref(rtdb, `connect/${this.userId}/preferences`)
     onValue(prefRef, (snapshot) => {
@@ -473,10 +473,17 @@ class IsaiConnectServiceManager {
         const preferredLanguages = Array.isArray(data.preferredLanguages)
           ? data.preferredLanguages
           : (typeof data.preferredLanguages === 'string' ? [data.preferredLanguages] : undefined)
-        callback({ preferredLanguages })
+        const isMultiDevicePlaybackSeparate = typeof data.isMultiDevicePlaybackSeparate === 'boolean'
+          ? data.isMultiDevicePlaybackSeparate
+          : undefined
+        callback({ preferredLanguages, isMultiDevicePlaybackSeparate })
       }
     })
     return () => off(prefRef)
+  }
+
+  public setMultiDevicePlaybackSeparate(enabled: boolean) {
+    this.syncPreferences({ isMultiDevicePlaybackSeparate: enabled })
   }
 
   public syncHomeSongs(songs: any[]) {

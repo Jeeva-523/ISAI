@@ -450,11 +450,8 @@ class IsaiConnectManager(private val context: Context) {
             "updatedByDeviceId" to deviceId
         )
 
-        if (currentDeviceId != null) {
-            updates["currentDeviceId"] = currentDeviceId
-        } else if (current.currentDeviceId.isEmpty()) {
-            updates["currentDeviceId"] = deviceId
-        }
+        val targetDevice = currentDeviceId ?: current.currentDeviceId.ifBlank { deviceId }
+        updates["currentDeviceId"] = targetDevice
 
         song?.let {
             updates["currentSongId"] = it.videoId
@@ -479,6 +476,33 @@ class IsaiConnectManager(private val context: Context) {
                 )
             }
         }
+
+        // Optimistically update local playbackState so isMyDeviceActive() is immediately accurate
+        val updatedLocal = current.copy(
+            updatedAt = updates["updatedAt"] as Long,
+            updatedByDeviceId = deviceId,
+            currentDeviceId = targetDevice,
+            currentSongId = song?.videoId ?: current.currentSongId,
+            currentTitle = song?.title ?: current.currentTitle,
+            currentArtist = song?.channelTitle ?: current.currentArtist,
+            currentArtwork = song?.thumbnailUrl ?: current.currentArtwork,
+            currentAudioUrl = song?.audioUrl ?: current.currentAudioUrl,
+            isPlaying = isPlaying ?: current.isPlaying,
+            positionMs = positionMs ?: current.positionMs,
+            durationMs = durationMs ?: current.durationMs,
+            volume = volume ?: current.volume,
+            queueIndex = queueIndex ?: current.queueIndex,
+            queue = queue?.map {
+                SyncSong(
+                    id = it.videoId,
+                    title = it.title,
+                    artist = it.channelTitle,
+                    artwork = it.thumbnailUrl,
+                    audioUrl = it.audioUrl ?: ""
+                )
+            } ?: current.queue
+        )
+        _playbackState.value = updatedLocal
 
         stateRef.updateChildren(updates)
     }
@@ -554,29 +578,48 @@ class IsaiConnectManager(private val context: Context) {
     private val _syncedPreferences = MutableStateFlow<List<String>>(emptyList())
     val syncedPreferences: StateFlow<List<String>> = _syncedPreferences.asStateFlow()
 
+    private val _syncedMultiDeviceSeparate = MutableStateFlow<Boolean?>(null)
+    val syncedMultiDeviceSeparate: StateFlow<Boolean?> = _syncedMultiDeviceSeparate.asStateFlow()
+
     fun syncPreferences(languages: List<String>) {
         if (userId.isEmpty() || languages.isEmpty()) return
         database.getReference("connect/$userId/preferences")
             .updateChildren(mapOf("preferredLanguages" to languages))
     }
 
+    fun syncMultiDeviceSeparate(enabled: Boolean) {
+        if (userId.isEmpty()) return
+        database.getReference("connect/$userId/preferences")
+            .updateChildren(mapOf("isMultiDevicePlaybackSeparate" to enabled))
+    }
+
     private fun listenToPreferences() {
         if (userId.isEmpty()) return
-        val prefRef = database.getReference("connect/$userId/preferences/preferredLanguages")
+        val prefRef = database.getReference("connect/$userId/preferences")
         preferencesListener = object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
+                if (!snapshot.exists()) return
+
+                // 1. Preferred Languages
+                val langsSnap = snapshot.child("preferredLanguages")
                 val list = mutableListOf<String>()
-                if (snapshot.childrenCount > 0) {
-                    for (child in snapshot.children) {
+                if (langsSnap.childrenCount > 0) {
+                    for (child in langsSnap.children) {
                         val lang = child.getValue(String::class.java)
                         if (!lang.isNullOrBlank()) list.add(lang)
                     }
                 } else {
-                    val single = snapshot.getValue(String::class.java)
+                    val single = langsSnap.getValue(String::class.java)
                     if (!single.isNullOrBlank()) list.add(single)
                 }
                 if (list.isNotEmpty()) {
                     _syncedPreferences.value = list
+                }
+
+                // 2. Multi-Device Playback Mode: Separate vs Sync
+                val isSeparate = snapshot.child("isMultiDevicePlaybackSeparate").getValue(Boolean::class.java)
+                if (isSeparate != null) {
+                    _syncedMultiDeviceSeparate.value = isSeparate
                 }
             }
 

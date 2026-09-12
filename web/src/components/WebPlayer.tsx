@@ -18,11 +18,17 @@ import {
   Heart,
   ListMusic,
   Laptop,
+  Radio,
   Maximize2,
   Minimize2,
   GripVertical,
   Trash2
 } from 'lucide-react'
+import {
+  ListenTogetherService,
+  RoomData
+} from '../services/ListenTogetherService'
+import { ListenTogetherModal } from './ListenTogetherModal'
 
 interface WebPlayerProps {
   song: Song | null
@@ -76,6 +82,9 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
   const [isMuted, setIsMuted] = useState(false)
   const [showQueuePanel, setShowQueuePanel] = useState(false)
   const [isConnectModalOpen, setIsConnectModalOpen] = useState(false)
+  const [isListenTogetherModalOpen, setIsListenTogetherModalOpen] = useState(false)
+  const [listenRoom, setListenRoom] = useState<RoomData | null>(() => ListenTogetherService.getCurrentRoom())
+  const [needsAutoplayGesture, setNeedsAutoplayGesture] = useState(false)
 
   // Drag and drop state for queue reordering
   const [draggedIdx, setDraggedIdx] = useState<number | null>(null)
@@ -255,7 +264,9 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
       })
     }
 
-    IsaiConnectService.transferPlaybackToDevice(myDeviceId, transferred, (positionMs != null ? positionMs : (remoteState?.positionMs || 0)))
+    if (!storageService.isMultiDevicePlaybackSeparate()) {
+      IsaiConnectService.transferPlaybackToDevice(myDeviceId, transferred, (positionMs != null ? positionMs : (remoteState?.positionMs || 0)))
+    }
     onTransferPlayback?.(transferred)
 
     // If audio stream is not yet cached, resolve 320kbps stream via JioSaavn search
@@ -289,7 +300,9 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
           }
           const updated = { ...transferred, audioUrl: resolvedUrl }
           onTransferPlayback?.(updated)
-          IsaiConnectService.updatePlaybackState({ currentAudioUrl: resolvedUrl })
+          if (!storageService.isMultiDevicePlaybackSeparate()) {
+            IsaiConnectService.updatePlaybackState({ currentAudioUrl: resolvedUrl })
+          }
         }
       } catch (e) {
         console.warn('[WebPlayer] Failed to resolve audio for transferred song:', e)
@@ -391,10 +404,120 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
     return () => unsubCmd()
   }, [myDeviceId, onNextSong, onPrevSong])
 
-  // Sync song changes to ISAI Connect (when Web is playing locally)
+  // Listen Together Room & Playback State Subscription
   useEffect(() => {
-    if (!song || isRemoteActive) return
+    const unsubRoom = ListenTogetherService.subscribeRoomUpdate((r) => {
+      setListenRoom(r)
+    })
+
+    const unsubPb = ListenTogetherService.subscribePlaybackState((pbState, isHost) => {
+      if (isHost) return // Host controls local playback and broadcasts to guests
+
+      if (pbState.song && pbState.song.audioUrl) {
+        const incomingUrl = pbState.song.audioUrl
+        const isDifferentSong = !activeSongRef.current || activeSongRef.current.videoId !== pbState.song.videoId
+
+        if (isDifferentSong) {
+          const roomSong: Song = {
+            videoId: pbState.song.videoId,
+            title: pbState.song.title,
+            channelTitle: pbState.song.artist,
+            thumbnailUrl: pbState.song.artwork,
+            audioUrl: pbState.song.audioUrl,
+            durationFormatted: formatTime((pbState.song.durationMs || 210000) / 1000),
+            durationMs: pbState.song.durationMs || 210000,
+            viewCountFormatted: ''
+          }
+          activeSongRef.current = roomSong
+          onTransferPlayback?.(roomSong)
+
+          if (audioRef.current) {
+            audioRef.current.src = incomingUrl
+            const expected = ListenTogetherService.getExpectedPosition()
+            audioRef.current.currentTime = expected
+            if (pbState.state === 'PLAYING') {
+              audioRef.current.play().then(() => {
+                setIsPlaying(true)
+                setNeedsAutoplayGesture(false)
+              }).catch((e) => {
+                console.warn('[WebPlayer] Autoplay blocked for synchronized playback:', e)
+                setNeedsAutoplayGesture(true)
+              })
+            } else {
+              audioRef.current.pause()
+              setIsPlaying(false)
+            }
+          }
+        } else {
+          // Same song, state or position update
+          if (audioRef.current) {
+            if (pbState.state === 'PLAYING') {
+              const expected = ListenTogetherService.getExpectedPosition()
+              if (Math.abs(audioRef.current.currentTime - expected) > 1.2) {
+                audioRef.current.currentTime = expected
+              }
+              audioRef.current.play().then(() => {
+                setIsPlaying(true)
+                setNeedsAutoplayGesture(false)
+              }).catch((e) => {
+                console.warn('[WebPlayer] Autoplay blocked for synchronized playback:', e)
+                setNeedsAutoplayGesture(true)
+              })
+            } else if (pbState.state === 'PAUSED') {
+              audioRef.current.pause()
+              audioRef.current.currentTime = pbState.positionSec
+              setIsPlaying(false)
+            }
+          }
+        }
+      }
+    })
+
+    return () => {
+      unsubRoom()
+      unsubPb()
+    }
+  }, [onTransferPlayback])
+
+  // Periodic Drift Correction for Listen Together (every 2.5s)
+  useEffect(() => {
+    if (!listenRoom) return
+    const isHostDevice = listenRoom.hostDeviceId === ListenTogetherService.getDeviceId()
+    if (isHostDevice) {
+      if (audioRef.current && audioRef.current.playbackRate !== 1.0) {
+        audioRef.current.playbackRate = 1.0
+      }
+      return
+    }
+
+    const driftInterval = setInterval(() => {
+      if (!audioRef.current || audioRef.current.paused) return
+      const adj = ListenTogetherService.calculateDriftAdjustment(audioRef.current.currentTime)
+      if (adj.action === 'SPEED_ADJUST' && adj.speed) {
+        audioRef.current.playbackRate = adj.speed
+      } else if (adj.action === 'SEEK' && typeof adj.targetPosition === 'number') {
+        audioRef.current.currentTime = adj.targetPosition
+        audioRef.current.playbackRate = 1.0
+      } else {
+        if (audioRef.current.playbackRate !== 1.0) {
+          audioRef.current.playbackRate = 1.0
+        }
+      }
+    }, 2500)
+
+    return () => {
+      clearInterval(driftInterval)
+      if (audioRef.current) audioRef.current.playbackRate = 1.0
+    }
+  }, [listenRoom])
+
+  // Sync song changes to ISAI Connect (when Web is playing locally in sync mode)
+  useEffect(() => {
+    if (!song || isRemoteActive || storageService.isMultiDevicePlaybackSeparate()) return
     if (remoteState?.currentDeviceId && remoteState.currentDeviceId !== myDeviceId) return
+
+    const qList = (Array.isArray(queue) ? queue : []).filter(Boolean)
+    const curQIdx = song ? qList.findIndex(q => (q.videoId || (q as any).id) === song.videoId) : 0
 
     IsaiConnectService.updatePlaybackState({
       currentDeviceId: myDeviceId,
@@ -406,7 +529,8 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
       isPlaying: isPlaying,
       durationMs: (duration || 211) * 1000,
       positionMs: currentTime * 1000,
-      queue: (Array.isArray(queue) ? queue : []).filter(Boolean).map(q => ({
+      queueIndex: curQIdx >= 0 ? curQIdx : 0,
+      queue: qList.map(q => ({
         id: q.videoId || (q as any).id || '',
         title: q.title || '',
         artist: q.channelTitle || (q as any).artist || '',
@@ -414,7 +538,7 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
         audioUrl: (q as any).audioUrl || ''
       }))
     })
-  }, [song?.videoId, song?.title, song?.thumbnailUrl, song?.audioUrl, isPlaying, isRemoteActive, remoteState?.currentDeviceId, myDeviceId])
+  }, [song?.videoId, song?.title, song?.thumbnailUrl, song?.audioUrl, isPlaying, isRemoteActive, remoteState?.currentDeviceId, myDeviceId, queue])
 
   // Immediate auto-play and recommendation threshold session management when a new song is selected
   useEffect(() => {
@@ -452,7 +576,11 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
         })
       }
     }
-  }, [displaySong?.videoId, displaySong?.audioUrl, isRemoteActive])
+
+    if (listenRoom && listenRoom.hostDeviceId === ListenTogetherService.getDeviceId() && song) {
+      ListenTogetherService.hostChangeSong(song)
+    }
+  }, [displaySong?.videoId, displaySong?.audioUrl, isRemoteActive, listenRoom?.hostDeviceId, song?.videoId])
 
   // Control audio element play/pause
   useEffect(() => {
@@ -475,11 +603,20 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
   }, [displaySong?.videoId, displaySong?.audioUrl, isPlaying, volume, isMuted, isRemoteActive, remoteState?.currentAudioUrl])
 
   const togglePlay = () => {
+    if (listenRoom && listenRoom.hostDeviceId === ListenTogetherService.getDeviceId()) {
+      if (isPlaying) {
+        ListenTogetherService.hostPause(currentTime)
+      } else {
+        ListenTogetherService.hostPlay(currentTime)
+      }
+    }
     if (isRemoteActive) {
       const nextAction = remoteState?.isPlaying ? 'PAUSE' : 'PLAY'
       const targetDev = remoteState?.currentDeviceId || ''
       IsaiConnectService.sendCommand(nextAction, { targetDeviceId: targetDev })
-      IsaiConnectService.updatePlaybackState({ isPlaying: !remoteState?.isPlaying })
+      if (!storageService.isMultiDevicePlaybackSeparate()) {
+        IsaiConnectService.updatePlaybackState({ isPlaying: !remoteState?.isPlaying })
+      }
     } else {
       if (audioRef.current) {
         if (isPlaying) {
@@ -567,9 +704,9 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
         }
       }
 
-      // Sync position to Firebase every 1.5 seconds so remote device has accurate timestamp
+      // Sync position to Firebase every 1.5 seconds so remote device has accurate timestamp (in sync mode)
       const now = Date.now()
-      if (!isRemoteActive && song && now - lastSyncTimeRef.current > 1500) {
+      if (!isRemoteActive && !storageService.isMultiDevicePlaybackSeparate() && song && now - lastSyncTimeRef.current > 1500) {
         lastSyncTimeRef.current = now
         IsaiConnectService.updatePlaybackState({
           currentDeviceId: myDeviceId,
@@ -586,11 +723,16 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
     if (isRemoteActive) {
       setRemoteCurrentTime(val)
       IsaiConnectService.sendCommand('SEEK', { positionMs: Math.round(val * 1000) })
-      IsaiConnectService.updatePlaybackState({ positionMs: Math.round(val * 1000) })
+      if (!storageService.isMultiDevicePlaybackSeparate()) {
+        IsaiConnectService.updatePlaybackState({ positionMs: Math.round(val * 1000) })
+      }
     } else {
       setCurrentTime(val)
       if (audioRef.current) {
         audioRef.current.currentTime = val
+      }
+      if (listenRoom && listenRoom.hostDeviceId === ListenTogetherService.getDeviceId()) {
+        ListenTogetherService.hostSeek(val)
       }
     }
   }
@@ -602,7 +744,9 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
     else setIsMuted(false)
     if (audioRef.current) audioRef.current.volume = val
     if (!isRemoteActive) {
-      IsaiConnectService.updatePlaybackState({ volume: val })
+      if (!storageService.isMultiDevicePlaybackSeparate()) {
+        IsaiConnectService.updatePlaybackState({ volume: val })
+      }
     } else {
       IsaiConnectService.sendCommand('SET_VOLUME', { volume: val })
     }
@@ -794,6 +938,29 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
             )}
           </button>
 
+          <button
+            className="control-btn"
+            onClick={() => setIsListenTogetherModalOpen(true)}
+            title="Listen Together (Multi-device Sync Room)"
+            style={{ position: 'relative' }}
+          >
+            <Radio size={18} color={listenRoom ? '#C8FF00' : 'var(--isai-purple-light)'} />
+            {listenRoom && (
+              <span
+                style={{
+                  position: 'absolute',
+                  top: '4px',
+                  right: '4px',
+                  width: '8px',
+                  height: '8px',
+                  borderRadius: '50%',
+                  backgroundColor: '#C8FF00',
+                  boxShadow: '0 0 8px #C8FF00'
+                }}
+              />
+            )}
+          </button>
+
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <button
               className="control-btn"
@@ -855,6 +1022,21 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
             </div>
 
             <div style={{ display: 'flex', gap: '12px' }}>
+              <button
+                className={`pill-button ${listenRoom ? 'active' : ''}`}
+                onClick={() => setIsListenTogetherModalOpen(true)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  backgroundColor: listenRoom ? 'rgba(200, 255, 0, 0.15)' : undefined,
+                  borderColor: listenRoom ? '#C8FF00' : undefined,
+                  color: listenRoom ? '#C8FF00' : undefined
+                }}
+              >
+                <Radio size={14} />
+                <span>{listenRoom ? listenRoom.roomCode : 'Sync Room'}</span>
+              </button>
               <button
                 className={`pill-button ${showQueuePanel ? 'active' : ''}`}
                 onClick={() => setShowQueuePanel(!showQueuePanel)}
@@ -1098,6 +1280,59 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
         onTransferToLocal={handleTransferToWeb}
         onTransferToRemote={handleTransferToRemote}
       />
+
+      {/* Listen Together Modal */}
+      <ListenTogetherModal
+        isOpen={isListenTogetherModalOpen}
+        onClose={() => setIsListenTogetherModalOpen(false)}
+        currentSong={song || displaySong}
+        currentTime={currentTime}
+        needsAutoplayGesture={needsAutoplayGesture}
+        onAutoplayGestureUnlock={() => {
+          if (audioRef.current) {
+            audioRef.current.currentTime = ListenTogetherService.getExpectedPosition()
+            audioRef.current.play().then(() => {
+              setIsPlaying(true)
+              setNeedsAutoplayGesture(false)
+            }).catch(() => {})
+          }
+        }}
+      />
+
+      {/* Floating Autoplay Unblock prompt if browser blocks guest auto-play */}
+      {needsAutoplayGesture && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: '95px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            backgroundColor: '#C8FF00',
+            color: '#000000',
+            fontWeight: 800,
+            padding: '12px 24px',
+            borderRadius: '30px',
+            boxShadow: '0 10px 30px rgba(0,0,0,0.6)',
+            zIndex: 9999,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}
+          onClick={() => {
+            if (audioRef.current) {
+              audioRef.current.currentTime = ListenTogetherService.getExpectedPosition()
+              audioRef.current.play().then(() => {
+                setIsPlaying(true)
+                setNeedsAutoplayGesture(false)
+              }).catch(() => {})
+            }
+          }}
+        >
+          <Volume2 size={18} />
+          <span>Tap to start synchronized playback</span>
+        </div>
+      )}
     </>
   )
 }

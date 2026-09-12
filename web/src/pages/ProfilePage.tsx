@@ -33,6 +33,7 @@ interface ProfilePageProps {
   onLogout: () => void
   onNavigateHome: () => void
   onOpenLanguageModal?: () => void
+  onOpenPlanModal?: () => void
 }
 
 export const ProfilePage: React.FC<ProfilePageProps> = ({
@@ -43,7 +44,8 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
   onNavigateToLogin,
   onLogout,
   onNavigateHome,
-  onOpenLanguageModal
+  onOpenLanguageModal,
+  onOpenPlanModal
 }) => {
   const [showEditModal, setShowEditModal] = useState(false)
   const [editNameInput, setEditNameInput] = useState(user.name || 'ISAI Listener')
@@ -214,24 +216,30 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
             <span>{isEmailVerified ? 'Email Verified' : 'Unverified'}</span>
           </div>
 
-          {/* ISAI Premium Badge */}
-          <div
+          {/* ISAI Plan Badge */}
+          <button
+            onClick={onOpenPlanModal}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
               gap: '6px',
               padding: '6px 14px',
               borderRadius: '20px',
-              background: 'linear-gradient(90deg, rgba(139, 92, 246, 0.2), rgba(6, 182, 212, 0.2))',
-              border: '1px solid rgba(6, 182, 212, 0.6)',
-              color: '#06B6D4',
+              background: user.isPremium
+                ? 'linear-gradient(90deg, rgba(139, 92, 246, 0.25), rgba(6, 182, 212, 0.25))'
+                : 'rgba(255, 255, 255, 0.08)',
+              border: user.isPremium ? '1px solid rgba(6, 182, 212, 0.6)' : '1px solid rgba(255, 255, 255, 0.16)',
+              color: user.isPremium ? '#06B6D4' : '#E2E8F0',
               fontSize: '12px',
-              fontWeight: 800
+              fontWeight: 800,
+              cursor: onOpenPlanModal ? 'pointer' : 'default',
+              transition: 'all 0.2s ease'
             }}
+            title="Click to view or switch Plan"
           >
-            <Star size={14} fill="#06B6D4" />
-            <span>ISAI Premium Listener</span>
-          </div>
+            {user.isPremium ? <Star size={14} fill="#06B6D4" /> : <span>🆓</span>}
+            <span>{user.isPremium ? '💎 ISAI Premium' : '🆓 ISAI Free'}</span>
+          </button>
         </div>
       </div>
 
@@ -264,6 +272,42 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
             <span style={{ fontSize: '14px', fontWeight: 600 }}>Email Address</span>
           </div>
           <span style={{ color: 'var(--text-primary)', fontSize: '14px', fontWeight: 700 }}>{currentEmail}</span>
+        </div>
+
+        {/* Current Plan Row */}
+        <div
+          onClick={onOpenPlanModal}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '12px 0',
+            borderBottom: '1px solid var(--divider)',
+            cursor: onOpenPlanModal ? 'pointer' : 'default'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', color: 'var(--text-secondary)' }}>
+            <Star size={18} color={user.isPremium ? '#06B6D4' : '#A0AEC0'} />
+            <span style={{ fontSize: '14px', fontWeight: 600 }}>Subscription Plan</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span
+              style={{
+                color: user.isPremium ? '#06B6D4' : '#E2E8F0',
+                fontSize: '13px',
+                fontWeight: 800,
+                background: user.isPremium ? 'rgba(6, 182, 212, 0.12)' : 'rgba(255, 255, 255, 0.08)',
+                padding: '4px 10px',
+                borderRadius: '8px',
+                border: user.isPremium ? '1px solid rgba(6, 182, 212, 0.3)' : '1px solid rgba(255, 255, 255, 0.12)'
+              }}
+            >
+              {user.isPremium ? '💎 ISAI Premium' : '🆓 ISAI Free'}
+            </span>
+            {onOpenPlanModal && (
+              <span style={{ fontSize: '11px', color: '#06B6D4', fontWeight: 600 }}>Change</span>
+            )}
+          </div>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0' }}>

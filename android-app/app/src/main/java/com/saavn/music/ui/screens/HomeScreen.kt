@@ -62,6 +62,7 @@ import com.saavn.music.data.model.YouTubeSong
 import com.saavn.music.ui.AppScreen
 import com.saavn.music.ui.MainViewModel
 import com.saavn.music.ui.SpotifyDailyMix
+import com.saavn.music.ui.components.SongListNativeAdItem
 import com.saavn.music.ui.theme.DarkBackground
 import com.saavn.music.ui.theme.DarkSurface
 import com.saavn.music.ui.theme.DarkSurfaceGlass
@@ -86,6 +87,7 @@ fun HomeScreen(
     val categorySongs by viewModel.categorySongs.collectAsState()
     val isLoading by viewModel.isLoadingHome.collectAsState()
     val selectedCategory by viewModel.selectedCategory.collectAsState()
+    val userProfile by viewModel.userProfile.collectAsState()
     val currentPlayingSong by viewModel.ytPlayerController.currentSong.collectAsState()
     val isPlaying by viewModel.ytPlayerController.isPlaying.collectAsState()
     val personalizedRecs by viewModel.personalizedRecommendations.collectAsState()
@@ -623,6 +625,15 @@ fun HomeScreen(
                     onAddToQueue = { viewModel.addToQueue(song) },
                     onPlayNext = { viewModel.playNextInQueue(song) }
                 )
+
+                // AdMob Native Ad after every 5 songs (FREE users only)
+                if ((index + 1) % 5 == 0) {
+                    SongListNativeAdItem(
+                        userProfile = userProfile,
+                        slotIndex = 100 + ((index + 1) / 5),
+                        modifier = Modifier.padding(vertical = 4.dp)
+                    )
+                }
             }
 
             // 7. Interactive Refresh Feed & Load More Songs Button
