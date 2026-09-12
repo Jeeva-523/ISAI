@@ -34,6 +34,12 @@ class LocalMusicStorage(context: Context) {
     private val _recentlyPlayed = MutableStateFlow<List<YouTubeSong>>(emptyList())
     val recentlyPlayed: StateFlow<List<YouTubeSong>> = _recentlyPlayed.asStateFlow()
 
+    private val _songPlayCounts = MutableStateFlow<Map<String, Int>>(emptyMap())
+    val songPlayCounts: StateFlow<Map<String, Int>> = _songPlayCounts.asStateFlow()
+
+    private val _artistPlayCounts = MutableStateFlow<Map<String, Int>>(emptyMap())
+    val artistPlayCounts: StateFlow<Map<String, Int>> = _artistPlayCounts.asStateFlow()
+
     private val _userProfile = MutableStateFlow<UserProfile?>(null)
     val userProfile: StateFlow<UserProfile?> = _userProfile.asStateFlow()
 
@@ -97,6 +103,24 @@ class LocalMusicStorage(context: Context) {
                 _userProfile.value = null
             }
         }
+
+        // 5. Song Play Counts
+        val songPlayJson = prefs.getString(KEY_SONG_PLAY_COUNTS, null)
+        if (!songPlayJson.isNullOrBlank()) {
+            try {
+                val type = object : TypeToken<Map<String, Int>>() {}.type
+                _songPlayCounts.value = gson.fromJson(songPlayJson, type) ?: emptyMap()
+            } catch (_: Exception) {}
+        }
+
+        // 6. Artist Play Counts
+        val artistPlayJson = prefs.getString(KEY_ARTIST_PLAY_COUNTS, null)
+        if (!artistPlayJson.isNullOrBlank()) {
+            try {
+                val type = object : TypeToken<Map<String, Int>>() {}.type
+                _artistPlayCounts.value = gson.fromJson(artistPlayJson, type) ?: emptyMap()
+            } catch (_: Exception) {}
+        }
     }
 
     fun setLocalDeviceSongs(songs: List<YouTubeSong>) {
@@ -136,8 +160,33 @@ class LocalMusicStorage(context: Context) {
         prefs.edit().putString(KEY_FAVORITES, gson.toJson(songs)).apply()
     }
 
-    // --- Recently Played (Strictly latest 20) ---
+    // --- Recently Played (Strictly latest 20) & Play Count Tracking ---
+    fun recordSongPlay(song: YouTubeSong) {
+        val vid = song.videoId.trim()
+        if (vid.isBlank()) return
+
+        val counts = _songPlayCounts.value.toMutableMap()
+        counts[vid] = (counts[vid] ?: 0) + 1
+        _songPlayCounts.value = counts
+        prefs.edit().putString(KEY_SONG_PLAY_COUNTS, gson.toJson(counts)).apply()
+
+        val cleanArtist = song.channelTitle
+            .replace(" - Topic", "")
+            .replace(" Official", "")
+            .split("•").first()
+            .split(",").first()
+            .split("&").first()
+            .trim()
+        if (cleanArtist.isNotBlank() && cleanArtist != "Tamil Artist" && cleanArtist != "Tamil Music") {
+            val artCounts = _artistPlayCounts.value.toMutableMap()
+            artCounts[cleanArtist] = (artCounts[cleanArtist] ?: 0) + 1
+            _artistPlayCounts.value = artCounts
+            prefs.edit().putString(KEY_ARTIST_PLAY_COUNTS, gson.toJson(artCounts)).apply()
+        }
+    }
+
     fun addRecentlyPlayed(song: YouTubeSong) {
+        recordSongPlay(song)
         val current = _recentlyPlayed.value.toMutableList()
         current.removeAll { it.videoId == song.videoId }
         current.add(0, song)
@@ -196,5 +245,7 @@ class LocalMusicStorage(context: Context) {
         private const val KEY_RECENTLY_PLAYED = "isai_recent_20_songs"
         private const val KEY_USER_PROFILE = "isai_user_profile"
         private const val KEY_MULTI_DEVICE_SEPARATE = "isai_multi_device_separate"
+        private const val KEY_SONG_PLAY_COUNTS = "isai_song_play_counts"
+        private const val KEY_ARTIST_PLAY_COUNTS = "isai_artist_play_counts"
     }
 }

@@ -287,7 +287,7 @@ export class RecommendationService {
       musicApi.getNewReleases(activeLangs, RECOMMENDATION_CONFIG.NEW_RELEASE_DAYS, 25)
     ])
 
-    // Derive top artist from listening history (recently played + favorites)
+    // Derive top artist from listening history weighted by actual play counts & favorites
     const recentSongs = storageService.getRecentlyPlayed()
     const favSongs = storageService.getFavorites()
     const combinedHistory = [...recentSongs, ...favSongs]
@@ -299,7 +299,10 @@ export class RecommendationService {
         const rawArtist = (s.channelTitle || '').replace(/\s*-\s*Topic/gi, '').replace(/\s*Official/gi, '').trim()
         const clean = rawArtist.split(',')[0].split('&')[0].trim()
         if (clean && clean !== 'Tamil Artist' && clean !== 'Tamil Music' && clean !== 'ISAI Artist') {
-          artistCounts[clean] = (artistCounts[clean] || 0) + 1
+          const playCount = profile.trackPlayCounts[s.videoId] || 1
+          const isFav = favSongs.some(f => f.videoId === s.videoId)
+          const weight = (playCount * 3) + (isFav ? 6 : 0)
+          artistCounts[clean] = (artistCounts[clean] || 0) + weight
         }
       })
       const sortedArtists = Object.keys(artistCounts).sort((a, b) => artistCounts[b] - artistCounts[a])

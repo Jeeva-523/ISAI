@@ -37,6 +37,8 @@ import com.saavn.music.data.search.SearchService
 import com.saavn.music.data.search.SmartSearchEngine
 import com.saavn.music.data.search.IsaiKeywordDictionary
 import com.saavn.music.data.trending.TrendingService
+import com.saavn.music.util.RelevanceEngine
+import com.saavn.music.util.SongMood
 
 enum class AppScreen {
     HOME,
@@ -305,7 +307,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 if (list.isNotEmpty()) {
                     isaiConnectManager.syncRecentlyPlayed(list)
                 }
-                loadPersonalizedRecommendations()
+                // Only trigger initial recommendation load if list is currently empty to prevent reshuffling on every track change
+                if (_personalizedRecommendations.value.isEmpty()) {
+                    loadPersonalizedRecommendations()
+                }
             }
         }
 
@@ -319,7 +324,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         val merged = (remoteList + local).distinctBy { it.videoId }.take(20)
                         localStorage.setRecentlyPlayed(merged)
                     }
-                    loadPersonalizedRecommendations()
+                    if (_personalizedRecommendations.value.isEmpty()) {
+                        loadPersonalizedRecommendations()
+                    }
                 }
             }
         }
@@ -610,41 +617,113 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun loadPersonalizedRecommendations() {
+    // Anchor tracking to keep recommended stable and prevent jitter
+    private var lastRecommendedAnchor: String = ""
+    private var lastRecommendedFetchTime: Long = 0L
+
+    fun loadPersonalizedRecommendations(force: Boolean = false) {
+        val now = System.currentTimeMillis()
+        if (!force && _personalizedRecommendations.value.isNotEmpty() && (now - lastRecommendedFetchTime < 15 * 60 * 1000L)) {
+            return
+        }
+
         viewModelScope.launch(Dispatchers.IO) {
             try {
+                val songPlayCounts = localStorage.songPlayCounts.value
+                val artistPlayCounts = localStorage.artistPlayCounts.value
                 val recentList = (localStorage.recentlyPlayed.value + isaiConnectManager.syncedRecentlyPlayed.value).distinctBy { it.videoId }
                 val favList = localStorage.favorites.value
-                val combined = (recentList + favList).distinctBy { it.videoId }
+                val allUserSongs = (recentList + favList).distinctBy { it.videoId }
 
-                if (combined.isNotEmpty()) {
-                    val artistMap = mutableMapOf<String, Int>()
-                    combined.forEach { song ->
-                        val artist = song.channelTitle
+                if (allUserSongs.isNotEmpty()) {
+                    // Score each song based on actual listening count + favorites (+6) + recency bonus
+                    val scoredSongs = allUserSongs.map { song ->
+                        val playCount = songPlayCounts[song.videoId] ?: 0
+                        val isFav = favList.any { it.videoId == song.videoId }
+                        val recencyIndex = recentList.indexOfFirst { it.videoId == song.videoId }
+                        val recencyBonus = if (recencyIndex >= 0) maxOf(0, 10 - recencyIndex) else 0
+                        val score = (playCount * 3) + (if (isFav) 6 else 0) + recencyBonus
+                        song to score
+                    }.sortedByDescending { it.second }
+
+                    val topSong = scoredSongs.firstOrNull()?.first
+
+                    // Aggregate artist affinity from artist play counts + song scores
+                    val aggregatedArtistScores = mutableMapOf<String, Int>()
+                    for ((art, cnt) in artistPlayCounts) {
+                        aggregatedArtistScores[art] = cnt * 3
+                    }
+                    scoredSongs.forEach { (song, score) ->
+                        val art = song.channelTitle
                             .replace(" - Topic", "")
                             .replace(" Official", "")
+                            .split("•").first()
+                            .split(",").first()
+                            .split("&").first()
                             .trim()
-                        if (artist.isNotBlank() && artist != "Tamil Artist" && artist != "Tamil Music") {
-                            artistMap[artist] = (artistMap[artist] ?: 0) + 1
+                        if (art.isNotBlank() && art != "Tamil Artist" && art != "Tamil Music") {
+                            aggregatedArtistScores[art] = (aggregatedArtistScores[art] ?: 0) + score
                         }
                     }
 
-                    val topArtist = artistMap.maxByOrNull { it.value }?.key
-                    if (!topArtist.isNullOrBlank()) {
-                        val cleanTopArtist = topArtist.split(",").first().split("&").first().trim()
-                        _recommendedReason.value = "Because you listen to $cleanTopArtist"
-                        val saavnResult = musicRepo.search("$cleanTopArtist Tamil songs")
+                    val topArtist = aggregatedArtistScores.maxByOrNull { it.value }?.key
+                    val currentAnchor = "$topArtist|${topSong?.videoId}"
+
+                    if (!force && currentAnchor == lastRecommendedAnchor && _personalizedRecommendations.value.isNotEmpty()) {
+                        return@launch
+                    }
+
+                    if (topSong != null || !topArtist.isNullOrBlank()) {
+                        val activeLangs = _preferredLanguages.value.ifEmpty { listOf("tamil") }
+                        val dominantMood = topSong?.let { RelevanceEngine.detectSongMood(it) } ?: SongMood.MELODY_ROMANCE
+
+                        val searchTarget = if (!topArtist.isNullOrBlank()) {
+                            "$topArtist ${activeLangs.first()} songs"
+                        } else {
+                            RelevanceEngine.getRelevantSearchQuery(topSong!!, activeLangs.first())
+                        }
+
+                        if (!topArtist.isNullOrBlank()) {
+                            _recommendedReason.value = "Because you frequently listen to $topArtist"
+                        } else {
+                            _recommendedReason.value = "Based on your most played songs"
+                        }
+
+                        val saavnResult = musicRepo.search(searchTarget, limit = 40)
                         val rawRecSongs = saavnResult.getOrNull()?.map { it.toYouTubeSong() } ?: emptyList()
-                        val recSongs = ytRepo.deduplicateSongs(rawRecSongs)
-                        if (recSongs.isNotEmpty()) {
-                            val heroExclude = _trendingSongs.value.take(4)
-                            val filtered = recSongs.filterNot { s -> 
-                                combined.any { ytRepo.isSameSong(it, s) } ||
-                                heroExclude.any { ytRepo.isSameSong(it, s) }
+
+                        // Also fetch related songs for topSong if available
+                        val extraRelated = if (topSong != null) {
+                            val relQ = RelevanceEngine.getRelevantSearchQuery(topSong, activeLangs.first())
+                            if (relQ != searchTarget) {
+                                musicRepo.search(relQ, limit = 20).getOrNull()?.map { it.toYouTubeSong() } ?: emptyList()
+                            } else emptyList()
+                        } else emptyList()
+
+                        val combinedCandidates = ytRepo.deduplicateSongs(rawRecSongs + extraRelated)
+                        if (combinedCandidates.isNotEmpty()) {
+                            // Filter candidate songs by relevance to user's most listened songs and mood
+                            val filtered = combinedCandidates.filter { candidate ->
+                                val alreadyListened = allUserSongs.any { ytRepo.isSameSong(it, candidate) }
+                                if (alreadyListened) return@filter false
+
+                                if (topSong != null) {
+                                    RelevanceEngine.scoreSongRelevance(topSong, candidate, activeLangs) > 0
+                                } else {
+                                    RelevanceEngine.detectSongMood(candidate) == dominantMood
+                                }
                             }
-                            val finalRecs = ytRepo.deduplicateSongs(if (filtered.isNotEmpty()) filtered else recSongs)
-                            _personalizedRecommendations.value = finalRecs.take(12)
-                            return@launch
+
+                            val finalRecs = if (filtered.size >= 6) filtered else combinedCandidates.filterNot { c ->
+                                allUserSongs.any { ytRepo.isSameSong(it, c) }
+                            }
+
+                            if (finalRecs.isNotEmpty()) {
+                                _personalizedRecommendations.value = finalRecs.take(15)
+                                lastRecommendedAnchor = currentAnchor
+                                lastRecommendedFetchTime = now
+                                return@launch
+                            }
                         }
                     }
                 }
@@ -657,6 +736,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val heroExclude = _trendingSongs.value.take(4).map { it.videoId }.toSet()
                 val distinctRec = dedupedRec.filterNot { heroExclude.contains(it.videoId) }
                 _personalizedRecommendations.value = if (distinctRec.isNotEmpty()) distinctRec.take(12) else dedupedRec.take(12)
+                lastRecommendedFetchTime = now
             } catch (_: Exception) {}
         }
     }
@@ -715,6 +795,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         _latestReleases.value = ytRepo.deduplicateSongs(fallbackNew).take(12)
                     }
                 } catch (_: Exception) {}
+
+                // Refresh recommendations on home reload
+                loadPersonalizedRecommendations(force = true)
             } catch (e: Exception) {
                 try {
                     val langs = _preferredLanguages.value.ifEmpty { listOf("tamil") }
