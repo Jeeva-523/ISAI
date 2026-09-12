@@ -36,10 +36,10 @@ android {
 
     signingConfigs {
         create("release") {
-            storeFile = file("${rootDir}/isai-release.jks")
-            storePassword = "isaimusic2026"
-            keyAlias = "isai"
-            keyPassword = "isaimusic2026"
+            storeFile = file("${rootDir}/debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
             enableV1Signing = true
             enableV2Signing = true
         }

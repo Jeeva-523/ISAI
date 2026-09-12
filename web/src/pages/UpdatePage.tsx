@@ -1,43 +1,74 @@
 import React, { useState, useEffect, useRef } from 'react'
 
-const APK_DOWNLOAD_URL = '/isai.dat'
-
 export const UpdatePage: React.FC = () => {
   const [status, setStatus] = useState<'downloading' | 'completed'>('downloading')
-  const [progress, setProgress] = useState(15)
-  const [downloadedMb, setDownloadedMb] = useState('3.0')
+  const [progress, setProgress] = useState(0)
+  const [downloadedMb, setDownloadedMb] = useState('0.0')
   const hasTriggeredRef = useRef(false)
 
-  const triggerDownload = () => {
-    const link = document.createElement('a')
-    link.href = APK_DOWNLOAD_URL
-    link.setAttribute('download', 'isai.apk')
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
+  const triggerDownload = async () => {
+    setStatus('downloading')
+    setProgress(5)
+    setDownloadedMb('1.0')
+
+    try {
+      const response = await fetch('/isai.dat', { cache: 'no-store' })
+      if (!response.ok) throw new Error('Download failed')
+
+      const contentLength = Number(response.headers.get('content-length')) || 19495033
+      const reader = response.body?.getReader()
+
+      let receivedBytes = 0
+      const chunks: BlobPart[] = []
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          if (value) {
+            chunks.push(value)
+            receivedBytes += value.length
+            const pct = Math.min(Math.round((receivedBytes / contentLength) * 100), 100)
+            setProgress(pct)
+            setDownloadedMb((receivedBytes / (1024 * 1024)).toFixed(1))
+          }
+        }
+      } else {
+        const blob = await response.blob()
+        chunks.push(new Uint8Array(await blob.arrayBuffer()))
+      }
+
+      const completeBlob = new Blob(chunks, { type: 'application/vnd.android.package-archive' })
+      const blobUrl = URL.createObjectURL(completeBlob)
+      const link = document.createElement('a')
+      link.href = blobUrl
+      link.download = 'isai.apk'
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 30000)
+
+      setProgress(100)
+      setDownloadedMb('19.5')
+      setStatus('completed')
+    } catch (err) {
+      console.warn('Blob stream failed, falling back to direct download link:', err)
+      const link = document.createElement('a')
+      link.href = '/isai.apk'
+      link.setAttribute('download', 'isai.apk')
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      setProgress(100)
+      setDownloadedMb('19.5')
+      setStatus('completed')
+    }
   }
 
   useEffect(() => {
     if (!hasTriggeredRef.current) {
       hasTriggeredRef.current = true
-      // Trigger automatic single APK download
       triggerDownload()
-
-      let current = 15
-      const timer = setInterval(() => {
-        current += Math.floor(Math.random() * 20) + 15
-        if (current >= 100) {
-          clearInterval(timer)
-          setProgress(100)
-          setDownloadedMb('19.5')
-          setStatus('completed')
-        } else {
-          setProgress(current)
-          setDownloadedMb(((current / 100) * 19.5).toFixed(1))
-        }
-      }, 400)
-
-      return () => clearInterval(timer)
     }
   }, [])
 
