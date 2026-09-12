@@ -291,6 +291,7 @@ class YouTubeMusicRepository {
             val section = sectionList.optJSONObject(i) ?: continue
             val contents = section.optJSONObject("itemSectionRenderer")?.optJSONArray("contents")
                 ?: section.optJSONObject("musicShelfRenderer")?.optJSONArray("contents")
+                ?: section.optJSONObject("musicCardShelfRenderer")?.optJSONArray("contents")
                 ?: continue
 
             for (j in 0 until contents.length()) {
@@ -310,6 +311,7 @@ class YouTubeMusicRepository {
                     ?.optJSONArray("runs")
 
                 var artist = "Music Artist"
+                var album = ""
                 var durationStr = "3:45"
                 if (flex1Runs != null && flex1Runs.length() > 0) {
                     val parts = mutableListOf<String>()
@@ -319,14 +321,26 @@ class YouTubeMusicRepository {
                             parts.add(t)
                         }
                     }
-                    if (parts.size > 1) {
-                        artist = parts[1]
+                    if (parts.isNotEmpty()) {
                         val last = parts.last()
-                        if (last.matches(Regex("\\d+:\\d+(?::\\d+)?"))) {
+                        val hasDuration = last.matches(Regex("\\d+:\\d+(?::\\d+)?"))
+                        if (hasDuration) {
                             durationStr = last
                         }
-                    } else if (parts.size == 1) {
-                        artist = parts[0]
+                        val metadataParts = if (hasDuration) parts.dropLast(1) else parts
+                        val contentParts = if (metadataParts.firstOrNull()?.equals("Song", ignoreCase = true) == true ||
+                            metadataParts.firstOrNull()?.equals("Video", ignoreCase = true) == true) {
+                            metadataParts.drop(1)
+                        } else {
+                            metadataParts
+                        }
+
+                        if (contentParts.isNotEmpty()) {
+                            artist = contentParts[0]
+                            if (contentParts.size > 1) {
+                                album = contentParts[1]
+                            }
+                        }
                     }
                 }
 
@@ -344,12 +358,18 @@ class YouTubeMusicRepository {
                         ?.optString("videoId")
                 }
 
+                val displayChannel = if (album.isNotBlank() && !artist.contains(album, ignoreCase = true)) {
+                    "$artist • $album"
+                } else {
+                    artist
+                }
+
                 if (!videoId.isNullOrBlank() && !title.isNullOrBlank()) {
                     songs.add(
                         YouTubeSong(
                             videoId = videoId,
                             title = cleanHtmlTitle(title),
-                            channelTitle = cleanHtmlTitle(artist),
+                            channelTitle = cleanHtmlTitle(displayChannel),
                             thumbnailUrl = "https://img.youtube.com/vi/$videoId/hqdefault.jpg",
                             durationFormatted = durationStr,
                             durationMs = 225000L,

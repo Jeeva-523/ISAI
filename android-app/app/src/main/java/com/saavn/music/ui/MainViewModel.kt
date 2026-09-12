@@ -178,10 +178,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun SongItem.toYouTubeSong(): YouTubeSong {
+        val displayChannel = if (albumName.isNotBlank() && !artistNames.contains(albumName, ignoreCase = true)) {
+            if (artistNames.isNotBlank()) "$artistNames • $albumName" else albumName
+        } else {
+            artistNames.ifBlank { subtitle }
+        }
         return YouTubeSong(
             videoId = id,
             title = title,
-            channelTitle = artistNames.ifBlank { subtitle },
+            channelTitle = displayChannel,
             thumbnailUrl = imageUrl,
             durationFormatted = getFormattedDuration(),
             durationMs = durationSeconds * 1000L,
@@ -977,11 +982,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 // Execute targeted search with primary YouTube Music rank preservation
                 coroutineScope {
                     val ytDeferred = async {
-                        ytRepo.searchSongs(parsedIntent.youtubeMusicQuery, maxResults = 50).getOrDefault(emptyList())
+                        val mainResults = ytRepo.searchSongs(parsedIntent.youtubeMusicQuery, maxResults = 50).getOrDefault(emptyList())
+                        val hasSongsWord = parsedIntent.youtubeMusicQuery.lowercase(java.util.Locale.ROOT).let {
+                            it.contains("song") || it.contains("paatu") || it.contains("paadal")
+                        }
+                        if (!hasSongsWord && parsedIntent.unmatchedTerms.isNotEmpty()) {
+                            val extraQuery = "${parsedIntent.youtubeMusicQuery} songs"
+                            val movieSongs = ytRepo.searchSongs(extraQuery, maxResults = 30).getOrDefault(emptyList())
+                            (mainResults + movieSongs).distinctBy { it.videoId }
+                        } else {
+                            mainResults
+                        }
                     }
                     val saavnDeferred = async {
                         if (parsedIntent.directAudioQuery.isNotBlank()) {
-                            musicRepo.search(parsedIntent.directAudioQuery, limit = 30).getOrNull()?.map { it.toYouTubeSong() } ?: emptyList()
+                            val mainSaavn = musicRepo.search(parsedIntent.directAudioQuery, limit = 35).getOrNull()?.map { it.toYouTubeSong() } ?: emptyList()
+                            val hasSongsWord = parsedIntent.directAudioQuery.lowercase(java.util.Locale.ROOT).let {
+                                it.contains("song") || it.contains("paatu") || it.contains("paadal")
+                            }
+                            if (!hasSongsWord && parsedIntent.unmatchedTerms.isNotEmpty()) {
+                                val extraQuery = "${parsedIntent.directAudioQuery} songs"
+                                val movieSongs = musicRepo.search(extraQuery, limit = 25).getOrNull()?.map { it.toYouTubeSong() } ?: emptyList()
+                                (mainSaavn + movieSongs).distinctBy { it.videoId }
+                            } else {
+                                mainSaavn
+                            }
                         } else emptyList()
                     }
 

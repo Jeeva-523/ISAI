@@ -824,7 +824,26 @@ export function App() {
         const intent = SmartSearchEngine.parseQuery(query, userLangs, favArtists)
 
         let results = await musicApi.searchSongs(intent.optimizedSearchQuery)
-        if (!results || results.length === 0) {
+
+        // For specific song/movie searches (e.g. "Ghilli", "Leo", "Master", "Arabic Kuthu", "Kannazhaga"),
+        // also query "${query} songs" so full movie soundtrack is retrieved from the music API
+        if (intent.unmatchedTerms.length > 0) {
+          const cleanQ = query.trim()
+          const hasSongsWord = cleanQ.toLowerCase().includes('song') || cleanQ.toLowerCase().includes('paatu')
+          const additionalQueries: string[] = []
+          if (cleanQ.toLowerCase() !== intent.optimizedSearchQuery.toLowerCase()) {
+            additionalQueries.push(cleanQ)
+          }
+          if (!hasSongsWord) {
+            additionalQueries.push(`${cleanQ} songs`)
+          }
+          if (additionalQueries.length > 0) {
+            const extra = await Promise.all(
+              additionalQueries.map(q => musicApi.searchSongs(q).catch(() => []))
+            )
+            results = [...(results || []), ...extra.flat()]
+          }
+        } else if (!results || results.length === 0) {
           results = await musicApi.searchSongs(query)
         }
 

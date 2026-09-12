@@ -222,20 +222,31 @@ export class MusicApiClient implements MusicProvider {
    * Calculate search relevance score based on token overlap in title, artist, and album
    */
   private calculateSearchRelevance(song: Song, query: string): number {
-    const stopWords = new Set(['song', 'songs', 'all', 'the', 'a', 'an', 'hits', 'track', 'music', 'mp3', 'new', 'latest', 'best', 'padal', 'paadalgal'])
-    const tokens = query.toLowerCase().split(/[^a-zA-Z0-9]+/).filter(t => t.length > 1 && !stopWords.has(t))
+    const stopWords = new Set(['song', 'songs', 'all', 'the', 'a', 'an', 'hits', 'track', 'music', 'mp3', 'new', 'latest', 'best', 'padal', 'paadalgal', 'movie', 'film'])
+    const tokens = query.toLowerCase().split(/[^\p{L}\p{Nd}]+/u).filter(t => t.length > 1 && !stopWords.has(t))
     if (tokens.length === 0) return 1
 
-    const title = (song.title || '').toLowerCase()
-    const artist = (song.channelTitle || '').toLowerCase()
-    const album = (song.album || '').toLowerCase()
+    const title = (song.title || '').toLowerCase().trim()
+    const artist = (song.channelTitle || '').toLowerCase().trim()
+    const album = (song.album || '').toLowerCase().trim()
+    const queryLower = query.toLowerCase().trim()
     const fullText = `${title} ${artist} ${album}`
 
     let score = 0
+
+    // Exact Title or Movie match bonus
+    const cleanTitle = title.replace(/\(.*\)|\[.*\]/g, '').trim()
+    if (cleanTitle === queryLower) score += 40
+    else if (cleanTitle.startsWith(queryLower)) score += 25
+    else if (title.includes(queryLower)) score += 15
+
+    if (album === queryLower) score += 35
+    else if (album.includes(queryLower)) score += 20
+
     for (const token of tokens) {
-      if (title.includes(token)) score += 3
-      else if (artist.includes(token)) score += 2
-      else if (album.includes(token)) score += 1
+      if (title.includes(token)) score += 6
+      else if (album.includes(token)) score += 5
+      else if (artist.includes(token)) score += 3
 
       // Gaana / Gana synonym matching
       if (token === 'gana' && fullText.includes('gaana')) score += 3
@@ -253,8 +264,15 @@ export class MusicApiClient implements MusicProvider {
     const cleanQuery = query.trim()
     const lower = cleanQuery.toLowerCase()
 
-    // 1. Check for Tamil Gaana / Folk intent
-    if (lower.includes('gana') || lower.includes('gaana')) {
+    const categoryOnlyWords = new Set([
+      'gana', 'gaana', 'marana', 'kuthu', 'dappankuthu', 'melody', 'melodies',
+      'song', 'songs', 'paatu', 'paadal', 'paadalgal', 'tamil', 'hits', 'hit', 'all', 'best', 'super'
+    ])
+    const queryTokens = lower.split(/[^\p{L}\p{Nd}]+/u).filter(Boolean)
+    const isPureCategorySearch = queryTokens.length > 0 && queryTokens.every(w => categoryOnlyWords.has(w))
+
+    // 1. Check for Tamil Gaana / Folk intent (ONLY for generic category queries, not specific songs/movies)
+    if (isPureCategorySearch && (lower.includes('gana') || lower.includes('gaana'))) {
       const ganaQueries = [
         'Gana Bala',
         'Marana Gana Viji',
@@ -290,8 +308,8 @@ export class MusicApiClient implements MusicProvider {
       }
     }
 
-    // 2. Check for Tamil Melody intent
-    if (lower.includes('melody') || lower.includes('melodies')) {
+    // 2. Check for Tamil Melody intent (ONLY for generic category queries)
+    if (isPureCategorySearch && (lower.includes('melody') || lower.includes('melodies'))) {
       const melodyQueries = [
         'Tamil melody hit songs',
         'Harris Jayaraj melody hits',
@@ -319,8 +337,8 @@ export class MusicApiClient implements MusicProvider {
       }
     }
 
-    // 3. Check for Kuthu / Mass intent
-    if (lower.includes('kuthu') || lower.includes('mass dance')) {
+    // 3. Check for Kuthu / Mass intent (ONLY for generic category queries)
+    if (isPureCategorySearch && (lower.includes('kuthu') || lower.includes('mass dance'))) {
       const kuthuQueries = [
         'Arabic Kuthu - Halamithi Habibo',
         'Aaluma Doluma',

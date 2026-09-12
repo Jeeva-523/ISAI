@@ -523,20 +523,38 @@ object SmartSearchEngine {
         val fullText = "$titleLower $artistLower"
 
         // Stop words to exclude from token checks
-        val stopWords = setOf("song", "songs", "track", "music", "the", "a", "an", "in", "of", "and", "for", "paatu", "paadal", "hits", "hit")
-        val queryTokens = canonicalLower.split(Regex("[^a-zA-Z0-9]+")).filter { it.length > 1 && it !in stopWords }
+        val stopWords = setOf("song", "songs", "track", "music", "the", "a", "an", "in", "of", "and", "for", "paatu", "paadal", "paattu", "paadalgal", "hits", "hit", "movie", "film", "cinema", "soundtrack", "ost")
+        val queryTokens = canonicalLower.split(Regex("[^\\p{L}\\p{Nd}]+")).filter { it.length > 1 && it !in stopWords }
 
         // 2. Exact Title Match Bonus (Massive priority for specific song searches)
         val cleanTitle = titleLower.replace(Regex("\\(.*\\)|\\[.*\\]"), "").trim()
         if (cleanTitle == rawQueryLower || cleanTitle == canonicalLower) {
-            score += 2000
+            score += 2500
         } else if (cleanTitle.startsWith(rawQueryLower) || cleanTitle.startsWith(canonicalLower)) {
-            score += 1500
+            score += 1800
         } else if (titleLower.contains(rawQueryLower) || titleLower.contains(canonicalLower)) {
-            score += 1000
+            score += 1200
         }
 
-        // 3. Query Token Coverage in Title / Artist
+        // 2b. Movie / Album Match Bonus (Massive priority when searching for movie names like Ghilli, Leo, Master, etc.)
+        val albumPart = if (artistLower.contains(" • ")) {
+            artistLower.substringAfter(" • ").trim()
+        } else ""
+        if (albumPart.isNotBlank()) {
+            if (albumPart == rawQueryLower || albumPart == canonicalLower) {
+                score += 2400
+            } else if (albumPart.startsWith(rawQueryLower) || albumPart.startsWith(canonicalLower)) {
+                score += 1900
+            } else if (albumPart.contains(rawQueryLower) || albumPart.contains(canonicalLower)) {
+                score += 1500
+            } else if (queryTokens.isNotEmpty() && queryTokens.all { albumPart.contains(it) }) {
+                score += 1400
+            }
+        } else if (queryTokens.isNotEmpty() && queryTokens.all { artistLower.contains(it) }) {
+            score += 1200
+        }
+
+        // 3. Query Token Coverage in Title / Artist / Album
         if (queryTokens.isNotEmpty()) {
             var matchedCount = 0
             for (token in queryTokens) {
@@ -546,7 +564,7 @@ object SmartSearchEngine {
                     score += 250
                     matchedCount++
                 } else if (inArtist) {
-                    score += 150
+                    score += 200
                     matchedCount++
                 }
             }
@@ -556,7 +574,7 @@ object SmartSearchEngine {
                 score += 600
             } else if (matchedCount == 0 && queryTokens.size >= 2) {
                 // Irrelevant song that doesn't contain any query words
-                score -= 800
+                score -= 500
             }
         }
 

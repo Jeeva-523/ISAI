@@ -173,47 +173,50 @@ export class SmartSearchEngine {
       }
     }
 
-    const stopWords = new Set(['song', 'songs', 'track', 'music', 'for', 'in', 'the', 'a', 'an', 'paatu', 'paadal'])
+    const stopWords = new Set(['song', 'songs', 'track', 'music', 'for', 'in', 'the', 'a', 'an', 'paatu', 'paadal', 'movie', 'film'])
     const unmatched = tokens.filter((t) => !matchedTokens.has(t) && !stopWords.has(t))
 
     const primaryLang = (userPreferredLanguages[0] || 'tamil').toLowerCase()
     const effectiveLang = detectedLang || primaryLang
 
-    const queryParts: string[] = []
-
-    if (effectiveLang) {
-      queryParts.push(effectiveLang.charAt(0).toUpperCase() + effectiveLang.slice(1))
-    }
-
-    if (detectedArtist) {
-      const formattedArtist =
-        detectedArtist === 'anirudh' ? 'Anirudh Ravichander' :
-        detectedArtist === 'ar rahman' ? 'A.R. Rahman' :
-        detectedArtist === 'ilaiyaraaja' ? 'Ilaiyaraaja' :
-        detectedArtist === 'yuvan' ? 'Yuvan Shankar Raja' :
-        detectedArtist.charAt(0).toUpperCase() + detectedArtist.slice(1)
-      queryParts.push(formattedArtist)
-    }
-
-    if (detectedYearOrEra) queryParts.push(detectedYearOrEra)
-    if (detectedMood) queryParts.push(detectedMood === 'love' ? 'romantic love' : detectedMood)
-    if (detectedGenre) queryParts.push(detectedGenre === 'gaana' ? 'gana' : detectedGenre)
-    if (detectedActivity === 'workout') queryParts.push('gym workout beats')
-    if (detectedActivity === 'travel') queryParts.push('road trip driving')
-    if (detectedSituation === 'rain') queryParts.push('rain melody')
-    if (isDevotional) queryParts.push('devotional bhakti')
+    let optimized = ''
+    const formattedArtist = detectedArtist ? (
+      detectedArtist === 'anirudh' ? 'Anirudh Ravichander' :
+      detectedArtist === 'ar rahman' ? 'A.R. Rahman' :
+      detectedArtist === 'ilaiyaraaja' ? 'Ilaiyaraaja' :
+      detectedArtist === 'yuvan' ? 'Yuvan Shankar Raja' :
+      detectedArtist.charAt(0).toUpperCase() + detectedArtist.slice(1)
+    ) : undefined
 
     if (unmatched.length > 0) {
-      queryParts.push(unmatched.join(' '))
-    }
+      // Specific song or movie search (e.g. "Ghilli", "Leo", "Master", "Arabic Kuthu", "Kannazhaga")
+      // Preserve the user's search terms cleanly so exact movie & song titles match
+      if (formattedArtist) {
+        optimized = `${formattedArtist} ${unmatched.join(' ')}`
+      } else {
+        optimized = cleanRaw
+      }
+    } else {
+      // Categorical / Discovery search (e.g. "90s Tamil songs", "Anirudh love songs", "Tamil kuthu")
+      const queryParts: string[] = []
+      if (effectiveLang) {
+        queryParts.push(effectiveLang.charAt(0).toUpperCase() + effectiveLang.slice(1))
+      }
+      if (formattedArtist) queryParts.push(formattedArtist)
+      if (detectedYearOrEra) queryParts.push(detectedYearOrEra)
+      if (detectedMood) queryParts.push(detectedMood === 'love' ? 'romantic love' : detectedMood)
+      if (detectedGenre) queryParts.push(detectedGenre === 'gaana' ? 'gana' : detectedGenre)
+      if (detectedActivity === 'workout') queryParts.push('gym workout beats')
+      if (detectedActivity === 'travel') queryParts.push('road trip driving')
+      if (detectedSituation === 'rain') queryParts.push('rain melody')
+      if (isDevotional) queryParts.push('devotional bhakti')
 
-    if (unmatched.length === 0) {
       if (isLatest) queryParts.push('latest new songs')
       else if (isClassicOld) queryParts.push('old classic evergreen hits')
       else queryParts.push('hit songs')
-    }
 
-    const optimized = Array.from(new Set(queryParts)).join(' ').replace(/\s+/g, ' ').trim()
+      optimized = Array.from(new Set(queryParts)).join(' ').replace(/\s+/g, ' ').trim()
+    }
 
     return {
       rawQuery,
@@ -234,13 +237,37 @@ export class SmartSearchEngine {
   }
 
   public static rankSong(
-    song: { title: string; channelTitle: string },
+    song: { title: string; channelTitle: string; album?: string },
     intent: ParsedSearchIntent,
     userPreferredLanguages: string[] = ['tamil'],
     userFavoriteArtists: string[] = []
   ): number {
     let score = 100
-    const text = `${song.title} ${song.channelTitle}`.toLowerCase()
+    const titleLower = (song.title || '').toLowerCase().trim()
+    const artistLower = (song.channelTitle || '').toLowerCase().trim()
+    const albumLower = (song.album || '').toLowerCase().trim()
+    const text = `${titleLower} ${artistLower} ${albumLower}`
+    const rawLower = intent.rawQuery.toLowerCase().trim()
+    const canonicalLower = intent.canonicalQuery.toLowerCase().trim()
+
+    // 1. Exact / Partial Song Title match bonus
+    const cleanTitle = titleLower.replace(/\(.*\)|\[.*\]/g, '').trim()
+    if (cleanTitle === rawLower || cleanTitle === canonicalLower) score += 350
+    else if (cleanTitle.startsWith(rawLower) || cleanTitle.startsWith(canonicalLower)) score += 220
+    else if (titleLower.includes(rawLower) || titleLower.includes(canonicalLower)) score += 150
+
+    // 2. Exact / Partial Movie / Album match bonus (ensures movie searches pull full movie tracks to top)
+    if (albumLower && (albumLower === rawLower || albumLower === canonicalLower)) score += 300
+    else if (albumLower && (albumLower.startsWith(rawLower) || albumLower.startsWith(canonicalLower))) score += 220
+    else if (albumLower && (albumLower.includes(rawLower) || albumLower.includes(canonicalLower))) score += 170
+
+    // 3. Unmatched terms (specific song or movie title words)
+    for (const term of intent.unmatchedTerms) {
+      const t = term.toLowerCase()
+      if (titleLower.includes(t)) score += 70
+      if (albumLower.includes(t)) score += 60
+      if (artistLower.includes(t)) score += 30
+    }
 
     const targetLang = intent.detectedLanguage || userPreferredLanguages[0]?.toLowerCase()
     if (targetLang && text.includes(targetLang)) score += 30
@@ -261,10 +288,6 @@ export class SmartSearchEngine {
     }
     if (intent.detectedGenre && text.includes(intent.detectedGenre)) score += 25
     if (intent.detectedYearOrEra && text.includes(intent.detectedYearOrEra.replace('s', ''))) score += 25
-
-    for (const term of intent.unmatchedTerms) {
-      if (text.includes(term.toLowerCase())) score += 40
-    }
 
     return score
   }
