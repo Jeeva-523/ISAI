@@ -8,6 +8,7 @@ enum class SongMood {
     MELODY_ROMANCE,
     PARTY_KUTHU,
     SAD_HEARTBREAK,
+    MOTIVATION_INSPIRING,
     DEVOTIONAL,
     GENERAL
 }
@@ -36,33 +37,61 @@ object RelevanceEngine {
         "intro", "mass", "hero", "entry", "hukum", "alappara", "naa ready",
         "badass", "hunter", "vantaar", "matta", "whistle", "neruppu", "marana",
         "vaathi", "dharala", "jalabulanjangu", "arabic kuthu", "verithanam",
-        "surviva", "aalaporaan", "theemai dhaan", "beast mode", "leo", "jailer",
+        "aalaporaan", "theemai dhaan", "beast mode", "leo", "jailer",
         "master", "petta", "kabali", "mersal", "vikram", "vettaiyan", "kanguva",
         "bloody", "power", "roar", "tiger", "singam", "attitude", "anthem", "theme", "bgm"
     )
 
     private val MELODY_KEYWORDS = listOf(
         "melody", "love", "kadhal", "kaadhal", "kanave", "unakkul", "nenjukkul",
-        "vaseegara", "munbe vaa", "romantic", "soul", "feel good", "marakkuma",
+        "vaseegara", "munbe vaa", "romantic", "romance", "soul", "feel good", "marakkuma",
         "malare", "mudhal nee", "pirai", "enodu", "thalli pogathey", "kadhalaada",
         "megham karukatha", "anbil avan", "kannazhaga", "poove", "oru manam",
         "kurumugil", "vennilave", "roja", "minnale", "vinnaithaandi", "jeans",
         "alaipayuthey", "vizhiyil", "uyirin", "aaruyire", "poove sempoove",
         "ennodu nee irundhal", "unakkenna venum sollu", "kadhale kadhale",
         "kannamma", "anbe", "uyire", "thaen thaen", "mayakkama", "un perai solla",
-        "suttum vizhi", "oru dheyvam thantha", "pookkal pookkum"
+        "suttum vizhi", "oru dheyvam thantha", "pookkal pookkum", "hosanna", "en jeevan",
+        "new york nagaram", "anbil", "innum konjam neram", "maruvaarthai", "un vizhigalil",
+        "kannaana kanney", "kanave kanave", "neeyum naanum", "avalum naanum"
     )
 
     private val KUTHU_KEYWORDS = listOf(
         "kuthu", "party", "dance", "dappankuthu", "rowdy baby", "kaavaalaa",
         "local", "chilla", "goli soda", "dandanakka", "machan", "donu donu",
         "sodakku", "sarattu vandiyila", "sarakku", "vaathi coming", "dippam dappam",
-        "thee thalapathy"
+        "thee thalapathy", "nakku mukka", "tasakku", "appa takkaru"
     )
 
     private val SAD_KEYWORDS = listOf(
         "sad", "breakup", "pain", "kanneer", "pirivu", "sogam", "valigal",
-        "thanimai", "pogadha pogadha", "en kanmani", "nenje nenje", "kannukulla"
+        "thanimai", "pogadha pogadha", "en kanmani", "nenje nenje", "kannukulla",
+        "valikidhu", "po nee po", "yen ennai pirindhai", "idhu varai", "yaaro ivan"
+    )
+
+    private val MOTIVATION_KEYWORDS = listOf(
+        "motivation", "motivational", "inspiring", "inspiration", "confidence", "hard work",
+        "struggle", "success", "vetri", "vettri", "poradu", "saadhithu", "saadhikkalaam",
+        "nambikkai", "kanavugal", "uyarvu", "valarum", "singapenney", "ethir neechal",
+        "oruvan oruvan", "vetri kodi kattu", "vaazhkai", "velaiyilla pattathari", "vip",
+        "surviva", "neruppu da", "believer", "unstoppable", "hall of fame",
+        "aalaporaan thamizhan", "aarambam", "thunivom", "vidumurai", "padayappa", "baba",
+        "anbe sivam", "jeithu", "jeippom", "vijayam", "dhillu", "veera", "porattam",
+        "valigalai thaandi", "kanavu", "ezhunthu vaa", "thuninthu nil", "nimirndhu nil",
+        "unnal mudiyum", "vada chennai", "soorarai pottru", "rise", "champion", "warrior", "anthem"
+    )
+
+    private val DEVOTIONAL_KEYWORDS = listOf(
+        "devotional", "bakthi", "bhajan", "god", "murugan", "shivan", "siva", "ayyappa",
+        "ayyappan", "vinayagar", "ganesha", "amman", "krishna", "perumal", "vishnu",
+        "venkateshwara", "tirupati", "hanuman", "jesus", "allah", "kavasam", "namavali",
+        "suprabhatam", "sairam", "sai baba", "temple", "pooja", "aarathi", "slokam",
+        "stotram", "mahaan", "gayatri mantra", "om namah shivaya", "harivarasanam"
+    )
+
+    private val DEVOTIONAL_ARTISTS = listOf(
+        "tms", "t.m. soundararajan", "seerkazhi govindarajan", "k.j. yesudas", "veeramani",
+        "bombay saradha", "mahanadhi shobana", "l.r. eswari"
     )
 
     private val NON_TAMIL_LANGUAGES = listOf(
@@ -183,21 +212,43 @@ object RelevanceEngine {
     fun detectSongMood(song: YouTubeSong): SongMood {
         val text = normalize("${song.title} ${song.channelTitle}")
 
+        // 1. Devotional check first (spiritual songs must never be mixed with cinema love/kuthu)
+        for (artist in DEVOTIONAL_ARTISTS) {
+            if (text.contains(artist)) return SongMood.DEVOTIONAL
+        }
+        for (kw in DEVOTIONAL_KEYWORDS) {
+            if (text.contains(kw)) return SongMood.DEVOTIONAL
+        }
+
+        // 2. Motivational / Inspiring (e.g. Vetri Kodi Kattu, Singapenney, Ethir Neechal, VIP, Believer)
+        for (kw in MOTIVATION_KEYWORDS) {
+            if (text.contains(kw)) return SongMood.MOTIVATION_INSPIRING
+        }
+
+        // 3. Gaana / Folk
         for (artist in GANA_ARTISTS) {
             if (text.contains(artist)) return SongMood.GANA_FOLK
         }
         for (kw in GANA_KEYWORDS) {
             if (text.contains(kw)) return SongMood.GANA_FOLK
         }
+
+        // 4. Sad / Heartbreak
         for (kw in SAD_KEYWORDS) {
             if (text.contains(kw)) return SongMood.SAD_HEARTBREAK
         }
+
+        // 5. Intro / Mass hero anthems
         for (kw in INTRO_MASS_KEYWORDS) {
             if (text.contains(kw)) return SongMood.INTRO_MASS
         }
+
+        // 6. Party / Kuthu fast beats
         for (kw in KUTHU_KEYWORDS) {
             if (text.contains(kw)) return SongMood.PARTY_KUTHU
         }
+
+        // 7. Melodies / Romantic love songs
         for (kw in MELODY_KEYWORDS) {
             if (text.contains(kw)) return SongMood.MELODY_ROMANCE
         }
@@ -220,24 +271,55 @@ object RelevanceEngine {
         val targetMood = detectSongMood(target)
         val candidateMood = detectSongMood(candidate)
 
-        // 1. Mood Matching & Synergies
+        // 1. Strict Mood Matching & Filtering
         if (targetMood == candidateMood && targetMood != SongMood.GENERAL) {
-            score += 90
-        } else if ((targetMood == SongMood.GANA_FOLK && candidateMood == SongMood.PARTY_KUTHU) ||
-            (targetMood == SongMood.PARTY_KUTHU && candidateMood == SongMood.GANA_FOLK)) {
-            score += 50
-        } else if ((targetMood == SongMood.INTRO_MASS && candidateMood == SongMood.PARTY_KUTHU) ||
-            (targetMood == SongMood.PARTY_KUTHU && candidateMood == SongMood.INTRO_MASS)) {
-            score += 45
-        } else if ((targetMood == SongMood.GANA_FOLK && (candidateMood == SongMood.MELODY_ROMANCE || candidateMood == SongMood.SAD_HEARTBREAK)) ||
-            ((targetMood == SongMood.MELODY_ROMANCE || targetMood == SongMood.SAD_HEARTBREAK) && candidateMood == SongMood.GANA_FOLK)) {
-            score -= 100 // Never mix Gaana with slow melody
-        } else if ((targetMood == SongMood.INTRO_MASS && candidateMood == SongMood.MELODY_ROMANCE) ||
-            (targetMood == SongMood.MELODY_ROMANCE && candidateMood == SongMood.INTRO_MASS)) {
-            score -= 60
-        } else if ((targetMood == SongMood.PARTY_KUTHU && candidateMood == SongMood.MELODY_ROMANCE) ||
-            (targetMood == SongMood.MELODY_ROMANCE && candidateMood == SongMood.PARTY_KUTHU)) {
-            score -= 60
+            score += 100 // Exact mood match (Love stays with Love, Motivation with Motivation)
+        } else if (targetMood == SongMood.MOTIVATION_INSPIRING) {
+            if (candidateMood == SongMood.INTRO_MASS) {
+                score += 35 // Mass / Inspiring have high energetic synergy
+            } else {
+                return -100 // NEVER put soft love songs, sad breakup, or local gaana into motivation queue
+            }
+        } else if (targetMood == SongMood.MELODY_ROMANCE) {
+            if (candidateMood == SongMood.SAD_HEARTBREAK) {
+                score += 20 // Soft romantic melodies and emotional soul tracks share acoustic vibe
+            } else {
+                return -100 // NEVER put loud party kuthu, mass intro, or gaana into love melody queue
+            }
+        } else if (targetMood == SongMood.DEVOTIONAL) {
+            if (candidateMood == SongMood.DEVOTIONAL) {
+                score += 120
+            } else {
+                return -500 // Strict: Devotional sessions only allow devotional tracks
+            }
+        } else if (targetMood == SongMood.SAD_HEARTBREAK) {
+            if (candidateMood == SongMood.MELODY_ROMANCE) {
+                score += 25
+            } else {
+                return -100 // Never put celebration kuthu into sad breakup queue
+            }
+        } else if (targetMood == SongMood.PARTY_KUTHU) {
+            if (candidateMood == SongMood.GANA_FOLK) {
+                score += 50
+            } else if (candidateMood == SongMood.INTRO_MASS) {
+                score += 40
+            } else {
+                return -100 // Never put slow romantic melodies into party kuthu queue
+            }
+        } else if (targetMood == SongMood.GANA_FOLK) {
+            if (candidateMood == SongMood.PARTY_KUTHU) {
+                score += 50
+            } else {
+                return -100
+            }
+        } else if (targetMood == SongMood.INTRO_MASS) {
+            if (candidateMood == SongMood.PARTY_KUTHU) {
+                score += 45
+            } else if (candidateMood == SongMood.MOTIVATION_INSPIRING) {
+                score += 40
+            } else {
+                return -100
+            }
         }
 
         // 2. Composer / Artist Match
@@ -275,10 +357,12 @@ object RelevanceEngine {
         val artistPrefix = if (artist.isNotBlank()) "$artist " else ""
 
         return when (mood) {
+            SongMood.MOTIVATION_INSPIRING -> "$lang motivational inspiring confidence success hit songs $artistPrefix"
+            SongMood.MELODY_ROMANCE -> "$lang feel good romantic love melody hit songs $artistPrefix"
+            SongMood.DEVOTIONAL -> "$lang devotional bakthi songs $artistPrefix temple prayers"
             SongMood.GANA_FOLK -> "$lang gana songs ${artistPrefix}super hit marana gana kuthu"
             SongMood.PARTY_KUTHU -> "$lang party kuthu dance fast beat songs $artistPrefix"
             SongMood.INTRO_MASS -> "$lang mass hero intro entry hit songs $artistPrefix"
-            SongMood.MELODY_ROMANCE -> "$lang feel good romantic love melody hit songs $artistPrefix"
             SongMood.SAD_HEARTBREAK -> "$lang sad breakup emotional hit songs $artistPrefix"
             else -> {
                 if (artist.isNotBlank()) "$artist $lang super hit songs"

@@ -1119,9 +1119,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             playlistService.recordHistory(song)
         }
 
-        // Generate context-aware relevant playback queue (Intro songs get intro songs, Melodies get melodies)
-        val isAdvancingInExistingQueue = !queue.isNullOrEmpty() && queue.any { it.videoId == song.videoId } && queue != _trendingSongs.value
-        val effectiveQueue = if (isAdvancingInExistingQueue) {
+        // Generate context-aware relevant playback queue (Love songs get love songs, Motivation get motivation)
+        val isAdvancingInCurrentPlaybackQueue = !queue.isNullOrEmpty() &&
+            queue == ytPlayerController.playbackQueue.value &&
+            queue.any { it.videoId == song.videoId }
+
+        val effectiveQueue = if (isAdvancingInCurrentPlaybackQueue) {
             queue!!
         } else {
             val activeLangs = _preferredLanguages.value.ifEmpty { listOf("tamil") }
@@ -1130,7 +1133,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val trendingList = _trendingSongs.value.filter { it.videoId != song.videoId }
                 (listOf(song) + suggestionsList + trendingList).distinctBy { it.videoId }
             } else {
-                queue
+                (listOf(song) + queue + _trendingSongs.value).distinctBy { it.videoId }
             }
             com.saavn.music.util.RelevanceEngine.buildRelevantQueue(song, candidatePool, activeLangs, 50)
         }
@@ -1414,9 +1417,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 // Generate relevant targeted query based on song mood/genre (Gana, Kuthu, Melody, etc.) and preferred language
                 val query = com.saavn.music.util.RelevanceEngine.getRelevantSearchQuery(song, primaryLang)
                 val primaryArtist = com.saavn.music.util.RelevanceEngine.extractPrimaryArtist(song.channelTitle)
-                val artistQuery = if (primaryArtist.isNotBlank()) "$primaryArtist $primaryLang hits" else "$primaryLang top songs"
+                val songMood = com.saavn.music.util.RelevanceEngine.detectSongMood(song)
+                val moodKeyword = when (songMood) {
+                    com.saavn.music.util.SongMood.MOTIVATION_INSPIRING -> "motivational inspiring"
+                    com.saavn.music.util.SongMood.MELODY_ROMANCE -> "love romantic melody"
+                    com.saavn.music.util.SongMood.DEVOTIONAL -> "devotional bakthi"
+                    com.saavn.music.util.SongMood.SAD_HEARTBREAK -> "sad breakup"
+                    com.saavn.music.util.SongMood.PARTY_KUTHU -> "kuthu dance party"
+                    com.saavn.music.util.SongMood.GANA_FOLK -> "gana folk"
+                    com.saavn.music.util.SongMood.INTRO_MASS -> "mass hero entry"
+                    else -> "top songs"
+                }
+                val artistQuery = if (primaryArtist.isNotBlank()) "$primaryArtist $primaryLang $moodKeyword songs" else "$primaryLang $moodKeyword songs"
 
-                android.util.Log.i("ISAI_PLAYER", "[MainViewModel] Loading mood & artist suggestions: '$query' / '$artistQuery'")
+                android.util.Log.i("ISAI_PLAYER", "[MainViewModel] Loading mood ($songMood) & artist suggestions: '$query' / '$artistQuery'")
 
                 val searchResultDeferred = async { musicRepo.search(query, limit = 40).getOrNull()?.map { it.toYouTubeSong() } ?: emptyList() }
                 val artistResultDeferred = async { musicRepo.search(artistQuery, limit = 35).getOrNull()?.map { it.toYouTubeSong() } ?: emptyList() }
@@ -1424,9 +1438,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val searchResult = searchResultDeferred.await()
                 val artistResult = artistResultDeferred.await()
 
-                val pool = (searchResult + artistResult + _trendingSongs.value.take(25)).distinctBy { it.videoId }
+                val pool = (searchResult + artistResult + _trendingSongs.value).distinctBy { it.videoId }
                 val filteredPool = pool.filter { 
-                    it.videoId != song.videoId && com.saavn.music.util.RelevanceEngine.isSongInLanguage(it, activeLangs)
+                    it.videoId != song.videoId &&
+                    com.saavn.music.util.RelevanceEngine.isSongInLanguage(it, activeLangs) &&
+                    com.saavn.music.util.RelevanceEngine.scoreSongRelevance(song, it, activeLangs) > 0
                 }
 
                 val relevantMatches = if (filteredPool.isNotEmpty()) {
@@ -1434,14 +1450,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 } else {
                     val ytResult = ytRepo.searchTamilSongs(query, maxResults = 35).getOrDefault(emptyList())
                     val filteredYt = ytResult.filter { 
-                        it.videoId != song.videoId && com.saavn.music.util.RelevanceEngine.isSongInLanguage(it, activeLangs)
+                        it.videoId != song.videoId &&
+                        com.saavn.music.util.RelevanceEngine.isSongInLanguage(it, activeLangs) &&
+                        com.saavn.music.util.RelevanceEngine.scoreSongRelevance(song, it, activeLangs) > 0
                     }
-                    com.saavn.music.util.RelevanceEngine.buildRelevantQueue(song, filteredYt.ifEmpty { _trendingSongs.value.filter { com.saavn.music.util.RelevanceEngine.isSongInLanguage(it, activeLangs) } }, activeLangs, maxItems = 50).filter { it.videoId != song.videoId }
+                    com.saavn.music.util.RelevanceEngine.buildRelevantQueue(song, filteredYt, activeLangs, maxItems = 50).filter { it.videoId != song.videoId }
                 }
 
                 _suggestions.value = relevantMatches
 
-                // Immediately replace the generic upcoming queue with these 40-50 mood and artist matched songs!
+                // Immediately replace the generic upcoming queue with these mood and artist matched songs!
                 if (relevantMatches.isNotEmpty()) {
                     ytPlayerController.replaceUpcomingQueue(relevantMatches)
                     if (isaiConnectManager.isMyDeviceActive()) {
@@ -1475,7 +1493,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
                     val query = com.saavn.music.util.RelevanceEngine.getRelevantSearchQuery(song, primaryLang)
                     val primaryArtist = com.saavn.music.util.RelevanceEngine.extractPrimaryArtist(song.channelTitle)
-                    val artistQuery = if (primaryArtist.isNotBlank()) "$primaryArtist $primaryLang hit songs" else "$primaryLang top trending songs"
+                    val songMood = com.saavn.music.util.RelevanceEngine.detectSongMood(song)
+                    val moodKeyword = when (songMood) {
+                        com.saavn.music.util.SongMood.MOTIVATION_INSPIRING -> "motivational inspiring"
+                        com.saavn.music.util.SongMood.MELODY_ROMANCE -> "love romantic melody"
+                        com.saavn.music.util.SongMood.DEVOTIONAL -> "devotional bakthi"
+                        com.saavn.music.util.SongMood.SAD_HEARTBREAK -> "sad breakup"
+                        com.saavn.music.util.SongMood.PARTY_KUTHU -> "kuthu dance party"
+                        com.saavn.music.util.SongMood.GANA_FOLK -> "gana folk"
+                        com.saavn.music.util.SongMood.INTRO_MASS -> "mass hero"
+                        else -> "top songs"
+                    }
+                    val artistQuery = if (primaryArtist.isNotBlank()) "$primaryArtist $primaryLang $moodKeyword songs" else "$primaryLang $moodKeyword hit songs"
 
                     val searchHits = async {
                         musicRepo.search(query, limit = 35).getOrNull()?.map { it.toYouTubeSong() } ?: emptyList()
@@ -1497,6 +1526,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         if (candidate.videoId == song.videoId) continue
                         if (existingVideoIds.contains(candidate.videoId)) continue
                         if (!com.saavn.music.util.RelevanceEngine.isSongInLanguage(candidate, activeLangs)) continue
+                        if (com.saavn.music.util.RelevanceEngine.scoreSongRelevance(song, candidate, activeLangs) <= 0) continue
                         val norm = candidate.title.lowercase().filter { ch: Char -> ch.isLetterOrDigit() }.take(15)
                         if (existingNormTitles.contains(norm) || seenInBatch.contains(norm)) continue
                         seenInBatch.add(norm)

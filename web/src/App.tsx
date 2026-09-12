@@ -4,6 +4,7 @@ import { musicApi, detectSongLanguage } from '@shared/api/music-api'
 import { storageService } from '@shared/services/storageService'
 import type { Song, UserPlaylist } from '@shared/models/song'
 import { cleanHtmlTitle, isSameSongOrDuplicate, deduplicateSongs } from '@shared/utils/formatters'
+import { buildRelevantQueue, getRelevantSearchQuery, scoreSongRelevance } from '@shared/utils/relevance'
 import { SmartSearchEngine } from '@shared/services/smartSearchEngine'
 
 import { LanguageSelectionModal } from './components/LanguageSelectionModal'
@@ -465,10 +466,11 @@ export function App() {
         ? user.preferredLanguages[0].toLowerCase()
         : 'tamil'
       const artist = extractCleanArtist(seedSong.channelTitle)
+      const moodQuery = getRelevantSearchQuery(seedSong, primaryLang)
 
       const queries = [
-        artist ? `${artist} ${primaryLang} hit songs` : `${primaryLang} top trending hit songs`,
-        `${primaryLang} top trending melody kuthu hits`
+        moodQuery,
+        artist ? `${artist} ${moodQuery}` : moodQuery
       ]
 
       const fetchedResults = await Promise.all(
@@ -490,10 +492,11 @@ export function App() {
 
         const songLang = (s.language || detectSongLanguage(s)).toLowerCase()
         if (!activeLangs.includes(songLang)) continue
+        if (scoreSongRelevance(seedSong, s, activeLangs) <= 0) continue
 
         existingIds.add(s.videoId)
         newSongs.push(s)
-        if (newSongs.length >= 10) break
+        if (newSongs.length >= 15) break
       }
 
       if (newSongs.length > 0) {
@@ -592,20 +595,29 @@ export function App() {
     }
 
     setCurrentPlayingSong(song)
-    let nextQueue = queue
+    const activeLangs = (user.preferredLanguages && user.preferredLanguages.length > 0)
+      ? user.preferredLanguages.map(l => l.toLowerCase())
+      : ['tamil']
+    const isAdvancingInCurrentQueue = queue.length > 0 && playbackQueue === queue && queue.some(s => s.videoId === song.videoId)
+
+    let nextQueue: Song[] = []
     let activeIdx = 0
-    if (queue.length > 0) {
-      setPlaybackQueue(queue)
+
+    if (isAdvancingInCurrentQueue) {
+      nextQueue = queue
       const idx = queue.findIndex((s) => s.videoId === song.videoId)
       activeIdx = idx >= 0 ? idx : 0
+      setPlaybackQueue(queue)
       setCurrentQueueIndex(activeIdx)
     } else {
-      nextQueue = [song]
-      setPlaybackQueue([song])
+      const candidatePool = queue.length > 0 ? queue : trendingSongs
+      const moodQueue = buildRelevantQueue(song, candidatePool, activeLangs, 50)
+      nextQueue = moodQueue
+      setPlaybackQueue(moodQueue)
       setCurrentQueueIndex(0)
     }
 
-    // Auto replenish queue endlessly
+    // Auto replenish queue endlessly with mood matched songs
     ensureEndlessQueue(song, nextQueue, activeIdx)
 
     if (!song.audioUrl) {
@@ -631,29 +643,14 @@ export function App() {
   handlePlaySongRef.current = handlePlaySong
 
   // Handle playing song selected from search results:
-  // Starts playback of this song and builds a context-aware radio queue (artist matches + trending)
-  // instead of filling the queue with repetitive search variations of the same name.
+  // Starts playback of this song and builds a context-aware mood-matched radio queue
   const handlePlaySongFromSearch = (song: Song) => {
     const pool = trendingSongs.length > 0 ? trendingSongs : INITIAL_CURATED_SONGS
-    const artistMatches: Song[] = []
-    const otherSongs: Song[] = []
-
-    const seedArtist = extractCleanArtist(song.channelTitle)
-
-    for (const cand of pool) {
-      if (isSameSongOrDuplicate(song, cand)) continue
-      const candArtist = extractCleanArtist(cand.channelTitle)
-      if (seedArtist && candArtist && (candArtist.includes(seedArtist) || seedArtist.includes(candArtist))) {
-        artistMatches.push(cand)
-      } else {
-        otherSongs.push(cand)
-      }
-    }
-
-    const candidatePool = [song, ...artistMatches, ...otherSongs]
-    const radioQueue = deduplicateSongs(candidatePool)
-
-    handlePlaySong(song, radioQueue)
+    const activeLangs = (user.preferredLanguages && user.preferredLanguages.length > 0)
+      ? user.preferredLanguages.map(l => l.toLowerCase())
+      : ['tamil']
+    const moodQueue = buildRelevantQueue(song, pool, activeLangs, 50)
+    handlePlaySong(song, moodQueue)
   }
 
   const handleNextSong = async () => {

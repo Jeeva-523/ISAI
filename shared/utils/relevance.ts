@@ -6,6 +6,7 @@ export type SongMood =
   | 'MELODY_ROMANCE'
   | 'PARTY_KUTHU'
   | 'SAD_HEARTBREAK'
+  | 'MOTIVATION_INSPIRING'
   | 'DEVOTIONAL'
   | 'GENERAL'
 
@@ -93,7 +94,6 @@ const INTRO_MASS_KEYWORDS = [
   'jalabulanjangu',
   'arabic kuthu',
   'verithanam',
-  'surviva',
   'aalaporaan',
   'theemai dhaan',
   'beast mode',
@@ -111,7 +111,6 @@ const INTRO_MASS_KEYWORDS = [
   'roar',
   'tiger',
   'singam',
-  'santhosh',
   'attitude',
   'anthem',
   'theme',
@@ -130,6 +129,7 @@ const MELODY_KEYWORDS = [
   'vaseegara',
   'munbe vaa',
   'romantic',
+  'romance',
   'soul',
   'feel good',
   'marakkuma',
@@ -166,7 +166,18 @@ const MELODY_KEYWORDS = [
   'un perai solla',
   'suttum vizhi',
   'oru dheyvam thantha',
-  'pookkal pookkum'
+  'pookkal pookkum',
+  'hosanna',
+  'en jeevan',
+  'new york nagaram',
+  'anbil',
+  'innum konjam neram',
+  'maruvaarthai',
+  'un vizhigalil',
+  'kannaana kanney',
+  'kanave kanave',
+  'neeyum naanum',
+  'avalum naanum'
 ]
 
 // Keyword patterns for party / kuthu dance songs
@@ -189,7 +200,10 @@ const KUTHU_KEYWORDS = [
   'sarakku',
   'vaathi coming',
   'dippam dappam',
-  'thee thalapathy'
+  'thee thalapathy',
+  'nakku mukka',
+  'tasakku',
+  'appa takkaru'
 ]
 
 // Keyword patterns for sad / heartbreak songs
@@ -205,7 +219,119 @@ const SAD_KEYWORDS = [
   'pogadha pogadha',
   'en kanmani',
   'nenje nenje',
-  'kannukulla'
+  'kannukulla',
+  'valikidhu',
+  'po nee po',
+  'yen ennai pirindhai',
+  'idhu varai',
+  'yaaro ivan'
+]
+
+// Keyword patterns for motivational / inspiring songs
+const MOTIVATION_KEYWORDS = [
+  'motivation',
+  'motivational',
+  'inspiring',
+  'inspiration',
+  'confidence',
+  'hard work',
+  'struggle',
+  'success',
+  'vetri',
+  'vettri',
+  'poradu',
+  'saadhithu',
+  'saadhikkalaam',
+  'nambikkai',
+  'kanavugal',
+  'uyarvu',
+  'valarum',
+  'singapenney',
+  'ethir neechal',
+  'oruvan oruvan',
+  'vetri kodi kattu',
+  'vaazhkai',
+  'velaiyilla pattathari',
+  'vip',
+  'surviva',
+  'neruppu da',
+  'believer',
+  'unstoppable',
+  'hall of fame',
+  'aalaporaan thamizhan',
+  'aarambam',
+  'thunivom',
+  'vidumurai',
+  'padayappa',
+  'baba',
+  'anbe sivam',
+  'jeithu',
+  'jeippom',
+  'vijayam',
+  'dhillu',
+  'veera',
+  'porattam',
+  'valigalai thaandi',
+  'kanavu',
+  'ezhunthu vaa',
+  'thuninthu nil',
+  'nimirndhu nil',
+  'unnal mudiyum',
+  'vada chennai',
+  'soorarai pottru',
+  'rise',
+  'champion',
+  'warrior',
+  'anthem'
+]
+
+// Keyword patterns for devotional / spiritual bhakti songs
+const DEVOTIONAL_KEYWORDS = [
+  'devotional',
+  'bakthi',
+  'bhajan',
+  'god',
+  'murugan',
+  'shivan',
+  'siva',
+  'ayyappa',
+  'ayyappan',
+  'vinayagar',
+  'ganesha',
+  'amman',
+  'krishna',
+  'perumal',
+  'vishnu',
+  'venkateshwara',
+  'tirupati',
+  'hanuman',
+  'jesus',
+  'allah',
+  'kavasam',
+  'namavali',
+  'suprabhatam',
+  'sairam',
+  'sai baba',
+  'temple',
+  'pooja',
+  'aarathi',
+  'slokam',
+  'stotram',
+  'mahaan',
+  'gayatri mantra',
+  'om namah shivaya',
+  'harivarasanam'
+]
+
+const DEVOTIONAL_ARTISTS = [
+  'tms',
+  't.m. soundararajan',
+  'seerkazhi govindarajan',
+  'k.j. yesudas',
+  'veeramani',
+  'bombay saradha',
+  'mahanadhi shobana',
+  'l.r. eswari'
 ]
 
 const NON_TAMIL_LANGUAGES = [
@@ -284,7 +410,20 @@ export function extractPrimaryArtist(channelOrArtist?: string): string {
 export function detectSongMood(song: Song): SongMood {
   const text = normalizeText(`${song.title} ${song.album || ''} ${song.channelTitle || ''}`)
 
-  // 1. Check Gaana / Folk (Highest priority for local beat songs)
+  // 1. Check Devotional / Spiritual first (must never mix with cinema love/kuthu)
+  for (const artist of DEVOTIONAL_ARTISTS) {
+    if (text.includes(artist)) return 'DEVOTIONAL'
+  }
+  for (const kw of DEVOTIONAL_KEYWORDS) {
+    if (text.includes(kw)) return 'DEVOTIONAL'
+  }
+
+  // 2. Check Motivational / Inspiring (e.g. Vetri Kodi Kattu, Singapenney, Ethir Neechal, VIP, Believer)
+  for (const kw of MOTIVATION_KEYWORDS) {
+    if (text.includes(kw)) return 'MOTIVATION_INSPIRING'
+  }
+
+  // 3. Check Gaana / Folk (Highest priority for local beat songs)
   for (const artist of GANA_ARTISTS) {
     if (text.includes(artist)) return 'GANA_FOLK'
   }
@@ -292,22 +431,22 @@ export function detectSongMood(song: Song): SongMood {
     if (text.includes(kw)) return 'GANA_FOLK'
   }
 
-  // 2. Check Sad / Heartbreak
+  // 4. Check Sad / Heartbreak
   for (const kw of SAD_KEYWORDS) {
     if (text.includes(kw)) return 'SAD_HEARTBREAK'
   }
 
-  // 3. Check Intro / Mass
+  // 5. Check Intro / Mass
   for (const kw of INTRO_MASS_KEYWORDS) {
     if (text.includes(kw)) return 'INTRO_MASS'
   }
 
-  // 4. Check Party / Kuthu
+  // 6. Check Party / Kuthu
   for (const kw of KUTHU_KEYWORDS) {
     if (text.includes(kw)) return 'PARTY_KUTHU'
   }
 
-  // 5. Check Melodies / Romantic
+  // 7. Check Melodies / Romantic
   for (const kw of MELODY_KEYWORDS) {
     if (text.includes(kw)) return 'MELODY_ROMANCE'
   }
@@ -334,34 +473,55 @@ export function scoreSongRelevance(
   const targetMood = detectSongMood(target)
   const candidateMood = detectSongMood(candidate)
 
-  // 1. Exact Mood / Style Match (Gaana stays with Gaana, Melody stays with Melody)
+  // 1. Strict Mood Matching & Filtering
   if (targetMood === candidateMood && targetMood !== 'GENERAL') {
-    score += 90
-  } else if (
-    (targetMood === 'GANA_FOLK' && candidateMood === 'PARTY_KUTHU') ||
-    (targetMood === 'PARTY_KUTHU' && candidateMood === 'GANA_FOLK')
-  ) {
-    score += 50 // Folk + Fast Kuthu synergy
-  } else if (
-    (targetMood === 'INTRO_MASS' && candidateMood === 'PARTY_KUTHU') ||
-    (targetMood === 'PARTY_KUTHU' && candidateMood === 'INTRO_MASS')
-  ) {
-    score += 45 // High-energy mass synergy
-  } else if (
-    (targetMood === 'GANA_FOLK' && (candidateMood === 'MELODY_ROMANCE' || candidateMood === 'SAD_HEARTBREAK')) ||
-    ((targetMood === 'MELODY_ROMANCE' || targetMood === 'SAD_HEARTBREAK') && candidateMood === 'GANA_FOLK')
-  ) {
-    score -= 100 // Severe penalty: NEVER mix Gaana with slow soft melodies or sad songs
-  } else if (
-    (targetMood === 'INTRO_MASS' && candidateMood === 'MELODY_ROMANCE') ||
-    (targetMood === 'MELODY_ROMANCE' && candidateMood === 'INTRO_MASS')
-  ) {
-    score -= 60 // Heavy penalty for mass vs soft romance clash
-  } else if (
-    (targetMood === 'PARTY_KUTHU' && candidateMood === 'MELODY_ROMANCE') ||
-    (targetMood === 'MELODY_ROMANCE' && candidateMood === 'PARTY_KUTHU')
-  ) {
-    score -= 60
+    score += 100 // Exact mood match (Love stays with Love, Motivation with Motivation)
+  } else if (targetMood === 'MOTIVATION_INSPIRING') {
+    if (candidateMood === 'INTRO_MASS') {
+      score += 35 // Mass / Inspiring have energetic synergy
+    } else {
+      return -100 // NEVER put soft love songs, sad breakup, or gaana into motivation queue
+    }
+  } else if (targetMood === 'MELODY_ROMANCE') {
+    if (candidateMood === 'SAD_HEARTBREAK') {
+      score += 20 // Soft romantic melodies and emotional soul tracks share acoustic vibe
+    } else {
+      return -100 // NEVER put loud party kuthu, mass intro, or gaana into love melody queue
+    }
+  } else if (targetMood === 'DEVOTIONAL') {
+    if (candidateMood === 'DEVOTIONAL') {
+      score += 120
+    } else {
+      return -500 // Strict: Devotional sessions only allow devotional tracks
+    }
+  } else if (targetMood === 'SAD_HEARTBREAK') {
+    if (candidateMood === 'MELODY_ROMANCE') {
+      score += 25
+    } else {
+      return -100
+    }
+  } else if (targetMood === 'PARTY_KUTHU') {
+    if (candidateMood === 'GANA_FOLK') {
+      score += 50
+    } else if (candidateMood === 'INTRO_MASS') {
+      score += 40
+    } else {
+      return -100
+    }
+  } else if (targetMood === 'GANA_FOLK') {
+    if (candidateMood === 'PARTY_KUTHU') {
+      score += 50
+    } else {
+      return -100
+    }
+  } else if (targetMood === 'INTRO_MASS') {
+    if (candidateMood === 'PARTY_KUTHU') {
+      score += 45
+    } else if (candidateMood === 'MOTIVATION_INSPIRING') {
+      score += 40
+    } else {
+      return -100
+    }
   }
 
   // 2. Composer / Artist Match
@@ -406,14 +566,18 @@ export function getRelevantSearchQuery(song: Song, preferredLang = 'tamil'): str
   const artistPrefix = artist ? `${artist} ` : ''
 
   switch (mood) {
+    case 'MOTIVATION_INSPIRING':
+      return `${lang} motivational inspiring confidence success hit songs ${artistPrefix}`
+    case 'MELODY_ROMANCE':
+      return `${lang} feel good romantic love melody hit songs ${artistPrefix}`
+    case 'DEVOTIONAL':
+      return `${lang} devotional bakthi songs ${artistPrefix}temple prayers`
     case 'GANA_FOLK':
       return `${lang} gana songs ${artistPrefix}super hit marana gana kuthu`
     case 'PARTY_KUTHU':
       return `${lang} party kuthu dance celebration songs ${artistPrefix}`
     case 'INTRO_MASS':
       return `${lang} mass hero intro entry hit songs ${artistPrefix}`
-    case 'MELODY_ROMANCE':
-      return `${lang} feel good romantic love melody hit songs ${artistPrefix}`
     case 'SAD_HEARTBREAK':
       return `${lang} sad breakup emotional hit songs ${artistPrefix}`
     default:
