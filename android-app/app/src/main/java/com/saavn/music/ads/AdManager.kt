@@ -28,34 +28,16 @@ object AdManager {
     /**
      * Initializes Google Mobile Ads SDK once per application lifecycle.
      */
-    fun initialize(context: Context) {
-        if (isInitialized.compareAndSet(false, true)) {
-            try {
-                MobileAds.initialize(context.applicationContext) { status ->
-                    Log.d(TAG, "AdMob SDK successfully initialized: $status")
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "AdMob initialization warning: ${e.message}")
-            }
-        }
+    fun initialize(@Suppress("UNUSED_PARAMETER") context: Context) {
+        // Ads completely disabled across the application
     }
 
     /**
      * Centralized ad eligibility gate:
-     * FREE users -> true (Ads ON)
-     * PREMIUM users -> false (Ads strictly OFF: No requests, no loading, no cache, no containers)
+     * Returns false unconditionally so no ads are requested, loaded, or shown.
      */
-    fun canShowAds(userProfile: UserProfile?): Boolean {
-        if (userProfile == null) return true
-        val isPremium = userProfile.isPremium || 
-            userProfile.selectedPlan.equals("PREMIUM", ignoreCase = true) || 
-            userProfile.subscriptionStatus.equals("PREMIUM", ignoreCase = true)
-        if (isPremium) {
-            // Clean up any previously cached ads when user upgrades to Premium
-            clearCachedAds()
-            return false
-        }
-        return true
+    fun canShowAds(@Suppress("UNUSED_PARAMETER") userProfile: UserProfile?): Boolean {
+        return false
     }
 
     /**

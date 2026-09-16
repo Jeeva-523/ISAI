@@ -1,3 +1,4 @@
+/* eslint-disable prettier/prettier */
 import type { Song } from '../models/song'
 
 export type SongMood =
@@ -123,26 +124,32 @@ const MELODY_KEYWORDS = [
   'love',
   'kadhal',
   'kaadhal',
-  'kanave',
-  'unakkul',
-  'nenjukkul',
-  'vaseegara',
-  'munbe vaa',
-  'romantic',
+  'kadhalan',
+  'kadhale',
+  'kadhalum',
+  'kadhalaada',
+  'kadhalae',
   'romance',
+  'romantic',
   'soul',
   'feel good',
-  'marakkuma',
-  'malare',
-  'mudhal nee',
-  'pirai',
-  'enodu',
+  'feel',
+  'heart',
+  'sweet',
+  'kanave',
+  'kanavugal',
+  'nenjukkul',
+  'nenjam',
+  'nenjame',
+  'nenjinile',
+  'nenjukulla',
+  'vaseegara',
+  'munbe vaa',
   'thalli pogathey',
-  'kadhalaada',
   'megham karukatha',
-  'anbil avan',
   'kannazhaga',
   'poove',
+  'poovukku',
   'oru manam',
   'kurumugil',
   'vennilave',
@@ -153,31 +160,174 @@ const MELODY_KEYWORDS = [
   'alaipayuthey',
   'vizhiyil',
   'uyirin',
+  'uyire',
   'aaruyire',
+  'kannana',
+  'kannaana',
+  'katchi sera',
+  'unakkul',
+  'unakkul naane',
+  'pirai',
+  'enodu',
+  'ennodu',
   'poove sempoove',
   'ennodu nee irundhal',
   'unakkenna venum sollu',
   'kadhale kadhale',
   'kannamma',
   'anbe',
-  'uyire',
+  'anbae',
   'thaen thaen',
   'mayakkama',
   'un perai solla',
   'suttum vizhi',
   'oru dheyvam thantha',
   'pookkal pookkum',
+  'pookal pookum',
   'hosanna',
   'en jeevan',
   'new york nagaram',
   'anbil',
+  'anbil avan',
   'innum konjam neram',
   'maruvaarthai',
   'un vizhigalil',
   'kannaana kanney',
   'kanave kanave',
   'neeyum naanum',
-  'avalum naanum'
+  'avalum naanum',
+  'usure',
+  'usuru',
+  'usure poguthey',
+  'nira',
+  'vizhi moodi',
+  'partha mudhal',
+  'paartha mudhal',
+  'venmathi',
+  'sirimathii',
+  'yelo pullelo',
+  'prema',
+  'premam',
+  'priya',
+  'priyathama',
+  'sakhi',
+  'ninnila',
+  'samajavaragamana',
+  'geetha govindam',
+  'chuttamalle',
+  'valayapatti',
+  'thangamey',
+  'sirikkadhey',
+  'po indru neeyaga',
+  'ey inge paaru',
+  'oh penne',
+  'bae',
+  'spark',
+  'mella mella',
+  'aagayam',
+  'mudhal',
+  'mudhal mazhai',
+  'anbae peranbae',
+  'nenaithu nenaithu',
+  'en navel',
+  'adiye',
+  'hasili fisili',
+  'pennie',
+  'penne',
+  'yaakai',
+  'vizhi',
+  'kannil',
+  'kaatru',
+  'kaatrukkenna',
+  'malare',
+  'mallipoo',
+  'thooriga',
+  'gundu malli',
+  'dada',
+  'sita ramam',
+  'lover',
+  'joe',
+  'vtv',
+  'vaaranam aayiram',
+  'raja rani',
+  'neethaane',
+  'nanban',
+  'chellamma',
+  'siragugal',
+  'pudhu vellai mazhai',
+  'chinna chinna asai',
+  'malare ninne',
+  'darshana',
+  'hridayam',
+  'enathaney',
+  'omahana',
+  'azhage',
+  'azhagiye',
+  'orasaadha',
+  'high on love',
+  'kadhaippoma',
+  'bodhaikaname',
+  'marandaye',
+  'parayuvaan',
+  'aathangara marame',
+  'senthoora',
+  'yeno yeno',
+  'kaatrae en kaatrae',
+  'yaaro',
+  'yaro',
+  'thentral',
+  'thendral',
+  'pesum',
+  'mounam',
+  'kavidhai',
+  'kavithai',
+  'rasathi',
+  'pesadha',
+  'kannukulle',
+  'pala palakurakkum',
+  'kandaangi',
+  'ishq',
+  'mohabbat',
+  'tum hi ho',
+  'pehle bhi main',
+  'satranga',
+  'tera',
+  'meri',
+  'deewana',
+  'pyaar',
+  'dil'
+]
+
+const MELODY_ARTISTS = [
+  'sid sriram',
+  'pradeep kumar',
+  'shreya ghoshal',
+  'chinmayi',
+  'bombay jayashri',
+  'haricharan',
+  'karthik',
+  'vijay prakash',
+  'swarnalatha',
+  's.p. balasubrahmanyam',
+  'spb',
+  's. janaki',
+  'janaki',
+  'chithra',
+  'k.s. chithra',
+  'ks chithra',
+  'saindhavi',
+  'kapil kapilan',
+  'hesham abdul wahab',
+  'stephen zechariah',
+  'dhibu ninan thomas',
+  'jonita gandhi',
+  'shakthisree gopalan',
+  'unni menon',
+  'sujatha',
+  'sadhana sargam',
+  'tippu',
+  'andrea jeremiah',
+  'sithara'
 ]
 
 // Keyword patterns for party / kuthu dance songs
@@ -209,6 +359,7 @@ const KUTHU_KEYWORDS = [
 // Keyword patterns for sad / heartbreak songs
 const SAD_KEYWORDS = [
   'sad',
+  'soup Songs',
   'breakup',
   'pain',
   'kanneer',
@@ -447,6 +598,9 @@ export function detectSongMood(song: Song): SongMood {
   }
 
   // 7. Check Melodies / Romantic
+  for (const artist of MELODY_ARTISTS) {
+    if (text.includes(artist)) return 'MELODY_ROMANCE'
+  }
   for (const kw of MELODY_KEYWORDS) {
     if (text.includes(kw)) return 'MELODY_ROMANCE'
   }
@@ -483,8 +637,12 @@ export function scoreSongRelevance(
       return -100 // NEVER put soft love songs, sad breakup, or gaana into motivation queue
     }
   } else if (targetMood === 'MELODY_ROMANCE') {
-    if (candidateMood === 'SAD_HEARTBREAK') {
+    if (candidateMood === 'MELODY_ROMANCE') {
+      score += 100
+    } else if (candidateMood === 'SAD_HEARTBREAK') {
       score += 20 // Soft romantic melodies and emotional soul tracks share acoustic vibe
+    } else if (candidateMood === 'GENERAL') {
+      score += 15 // Neutral songs allowed if not loud party/mass/gana
     } else {
       return -100 // NEVER put loud party kuthu, mass intro, or gaana into love melody queue
     }
@@ -567,9 +725,9 @@ export function getRelevantSearchQuery(song: Song, preferredLang = 'tamil'): str
 
   switch (mood) {
     case 'MOTIVATION_INSPIRING':
-      return `${lang} motivational inspiring confidence success hit songs ${artistPrefix}`
+      return artist ? `${artist} ${lang} motivational inspiring hit songs` : `${lang} motivational inspiring confidence success hit songs`
     case 'MELODY_ROMANCE':
-      return `${lang} feel good romantic love melody hit songs ${artistPrefix}`
+      return artist ? `${artist} ${lang} love romantic melody hit songs` : `${lang} feel good romantic love melody hit songs`
     case 'DEVOTIONAL':
       return `${lang} devotional bakthi songs ${artistPrefix}temple prayers`
     case 'GANA_FOLK':

@@ -95,6 +95,33 @@ class YouTubePlayerController(
     private val _currentQueueIndex = MutableStateFlow(0)
     val currentQueueIndex: StateFlow<Int> = _currentQueueIndex.asStateFlow()
 
+    private val _audioQuality = MutableStateFlow(com.saavn.music.data.model.AudioQuality.VERY_HIGH)
+    val audioQuality: StateFlow<com.saavn.music.data.model.AudioQuality> = _audioQuality.asStateFlow()
+
+    fun setQuality(quality: com.saavn.music.data.model.AudioQuality) {
+        if (_audioQuality.value == quality) return
+        _audioQuality.value = quality
+        val song = _currentSong.value ?: return
+        val currentPosMs = exoPlayer.currentPosition
+        val wasPlaying = exoPlayer.isPlaying
+        
+        val url = song.audioUrl ?: ""
+        val newUrl = when (quality.bitrate) {
+            "96" -> url.replace("_320.", "_96.").replace("_160.", "_96.")
+            "160" -> url.replace("_320.", "_160.").replace("_96.", "_160.")
+            "320" -> url.replace("_96.", "_320.").replace("_160.", "_320.")
+            else -> url
+        }
+
+        if (newUrl.isNotBlank() && isUsingExoPlayer) {
+            val mediaItem = androidx.media3.common.MediaItem.fromUri(newUrl)
+            exoPlayer.setMediaItem(mediaItem)
+            exoPlayer.prepare()
+            exoPlayer.seekTo(currentPosMs)
+            if (wasPlaying) exoPlayer.play()
+        }
+    }
+
     var onQueueExhausted: (() -> Unit)? = null
     var onTrackChangeRequested: ((YouTubeSong, List<YouTubeSong>) -> Unit)? = null
 

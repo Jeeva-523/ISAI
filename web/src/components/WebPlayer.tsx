@@ -1,40 +1,37 @@
-import React, { useRef, useState, useEffect } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import type { Song } from '@shared/models/song'
-import { musicApi } from '@shared/api/music-api'
+import { type AudioQualitySetting, getAudioUrlWithQuality, musicApi } from '@shared/api/music-api'
 import { cleanHtmlTitle } from '@shared/utils/formatters'
 import { storageService } from '@shared/services/storageService'
-import { DeviceInfo, IsaiConnectService, PlaybackStateSync } from '../services/IsaiConnectService'
+import { type DeviceInfo, IsaiConnectService, type PlaybackStateSync } from '../services/IsaiConnectService'
 import { recommendationService } from '../services/RecommendationService'
-import { IsaiConnectModal } from './IsaiConnectModal'
+import { ListenTogetherService, type RoomData } from '../services/ListenTogetherService'
 import {
-  Play,
-  Pause,
-  SkipBack,
-  SkipForward,
-  Shuffle,
-  Repeat,
-  Volume2,
-  VolumeX,
+  GripVertical,
   Heart,
-  ListMusic,
   Laptop,
-  Radio,
+  ListMusic,
   Maximize2,
   Minimize2,
-  GripVertical,
-  Trash2
+  Pause,
+  Play,
+  Radio,
+  Repeat,
+  Shuffle,
+  SkipBack,
+  SkipForward,
+  Trash2,
+  Volume2,
+  VolumeX
 } from 'lucide-react'
-import {
-  ListenTogetherService,
-  RoomData
-} from '../services/ListenTogetherService'
+import { IsaiConnectModal } from './IsaiConnectModal'
 import { ListenTogetherModal } from './ListenTogetherModal'
 
 interface WebPlayerProps {
   song: Song | null
   remoteState?: PlaybackStateSync | null
   connectedDevices?: DeviceInfo[]
-  onClose: () => void
+  onClose?: () => void
   isFavorite?: boolean
   onToggleFavorite?: (song: Song) => void
   onNextSong?: () => void
@@ -49,7 +46,7 @@ interface WebPlayerProps {
 }
 
 function formatTime(sec: number): string {
-  if (isNaN(sec) || sec < 0) return '0:00'
+  if (Number.isNaN(sec) || sec < 0) return '0:00'
   const m = Math.floor(sec / 60)
   const s = Math.floor(sec % 60)
   return `${m}:${s < 10 ? '0' : ''}${s}`
@@ -59,7 +56,6 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
   song,
   remoteState = null,
   connectedDevices = [],
-  onClose: _onClose,
   isFavorite = false,
   onToggleFavorite,
   onNextSong,
@@ -85,6 +81,29 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
   const [isListenTogetherModalOpen, setIsListenTogetherModalOpen] = useState(false)
   const [listenRoom, setListenRoom] = useState<RoomData | null>(() => ListenTogetherService.getCurrentRoom())
   const [needsAutoplayGesture, setNeedsAutoplayGesture] = useState(false)
+  const [audioQuality, setAudioQuality] = useState<AudioQualitySetting>(() => storageService.getAudioQuality())
+  const [showQualityMenu, setShowQualityMenu] = useState(false)
+
+  const handleQualityChange = (newQuality: AudioQualitySetting) => {
+    setAudioQuality(newQuality)
+    storageService.setAudioQuality(newQuality)
+    setShowQualityMenu(false)
+
+    if (audioRef.current) {
+      const curUrl = audioRef.current.src || ''
+      if (curUrl) {
+        const newUrl = getAudioUrlWithQuality(curUrl, newQuality)
+        const curTime = audioRef.current.currentTime
+        const wasPlaying = !audioRef.current.paused
+
+        audioRef.current.src = newUrl
+        audioRef.current.currentTime = curTime
+        if (wasPlaying) {
+          audioRef.current.play().catch(() => {})
+        }
+      }
+    }
+  }
 
   // Drag and drop state for queue reordering
   const [draggedIdx, setDraggedIdx] = useState<number | null>(null)
@@ -126,9 +145,9 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
     const resolveRemoteAudio = async () => {
       try {
         const cleanQuery = cleanHtmlTitle(remoteState.currentTitle || '')
-          .replace(/\s*[\|\-\–\—].*$/, '')
-          .replace(/\s*\(.*?(official|video|audio|lyrics|hd|4k|song).*?\)/gi, '')
-          .replace(/\s*\[.*?(official|video|audio|lyrics|hd|4k|song).*?\]/gi, '')
+          .replace(/\s*[|–—\-].*$/, '')
+          .replaceAll(/\s*\(.*?(official|video|audio|lyrics|hd|4k|song).*?\)/gi, '')
+          .replaceAll(/\s*\[.*?(official|video|audio|lyrics|hd|4k|song).*?\]/gi, '')
           .replace(/\.{2,}$/, '')
           .trim()
 
@@ -137,8 +156,8 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
           setCachedRemoteAudioUrl(results[0].audioUrl)
           IsaiConnectService.updatePlaybackState({ currentAudioUrl: results[0].audioUrl })
         }
-      } catch (err) {
-        console.warn('[WebPlayer] Pre-fetch remote audio error:', err)
+      } catch (error) {
+        console.warn('[WebPlayer] Pre-fetch remote audio error:', error)
       }
     }
     resolveRemoteAudio()
@@ -217,7 +236,7 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
   const activeIsPlaying = isRemoteActive ? Boolean(remoteState?.isPlaying) : isPlaying
 
   const playingDevice = connectedDevices.find(d => d.deviceId === remoteState?.currentDeviceId)
-  const remoteDeviceName = playingDevice?.deviceName || (remoteState?.currentDeviceId?.includes('android') ? "Mobile Phone" : "Remote Device")
+  const remoteDeviceName = playingDevice?.deviceName || (remoteState?.currentDeviceId?.includes('android') ? 'Mobile Phone' : 'Remote Device')
 
   // Activate local playback on Web when user transfers or remote device hands off
   const activateLocalPlayback = async (targetSong?: any, positionMs?: number) => {
@@ -252,8 +271,8 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
         audioRef.current.src = targetAudio
       }
       if (seekSec > 0) audioRef.current.currentTime = seekSec
-      audioRef.current.play().catch(e => {
-        console.warn('[WebPlayer] Transfer play catch (may need user gesture):', e)
+      audioRef.current.play().catch(error => {
+        console.warn('[WebPlayer] Transfer play catch (may need user gesture):', error)
         const onFirstInteraction = () => {
           audioRef.current?.play().catch(() => {})
           window.removeEventListener('click', onFirstInteraction)
@@ -273,9 +292,9 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
     if (!targetAudio && rawTitle) {
       try {
         const cleanTitle = cleanHtmlTitle(rawTitle)
-          .replace(/\s*[\|\-\–\—].*$/, '')
-          .replace(/\s*\(.*?(official|video|audio|lyrics|hd|4k|song).*?\)/gi, '')
-          .replace(/\s*\[.*?(official|video|audio|lyrics|hd|4k|song).*?\]/gi, '')
+          .replace(/\s*[|–—\-].*$/, '')
+          .replaceAll(/\s*\(.*?(official|video|audio|lyrics|hd|4k|song).*?\)/gi, '')
+          .replaceAll(/\s*\[.*?(official|video|audio|lyrics|hd|4k|song).*?\]/gi, '')
           .replace(/\.{2,}$/, '')
           .trim()
 
@@ -287,8 +306,8 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
           if (audioRef.current) {
             audioRef.current.src = resolvedUrl
             if (seekSec > 0) audioRef.current.currentTime = seekSec
-            audioRef.current.play().catch(e => {
-              console.warn('[WebPlayer] Resolved async play catch:', e)
+            audioRef.current.play().catch(error => {
+              console.warn('[WebPlayer] Resolved async play catch:', error)
               const onFirstInteraction = () => {
                 audioRef.current?.play().catch(() => {})
                 window.removeEventListener('click', onFirstInteraction)
@@ -304,8 +323,8 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
             IsaiConnectService.updatePlaybackState({ currentAudioUrl: resolvedUrl })
           }
         }
-      } catch (e) {
-        console.warn('[WebPlayer] Failed to resolve audio for transferred song:', e)
+      } catch (error) {
+        console.warn('[WebPlayer] Failed to resolve audio for transferred song:', error)
       }
     }
   }
@@ -336,7 +355,7 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
 
           // If playback was handed off to this Web device by another device (e.g. Android App):
           if (syncState.currentTitle && (!activeSongRef.current || activeSongRef.current.title !== syncState.currentTitle || !isPlaying)) {
-            console.log('[WebPlayer] Playback handed off to Web in syncState:', syncState)
+            console.info('[WebPlayer] Playback handed off to Web in syncState:', syncState)
             activateLocalPlaybackRef.current({
               id: syncState.currentSongId,
               title: syncState.currentTitle,
@@ -360,7 +379,7 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
         return
       }
       if (cmd.targetDeviceId && cmd.targetDeviceId !== myDeviceId) return
-      console.log('[WebPlayer] Incoming remote command from other device:', cmd.action, cmd)
+      console.info('[WebPlayer] Incoming remote command from other device:', cmd.action, cmd)
 
       if (cmd.action === 'PAUSE') {
         if (audioRef.current) audioRef.current.pause()
@@ -372,7 +391,7 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
           if (!audioRef.current.src && activeAudioUrl) {
             audioRef.current.src = activeAudioUrl
           }
-          audioRef.current.play().catch(err => console.warn('[WebPlayer] Remote PLAY catch:', err))
+          audioRef.current.play().catch(error => console.warn('[WebPlayer] Remote PLAY catch:', error))
         }
         setIsPlaying(true)
         IsaiConnectService.updatePlaybackState({ isPlaying: true })
@@ -386,11 +405,11 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
       } else if (cmd.action === 'SET_VOLUME') {
         const rawVol = cmd.volume != null ? cmd.volume : (cmd.positionMs != null ? cmd.positionMs / 100 : 1)
         const clamped = Math.max(0, Math.min(1, rawVol))
-        console.log('[WebPlayer] Setting remote volume to:', clamped)
+        console.info('[WebPlayer] Setting remote volume to:', clamped)
         setVolume(clamped)
         setIsMuted(clamped === 0)
       } else if (cmd.action === 'PLAY_SONG') {
-        console.log('[WebPlayer] Remote command PLAY_SONG received:', cmd)
+        console.info('[WebPlayer] Remote command PLAY_SONG received:', cmd)
         const incomingSong = cmd.song || (cmd.songId ? {
           videoId: cmd.songId,
           title: cmd.songTitle,
@@ -402,7 +421,7 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
       }
     })
     return () => unsubCmd()
-  }, [myDeviceId, onNextSong, onPrevSong])
+  }, [myDeviceId, onNextSong, onPrevSong, song?.audioUrl, displaySong?.audioUrl])
 
   // Listen Together Room & Playback State Subscription
   useEffect(() => {
@@ -439,8 +458,8 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
               audioRef.current.play().then(() => {
                 setIsPlaying(true)
                 setNeedsAutoplayGesture(false)
-              }).catch((e) => {
-                console.warn('[WebPlayer] Autoplay blocked for synchronized playback:', e)
+              }).catch((error) => {
+                console.warn('[WebPlayer] Autoplay blocked for synchronized playback:', error)
                 setNeedsAutoplayGesture(true)
               })
             } else {
@@ -448,26 +467,24 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
               setIsPlaying(false)
             }
           }
-        } else {
+        } else if (audioRef.current) {
           // Same song, state or position update
-          if (audioRef.current) {
-            if (pbState.state === 'PLAYING') {
-              const expected = ListenTogetherService.getExpectedPosition()
-              if (Math.abs(audioRef.current.currentTime - expected) > 1.2) {
-                audioRef.current.currentTime = expected
-              }
-              audioRef.current.play().then(() => {
-                setIsPlaying(true)
-                setNeedsAutoplayGesture(false)
-              }).catch((e) => {
-                console.warn('[WebPlayer] Autoplay blocked for synchronized playback:', e)
-                setNeedsAutoplayGesture(true)
-              })
-            } else if (pbState.state === 'PAUSED') {
-              audioRef.current.pause()
-              audioRef.current.currentTime = pbState.positionSec
-              setIsPlaying(false)
+          if (pbState.state === 'PLAYING') {
+            const expected = ListenTogetherService.getExpectedPosition()
+            if (Math.abs(audioRef.current.currentTime - expected) > 1.2) {
+              audioRef.current.currentTime = expected
             }
+            audioRef.current.play().then(() => {
+              setIsPlaying(true)
+              setNeedsAutoplayGesture(false)
+            }).catch((error) => {
+              console.warn('[WebPlayer] Autoplay blocked for synchronized playback:', error)
+              setNeedsAutoplayGesture(true)
+            })
+          } else if (pbState.state === 'PAUSED') {
+            audioRef.current.pause()
+            audioRef.current.currentTime = pbState.positionSec
+            setIsPlaying(false)
           }
         }
       }
@@ -484,8 +501,8 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
     if (!listenRoom) return
     const isHostDevice = listenRoom.hostDeviceId === ListenTogetherService.getDeviceId()
     if (isHostDevice) {
-      if (audioRef.current && audioRef.current.playbackRate !== 1.0) {
-        audioRef.current.playbackRate = 1.0
+      if (audioRef.current && audioRef.current.playbackRate !== 1) {
+        audioRef.current.playbackRate = 1
       }
       return
     }
@@ -497,17 +514,15 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
         audioRef.current.playbackRate = adj.speed
       } else if (adj.action === 'SEEK' && typeof adj.targetPosition === 'number') {
         audioRef.current.currentTime = adj.targetPosition
-        audioRef.current.playbackRate = 1.0
-      } else {
-        if (audioRef.current.playbackRate !== 1.0) {
-          audioRef.current.playbackRate = 1.0
-        }
+        audioRef.current.playbackRate = 1
+      } else if (audioRef.current.playbackRate !== 1) {
+        audioRef.current.playbackRate = 1
       }
     }, 2500)
 
     return () => {
       clearInterval(driftInterval)
-      if (audioRef.current) audioRef.current.playbackRate = 1.0
+      if (audioRef.current) audioRef.current.playbackRate = 1
     }
   }, [listenRoom])
 
@@ -526,7 +541,7 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
       currentArtist: song.channelTitle || 'ISAI Artist',
       currentArtwork: song.thumbnailUrl,
       currentAudioUrl: song.audioUrl,
-      isPlaying: isPlaying,
+      isPlaying,
       durationMs: (duration || 211) * 1000,
       positionMs: currentTime * 1000,
       queueIndex: curQIdx >= 0 ? curQIdx : 0,
@@ -538,7 +553,7 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
         audioUrl: (q as any).audioUrl || ''
       }))
     })
-  }, [song?.videoId, song?.title, song?.thumbnailUrl, song?.audioUrl, isPlaying, isRemoteActive, remoteState?.currentDeviceId, myDeviceId, queue])
+  }, [song?.videoId, song?.title, song?.thumbnailUrl, song?.audioUrl, isPlaying, isRemoteActive, remoteState?.currentDeviceId, myDeviceId, queue, duration, currentTime])
 
   // Immediate auto-play and recommendation threshold session management when a new song is selected
   useEffect(() => {
@@ -549,10 +564,8 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
 
     // If previous song was skipped (<10s) and not marked meaningful:
     const prevSong = activeSongRef.current
-    if (prevSong && prevSong.videoId !== song?.videoId) {
-      if (!recordedMeaningfulRef.current && listenSecondsRef.current > 0 && listenSecondsRef.current < 10) {
-        recommendationService.recordListen(userId, prevSong, listenSecondsRef.current, duration)
-      }
+    if (prevSong && prevSong.videoId !== song?.videoId && !recordedMeaningfulRef.current && listenSecondsRef.current > 0 && listenSecondsRef.current < 10) {
+      recommendationService.recordListen(userId, prevSong, listenSecondsRef.current, duration)
     }
 
     activeSongRef.current = song
@@ -571,8 +584,8 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
           audioRef.current.src = activeAudioUrl
           audioRef.current.currentTime = seekTarget
         }
-        audioRef.current.play().catch(err => {
-          console.warn('[WebPlayer] Autoplay catch:', err)
+        audioRef.current.play().catch(error => {
+          console.warn('[WebPlayer] Autoplay catch:', error)
         })
       }
     }
@@ -580,7 +593,7 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
     if (listenRoom && listenRoom.hostDeviceId === ListenTogetherService.getDeviceId() && song) {
       ListenTogetherService.hostChangeSong(song)
     }
-  }, [displaySong?.videoId, displaySong?.audioUrl, isRemoteActive, listenRoom?.hostDeviceId, song?.videoId])
+  }, [displaySong?.videoId, displaySong?.audioUrl, isRemoteActive, listenRoom?.hostDeviceId, song?.videoId, duration, remoteState?.currentAudioUrl, song, userId])
 
   // Control audio element play/pause
   useEffect(() => {
@@ -593,8 +606,8 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
     if (audioRef.current && activeAudioUrl) {
       audioRef.current.volume = isMuted ? 0 : volume
       if (isPlaying) {
-        audioRef.current.play().catch(err => {
-          console.warn('[WebPlayer] Playback play warning:', err)
+        audioRef.current.play().catch(error => {
+          console.warn('[WebPlayer] Playback play warning:', error)
         })
       } else {
         audioRef.current.pause()
@@ -617,22 +630,20 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
       if (!storageService.isMultiDevicePlaybackSeparate()) {
         IsaiConnectService.updatePlaybackState({ isPlaying: !remoteState?.isPlaying })
       }
-    } else {
-      if (audioRef.current) {
-        if (isPlaying) {
-          audioRef.current.pause()
-          setIsPlaying(false)
-        } else {
-          const activeAudioUrl = displaySong?.audioUrl || remoteState?.currentAudioUrl
-          if (activeAudioUrl && !audioRef.current.src) {
-            audioRef.current.src = activeAudioUrl
-          }
-          audioRef.current.play().then(() => setIsPlaying(true)).catch(e => console.warn(e))
-          setIsPlaying(true)
-        }
+    } else if (audioRef.current) {
+      if (isPlaying) {
+        audioRef.current.pause()
+        setIsPlaying(false)
       } else {
-        setIsPlaying(prev => !prev)
+        const activeAudioUrl = displaySong?.audioUrl || remoteState?.currentAudioUrl
+        if (activeAudioUrl && !audioRef.current.src) {
+          audioRef.current.src = activeAudioUrl
+        }
+        audioRef.current.play().then(() => setIsPlaying(true)).catch(error => console.warn(error))
+        setIsPlaying(true)
       }
+    } else {
+      setIsPlaying(prev => !prev)
     }
   }
 
@@ -660,11 +671,14 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
     await activateLocalPlayback()
   }
 
-  const handleTransferToRemote = (_targetDeviceId: string) => {
+  const handleTransferToRemote = (targetDeviceId: string) => {
     if (audioRef.current) {
       audioRef.current.pause()
     }
     setIsPlaying(false)
+    if (targetDeviceId && song) {
+      IsaiConnectService.transferPlaybackToDevice(targetDeviceId, song, Math.round((currentTime || 0) * 1000))
+    }
   }
 
   const handleLoadedMetadata = () => {
@@ -692,7 +706,7 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
       // Increment continuous listening seconds
       if (isPlaying && !isRemoteActive && song) {
         const delta = lastTimeRef.current > 0 ? (cur - lastTimeRef.current) : 0
-        if (delta > 0 && delta < 2.0) {
+        if (delta > 0 && delta < 2) {
           listenSecondsRef.current += delta
         }
         lastTimeRef.current = cur
@@ -719,7 +733,7 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
   }
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = parseFloat(e.target.value)
+    const val = Number.parseFloat(e.target.value)
     if (isRemoteActive) {
       setRemoteCurrentTime(val)
       IsaiConnectService.sendCommand('SEEK', { positionMs: Math.round(val * 1000) })
@@ -738,7 +752,7 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
   }
 
   const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = parseFloat(e.target.value)
+    const val = Number.parseFloat(e.target.value)
     setVolume(val)
     if (val === 0) setIsMuted(true)
     else setIsMuted(false)
@@ -784,13 +798,11 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
         onLoadedMetadata={handleLoadedMetadata}
         onCanPlay={handleLoadedMetadata}
         onEnded={handleAudioEnded}
-        onError={(e) => {
-          console.warn('[WebPlayer] Audio error on stream, skipping to next track:', e)
+        onError={(error) => {
+          console.warn('[WebPlayer] Audio error on stream, skipping to next track:', error)
           onNextSong?.()
         }}
       />
-
-
 
       {/* 1. Persistent Bottom Player Bar */}
       <div className="web-player-bar">
@@ -877,6 +889,109 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
 
         {/* Right Action Icons */}
         <div className="player-right-actions">
+          {/* Quality Selector Badge Button */}
+          <div style={{ position: 'relative' }}>
+            <button
+              className="control-btn"
+              onClick={(e) => {
+                e.stopPropagation()
+                setShowQualityMenu(!showQualityMenu)
+              }}
+              title="Song Audio Quality"
+              style={{
+                fontSize: '11px',
+                fontWeight: 800,
+                padding: '4px 10px',
+                borderRadius: '8px',
+                background: 'rgba(139, 92, 246, 0.15)',
+                color: '#C8FF00',
+                border: '1px solid rgba(200, 255, 0, 0.3)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              <span>{audioQuality === '320kbps' ? '💎 320k' : audioQuality === '160kbps' ? '🎧 160k' : '⚡ 96k'}</span>
+            </button>
+
+            {showQualityMenu && (
+              <div
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  position: 'absolute',
+                  bottom: '48px',
+                  right: 0,
+                  backgroundColor: 'rgba(20, 20, 28, 0.95)',
+                  backdropFilter: 'blur(20px)',
+                  border: '1px solid rgba(200, 255, 0, 0.3)',
+                  borderRadius: '16px',
+                  padding: '12px',
+                  boxShadow: '0 20px 50px rgba(0,0,0,0.9), 0 0 20px rgba(200,255,0,0.15)',
+                  zIndex: 999,
+                  minWidth: '240px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '2px 6px' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--isai-lime)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                    ⚡ Audio Quality
+                  </span>
+                  <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', background: 'rgba(255,255,255,0.08)', padding: '2px 6px', borderRadius: '6px' }}>
+                    {audioQuality.toUpperCase()}
+                  </span>
+                </div>
+
+                {[
+                  { key: '320kbps', label: '💎 Ultra HD', bitrate: '320 kbps', desc: 'Studio Lossless Audio' },
+                  { key: '160kbps', label: '🎧 High Def', bitrate: '160 kbps', desc: 'Balanced HD Stream' },
+                  { key: '96kbps', label: '⚡ Data Saver', bitrate: '96 kbps', desc: 'Saves Mobile Data' }
+                ].map((q) => {
+                  const isSelected = audioQuality === q.key
+                  return (
+                    <button
+                      key={q.key}
+                      onClick={() => handleQualityChange(q.key as AudioQualitySetting)}
+                      style={{
+                        padding: '10px 12px',
+                        borderRadius: '12px',
+                        border: isSelected ? '1px solid #C8FF00' : '1px solid rgba(255, 255, 255, 0.08)',
+                        background: isSelected ? 'linear-gradient(135deg, rgba(200, 255, 0, 0.15), rgba(139, 92, 246, 0.2))' : 'rgba(255, 255, 255, 0.03)',
+                        color: isSelected ? '#C8FF00' : '#fff',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        transition: 'all 0.2s ease',
+                        textAlign: 'left'
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontSize: '13px', fontWeight: isSelected ? 800 : 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span>{q.label}</span>
+                          <span style={{ fontSize: '10px', opacity: 0.8, background: isSelected ? 'rgba(200, 255, 0, 0.2)' : 'rgba(255,255,255,0.1)', padding: '1px 5px', borderRadius: '4px' }}>
+                            {q.bitrate}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '10px', color: isSelected ? 'rgba(200,255,0,0.8)' : 'var(--text-muted)', marginTop: '2px' }}>
+                          {q.desc}
+                        </div>
+                      </div>
+                      {isSelected && (
+                        <div style={{ width: '20px', height: '20px', borderRadius: '50%', background: '#C8FF00', color: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: '11px' }}>
+                          ✓
+                        </div>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
           <button
             className={`control-btn ${showQueuePanel ? 'active' : ''}`}
             onClick={() => {
@@ -1139,8 +1254,8 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
                           onDrop={(e) => {
                             e.preventDefault()
                             e.stopPropagation()
-                            const sourceIdx = draggedIdx !== null ? draggedIdx : parseInt(e.dataTransfer.getData('text/plain'), 10)
-                            if (isNaN(sourceIdx) || sourceIdx === idx) {
+                            const sourceIdx = draggedIdx !== null ? draggedIdx : Number.parseInt(e.dataTransfer.getData('text/plain'), 10)
+                            if (Number.isNaN(sourceIdx) || sourceIdx === idx) {
                               setDraggedIdx(null)
                               setDragOverIdx(null)
                               setTimeout(() => { isDraggingRef.current = false }, 150)
@@ -1253,12 +1368,53 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
               </div>
             ) : (
               <div style={{ padding: '32px', background: 'var(--surface-card)', borderRadius: 'var(--radius-xl)', border: '1px solid var(--border-subtle)' }}>
-                <h3 style={{ fontSize: '18px', fontWeight: 800, marginBottom: '12px', color: 'var(--isai-purple-light)' }}>
-                  Song Details
+                <h3 style={{ fontSize: '18px', fontWeight: 800, marginBottom: '16px', color: 'var(--isai-purple-light)' }}>
+                  Song Details & Audio Quality
                 </h3>
-                <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '8px' }}>
-                  <strong>Audio Format:</strong> 320kbps AAC High Fidelity
-                </p>
+                <div style={{ marginBottom: '20px' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--isai-lime)', display: 'block', marginBottom: '10px', letterSpacing: '0.05em' }}>
+                    SELECT STREAMING AUDIO BITRATE
+                  </span>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
+                    {[
+                      { key: '320kbps', title: '💎 Ultra HD (320k)', desc: 'Studio Lossless Quality', accent: '#C8FF00' },
+                      { key: '160kbps', title: '🎧 High Def (160k)', desc: 'Balanced Crisp Audio', accent: '#00F0FF' },
+                      { key: '96kbps', title: '⚡ Data Saver (96k)', desc: 'Fast & Low Data Usage', accent: '#FF007A' }
+                    ].map((item) => {
+                      const isSelected = audioQuality === item.key
+                      return (
+                        <button
+                          key={item.key}
+                          onClick={() => handleQualityChange(item.key as AudioQualitySetting)}
+                          style={{
+                            padding: '14px 16px',
+                            borderRadius: '14px',
+                            border: isSelected ? `1.5px solid ${item.accent}` : '1px solid rgba(255, 255, 255, 0.1)',
+                            background: `rgba(139, 92, 246, ${isSelected ? '0.25' : '0.04'})`,
+                            color: isSelected ? item.accent : '#fff',
+                            fontWeight: 800,
+                            fontSize: '13px',
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '4px',
+                            transition: 'all 0.2s ease',
+                            boxShadow: isSelected ? `0 4px 16px ${item.accent}30` : 'none'
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span>{item.title}</span>
+                            {isSelected && <span style={{ fontSize: '14px', color: item.accent }}>✓</span>}
+                          </div>
+                          <span style={{ fontSize: '11px', color: isSelected ? '#fff' : 'var(--text-muted)', fontWeight: 400 }}>
+                            {item.desc}
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
                 <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '8px' }}>
                   <strong>Artist:</strong> {activeArtist}
                 </p>

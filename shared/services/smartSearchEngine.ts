@@ -1,4 +1,7 @@
+import { detectSongLanguage } from '../api/music-api'
 import { MASTER_KEYWORD_DICTIONARY, CAT_LANGUAGE, CAT_ARTIST, CAT_MOOD, CAT_LOVE_ROMANCE, CAT_SAD_EMOTIONAL, CAT_GENRE, CAT_TAMIL_GENRE, CAT_ACTIVITY, CAT_SITUATION, CAT_WEATHER, CAT_YEAR_ERA, CAT_RELEASE, CAT_CLASSIC, CAT_DEVOTIONAL } from '../constants/keywordDictionary'
+import type { Song } from '../models/song'
+import { isSongInLanguage } from '../utils/relevance'
 
 export interface ParsedSearchIntent {
   rawQuery: string
@@ -269,8 +272,29 @@ export class SmartSearchEngine {
       if (artistLower.includes(t)) score += 30
     }
 
-    const targetLang = intent.detectedLanguage || userPreferredLanguages[0]?.toLowerCase()
-    if (targetLang && text.includes(targetLang)) score += 30
+    // 4. User Preferred Language Match (HIGH PRIORITY)
+    const normUserLangs = (userPreferredLanguages || []).map((l) => l.toLowerCase().trim()).filter(Boolean)
+    const effectiveLangs = normUserLangs.length > 0 ? normUserLangs : ['tamil']
+
+    const songAsSong: Song = {
+      videoId: '',
+      title: song.title,
+      channelTitle: song.channelTitle,
+      album: song.album || '',
+      thumbnailUrl: '',
+      durationFormatted: '',
+      durationMs: 0,
+      viewCountFormatted: ''
+    }
+
+    const isMatch = isSongInLanguage(songAsSong, effectiveLangs)
+    const detectedLang = detectSongLanguage(songAsSong).toLowerCase()
+
+    if (isMatch || (detectedLang && effectiveLangs.includes(detectedLang))) {
+      score += 2000 // Massive High Priority boost for user's logged-in preferred languages!
+    } else if (detectedLang && !effectiveLangs.includes(detectedLang)) {
+      score -= 1500 // Heavy penalty for foreign languages not selected by user
+    }
 
     if (intent.detectedArtist && text.includes(intent.detectedArtist.toLowerCase())) {
       score += 50

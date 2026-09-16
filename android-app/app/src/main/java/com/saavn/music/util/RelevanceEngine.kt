@@ -43,17 +43,37 @@ object RelevanceEngine {
     )
 
     private val MELODY_KEYWORDS = listOf(
-        "melody", "love", "kadhal", "kaadhal", "kanave", "unakkul", "nenjukkul",
-        "vaseegara", "munbe vaa", "romantic", "romance", "soul", "feel good", "marakkuma",
-        "malare", "mudhal nee", "pirai", "enodu", "thalli pogathey", "kadhalaada",
-        "megham karukatha", "anbil avan", "kannazhaga", "poove", "oru manam",
-        "kurumugil", "vennilave", "roja", "minnale", "vinnaithaandi", "jeans",
-        "alaipayuthey", "vizhiyil", "uyirin", "aaruyire", "poove sempoove",
-        "ennodu nee irundhal", "unakkenna venum sollu", "kadhale kadhale",
-        "kannamma", "anbe", "uyire", "thaen thaen", "mayakkama", "un perai solla",
-        "suttum vizhi", "oru dheyvam thantha", "pookkal pookkum", "hosanna", "en jeevan",
-        "new york nagaram", "anbil", "innum konjam neram", "maruvaarthai", "un vizhigalil",
-        "kannaana kanney", "kanave kanave", "neeyum naanum", "avalum naanum"
+        "melody", "love", "kadhal", "kaadhal", "kadhalan", "kadhale", "kadhalum", "kadhalaada", "kadhalae",
+        "romance", "romantic", "soul", "feel good", "feel", "heart", "sweet", "kanave", "kanavugal", "nenjukkul",
+        "nenjam", "nenjame", "nenjinile", "nenjukulla", "vaseegara", "munbe vaa", "thalli pogathey", "megham karukatha",
+        "kannazhaga", "poove", "poovukku", "oru manam", "kurumugil", "vennilave", "roja", "minnale", "vinnaithaandi",
+        "jeans", "alaipayuthey", "vizhiyil", "uyirin", "uyire", "aaruyire", "kannana", "kannaana", "katchi sera",
+        "unakkul", "unakkul naane", "pirai", "enodu", "ennodu", "poove sempoove", "ennodu nee irundhal",
+        "unakkenna venum sollu", "kadhale kadhale", "kannamma", "anbe", "anbae", "thaen thaen", "mayakkama",
+        "un perai solla", "suttum vizhi", "oru dheyvam thantha", "pookkal pookkum", "pookal pookum", "hosanna",
+        "en jeevan", "new york nagaram", "anbil", "anbil avan", "innum konjam neram", "maruvaarthai", "un vizhigalil",
+        "kannaana kanney", "kanave kanave", "neeyum naanum", "avalum naanum", "usure", "usuru", "usure poguthey",
+        "nira", "vizhi moodi", "partha mudhal", "paartha mudhal", "venmathi", "sirimathii", "yelo pullelo", "prema",
+        "premam", "priya", "priyathama", "sakhi", "ninnila", "samajavaragamana", "geetha govindam", "chuttamalle",
+        "valayapatti", "thangamey", "sirikkadhey", "po indru neeyaga", "ey inge paaru", "oh penne", "bae", "spark",
+        "mella mella", "aagayam", "mudhal", "mudhal mazhai", "anbae peranbae", "nenaithu nenaithu", "en navel",
+        "adiye", "hasili fisili", "pennie", "penne", "yaakai", "vizhi", "kannil", "kaatru", "kaatrukkenna", "malare",
+        "mallipoo", "thooriga", "gundu malli", "dada", "sita ramam", "lover", "joe", "vtv", "vaaranam aayiram",
+        "raja rani", "neethaane", "nanban", "chellamma", "siragugal", "pudhu vellai mazhai", "chinna chinna asai",
+        "malare ninne", "darshana", "hridayam", "enathaney", "omahana", "azhage", "azhagiye", "orasaadha",
+        "high on love", "kadhaippoma", "bodhaikaname", "marandaye", "parayuvaan", "aathangara marame", "senthoora",
+        "yeno yeno", "kaatrae en kaatrae", "yaaro", "yaro", "thentral", "thendral", "pesum", "mounam", "kavidhai",
+        "kavithai", "rasathi", "pesadha", "kannukulle", "pala palakurakkum", "kandaangi", "ishq", "mohabbat",
+        "tum hi ho", "pehle bhi main", "satranga", "tera", "meri", "deewana", "pyaar", "dil"
+    )
+
+    private val MELODY_ARTISTS = listOf(
+        "sid sriram", "pradeep kumar", "shreya ghoshal", "chinmayi", "bombay jayashri",
+        "haricharan", "karthik", "vijay prakash", "swarnalatha", "s.p. balasubrahmanyam", "spb",
+        "s. janaki", "janaki", "chithra", "k.s. chithra", "ks chithra", "saindhavi",
+        "kapil kapilan", "hesham abdul wahab", "stephen zechariah", "dhibu ninan thomas",
+        "jonita gandhi", "shakthisree gopalan", "unni menon", "sujatha", "sadhana sargam",
+        "tippu", "andrea jeremiah", "sithara"
     )
 
     private val KUTHU_KEYWORDS = listOf(
@@ -249,6 +269,9 @@ object RelevanceEngine {
         }
 
         // 7. Melodies / Romantic love songs
+        for (artist in MELODY_ARTISTS) {
+            if (text.contains(artist)) return SongMood.MELODY_ROMANCE
+        }
         for (kw in MELODY_KEYWORDS) {
             if (text.contains(kw)) return SongMood.MELODY_ROMANCE
         }
@@ -281,10 +304,14 @@ object RelevanceEngine {
                 return -100 // NEVER put soft love songs, sad breakup, or local gaana into motivation queue
             }
         } else if (targetMood == SongMood.MELODY_ROMANCE) {
-            if (candidateMood == SongMood.SAD_HEARTBREAK) {
-                score += 20 // Soft romantic melodies and emotional soul tracks share acoustic vibe
+            if (candidateMood == SongMood.MELODY_ROMANCE) {
+                score += 100
+            } else if (candidateMood == SongMood.SAD_HEARTBREAK) {
+                score += 20
+            } else if (candidateMood == SongMood.GENERAL) {
+                score += 15
             } else {
-                return -100 // NEVER put loud party kuthu, mass intro, or gaana into love melody queue
+                return -100
             }
         } else if (targetMood == SongMood.DEVOTIONAL) {
             if (candidateMood == SongMood.DEVOTIONAL) {

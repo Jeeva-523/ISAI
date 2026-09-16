@@ -1,13 +1,12 @@
 import React, { useRef, useState } from 'react'
 import type { Song } from '@shared/models/song'
 import { deduplicateSongs } from '@shared/utils/formatters'
-import { SongCard } from '../components/SongCard'
-import { ArtistCard, type Artist } from '../components/ArtistCard'
-import { GenreTile, type Genre } from '../components/GenreTile'
 import { SkeletonSongCard } from '../components/SkeletonLoader'
 import { ErrorBanner } from '../components/ErrorBanner'
-import { trendingService } from '../services/TrendingService'
-import { ChevronLeft, ChevronRight, Play, Sparkles, ListPlus, ListStart, Heart, Plus, ChevronDown } from 'lucide-react'
+import type { Artist } from '../components/ArtistCard'
+import type { UserProfile } from '../components/LoginModal'
+import { storageService } from '@shared/services/storageService'
+import { Play, Heart, Search, ChevronRight, ChevronLeft, Globe, User } from 'lucide-react'
 
 interface HomePageProps {
   trendingSongs: Song[]
@@ -24,89 +23,39 @@ interface HomePageProps {
   onSelectArtist?: (artist: Artist) => void
   currentSong?: Song | null
   isPlaying?: boolean
-  dailyMixes?: {
-    id: string
-    title: string
-    subtitle: string
-    coverUrl?: string
-    gradient: string
-    songs: Song[]
-  }[]
-  onSelectPlaylistDetail?: (title: string, subtitle: string, songs: Song[], coverUrl?: string, gradient?: string) => void
+  userProfile?: UserProfile
+  selectedLanguage?: string
+  onSelectLanguage?: (lang: string) => void
+  onOpenProfile?: () => void
+  onOpenSearch?: () => void
+  listeningHistory?: Song[]
+  onSeeAllNewReleases?: () => void
+  dailyMixes?: any[]
+  onSelectPlaylistDetail?: any
 }
 
-const YTM_ACTIVITY_CHIPS = [
-  { id: 'energize', label: 'Energize', query: 'Tamil energetic gym workout bgm beats' },
-  { id: 'workout', label: 'Workout', query: 'Tamil gym workout motivational hit songs' },
-  { id: 'relax', label: 'Relax', query: 'Tamil lo-fi chill rain songs' },
-  { id: 'focus', label: 'Focus', query: 'Tamil instrumental violin flute melody' },
-  { id: 'commute', label: 'Commute', query: 'Tamil road trip travel songs' },
-  { id: 'party', label: 'Party', query: 'Tamil party kuthu mass songs' },
-  { id: 'romance', label: 'Romance', query: 'Tamil love romantic hit songs' },
-  { id: 'feelgood', label: 'Feel Good', query: 'Tamil feel good melody hit songs' },
-  { id: 'trending', label: 'Trending Hits', query: 'Tamil hits 2025 2026' }
-]
+const SUPPORTED_LANGUAGES = ['Tamil', 'Telugu', 'Hindi', 'Kannada', 'Malayalam', 'English']
 
-const POPULAR_ARTISTS: Artist[] = [
-  {
-    name: 'Anirudh Ravichander',
-    role: 'Composer & Singer',
-    image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d1/Anirudh_Ravichander_at_Audi_Ritz_Style_Awards_2015.jpg/440px-Anirudh_Ravichander_at_Audi_Ritz_Style_Awards_2015.jpg',
-    query: 'Anirudh Ravichander Tamil hits',
-    followers: '24.5M Listeners'
-  },
-  {
-    name: 'A.R. Rahman',
-    role: 'Composer & Maestro',
-    image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/ad/A._R._Rahman_at_the_Global_Indian_Music_Awards_2012.jpg/440px-A._R._Rahman_at_the_Global_Indian_Music_Awards_2012.jpg',
-    query: 'A R Rahman Tamil hits',
-    followers: '32.1M Listeners'
-  },
-  {
-    name: 'Yuvan Shankar Raja',
-    role: 'Composer & Singer',
-    image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/be/Yuvan_Shankar_Raja_at_Pyaar_Prema_Kaadhal_Press_Meet.jpg/440px-Yuvan_Shankar_Raja_at_Pyaar_Prema_Kaadhal_Press_Meet.jpg',
-    query: 'Yuvan Shankar Raja Tamil hits',
-    followers: '19.8M Listeners'
-  },
-  {
-    name: 'Harris Jayaraj',
-    role: 'Composer',
-    image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/23/Harris_Jayaraj.jpg/440px-Harris_Jayaraj.jpg',
-    query: 'Harris Jayaraj Tamil hits',
-    followers: '15.4M Listeners'
-  },
-  {
-    name: 'Sid Sriram',
-    role: 'Playback Singer',
-    image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/07/Sid_Sriram_at_Adithya_Varma_Audio_Launch.jpg/440px-Sid_Sriram_at_Adithya_Varma_Audio_Launch.jpg',
-    query: 'Sid Sriram Tamil hits',
-    followers: '14.2M Listeners'
-  },
-  {
-    name: 'G.V. Prakash',
-    role: 'Composer & Actor',
-    image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/9/91/G._V._Prakash_Kumar_at_Kadavul_Irukaan_Kumaru_Press_Meet.jpg/440px-G._V._Prakash_Kumar_at_Kadavul_Irukaan_Kumaru_Press_Meet.jpg',
-    query: 'G V Prakash Tamil hits',
-    followers: '11.6M Listeners'
-  },
-  {
-    name: 'Santhosh Narayanan',
-    role: 'Music Director',
-    image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/20/Santhosh_Narayanan.jpg/440px-Santhosh_Narayanan.jpg',
-    query: 'Santhosh Narayanan Tamil hits',
-    followers: '9.8M Listeners'
-  }
-]
-
-const GENRE_TILES: Genre[] = [
-  { id: '1', name: 'Melody & Soul', query: 'Tamil feel good melody hit songs', gradient: 'linear-gradient(135deg, #EC4899, #8B5CF6)', icon: '💖' },
-  { id: '2', name: 'Mass Kuthu & Party', query: 'Tamil party kuthu mass songs', gradient: 'linear-gradient(135deg, #F59E0B, #EF4444)', icon: '🔥' },
-  { id: '3', name: 'Romantic Love', query: 'Tamil love romantic hit songs', gradient: 'linear-gradient(135deg, #8B5CF6, #3B82F6)', icon: '🌹' },
-  { id: '4', name: 'Gym & Workout', query: 'Tamil energetic gym workout bgm beats', gradient: 'linear-gradient(135deg, #10B981, #06B6D4)', icon: '⚡' },
-  { id: '5', name: 'Folk & Village', query: 'Tamil folk village songs', gradient: 'linear-gradient(135deg, #84CC16, #10B981)', icon: '🪘' },
-  { id: '6', name: 'Chill & Relax', query: 'Tamil lo-fi chill rain songs', gradient: 'linear-gradient(135deg, #6366F1, #A855F7)', icon: '☕' }
-]
+const POPULAR_ARTISTS_BY_LANG: Record<string, Artist[]> = {
+  Tamil: [
+    { name: 'Anirudh Ravichander', role: 'Composer & Singer', image: 'https://c.saavncdn.com/artists/Anirudh_Ravichander_004_20230222091040_500x500.jpg', query: 'Anirudh Ravichander Tamil hits', followers: '24.5M Listeners' },
+    { name: 'A.R. Rahman', role: 'Composer & Maestro', image: 'https://c.saavncdn.com/artists/A_R_Rahman_004_20230718070940_500x500.jpg', query: 'A R Rahman Tamil hits', followers: '32.1M Listeners' },
+    { name: 'Yuvan Shankar Raja', role: 'Composer & Singer', image: 'https://c.saavncdn.com/artists/Yuvan_Shankar_Raja_004_20220908070940_500x500.jpg', query: 'Yuvan Shankar Raja Tamil hits', followers: '19.8M Listeners' },
+    { name: 'Harris Jayaraj', role: 'Composer', image: 'https://c.saavncdn.com/artists/Harris_Jayaraj_002_20200812070940_500x500.jpg', query: 'Harris Jayaraj Tamil hits', followers: '15.4M Listeners' },
+    { name: 'Sid Sriram', role: 'Playback Singer', image: 'https://c.saavncdn.com/artists/Sid_Sriram_003_20230516070940_500x500.jpg', query: 'Sid Sriram Tamil hits', followers: '14.2M Listeners' }
+  ],
+  Telugu: [
+    { name: 'Devi Sri Prasad', role: 'Composer & Singer', image: 'https://c.saavncdn.com/artists/Devi_Sri_Prasad_002_20210608070940_500x500.jpg', query: 'Devi Sri Prasad Telugu hits', followers: '18.2M Listeners' },
+    { name: 'Thaman S', role: 'Music Director', image: 'https://c.saavncdn.com/artists/Thaman_S_003_20230116070940_500x500.jpg', query: 'Thaman S Telugu hits', followers: '16.5M Listeners' },
+    { name: 'M.M. Keeravani', role: 'Academy Maestro', image: 'https://c.saavncdn.com/artists/M_M_Keeravani_002_20230314070940_500x500.jpg', query: 'MM Keeravani Telugu hits', followers: '12.8M Listeners' },
+    { name: 'Sid Sriram', role: 'Singer', image: 'https://c.saavncdn.com/artists/Sid_Sriram_003_20230516070940_500x500.jpg', query: 'Sid Sriram Telugu hits', followers: '14.2M Listeners' }
+  ],
+  Hindi: [
+    { name: 'Arijit Singh', role: 'Playback Singer', image: 'https://c.saavncdn.com/artists/Arijit_Singh_002_20230323070940_500x500.jpg', query: 'Arijit Singh Hindi hits', followers: '45.1M Listeners' },
+    { name: 'Pritam', role: 'Composer', image: 'https://c.saavncdn.com/artists/Pritam_003_20220608070940_500x500.jpg', query: 'Pritam Hindi hits', followers: '28.4M Listeners' },
+    { name: 'Shreya Ghoshal', role: 'Singer', image: 'https://c.saavncdn.com/artists/Shreya_Ghoshal_003_20230412070940_500x500.jpg', query: 'Shreya Ghoshal Hindi hits', followers: '25.6M Listeners' }
+  ]
+}
 
 export const HomePage: React.FC<HomePageProps> = ({
   trendingSongs,
@@ -117,592 +66,451 @@ export const HomePage: React.FC<HomePageProps> = ({
   isFavorite,
   onToggleFavorite,
   onPlaySong,
-  onAddToPlaylist,
-  onAddToQueue,
-  onPlayNext,
   onSelectArtist,
   currentSong,
   isPlaying = false,
-  dailyMixes = [],
-  onSelectPlaylistDetail
+  userProfile,
+  selectedLanguage: propLanguage,
+  onSelectLanguage,
+  onOpenProfile,
+  onOpenSearch,
+  listeningHistory = [],
+  onSeeAllNewReleases
 }) => {
-  const [activeChip, setActiveChip] = useState<string | null>(null)
+  const [showLangDropdown, setShowLangDropdown] = useState(false)
 
-  const [gridLimit, setGridLimit] = useState(24)
+  // Language Resolution
+  const activeLanguage = propLanguage || userProfile?.preferredLanguages?.[0] || 'Tamil'
+  const userName = userProfile?.name || 'JEEVA ⚡'
 
-  const quickPicksRef = useRef<HTMLDivElement | null>(null)
-  const mixesRef = useRef<HTMLDivElement | null>(null)
-  const trendingRef = useRef<HTMLDivElement | null>(null)
-  const recsRef = useRef<HTMLDivElement | null>(null)
-  const artistsRef = useRef<HTMLDivElement | null>(null)
-  const melodiesRef = useRef<HTMLDivElement | null>(null)
-  const partyRef = useRef<HTMLDivElement | null>(null)
-  const retroRef = useRef<HTMLDivElement | null>(null)
+  // Ref for horizontal scrolling
+  const historyRowRef = useRef<HTMLDivElement>(null)
+  const newReleasesRowRef = useRef<HTMLDivElement>(null)
 
-  const scrollRow = (ref: React.RefObject<HTMLDivElement>, direction: 'left' | 'right') => {
+  const scrollRow = (ref: React.RefObject<HTMLDivElement>, dir: 'left' | 'right') => {
     if (ref.current) {
-      const scrollAmount = direction === 'left' ? -480 : 480
+      const scrollAmount = dir === 'left' ? -360 : 360
       ref.current.scrollBy({ left: scrollAmount, behavior: 'smooth' })
     }
   }
 
   const deduplicated = deduplicateSongs(trendingSongs)
-  const rankedTrending = trendingService.rankTrendingSongs(deduplicated, 'today')
 
-  // 1. YouTube Music Quick picks: 24 songs (6 columns x 4 rows)
-  const quickPickSongs = rankedTrending.slice(0, 24)
-  const quickPickColumns: Song[][] = []
-  for (let i = 0; i < quickPickSongs.length; i += 4) {
-    quickPickColumns.push(quickPickSongs.slice(i, i + 4))
+  // Section 3: Continue Listening (filtered by history, hidden if empty)
+  const actualHistory = listeningHistory.length > 0 ? listeningHistory : storageService.getRecentlyPlayed()
+
+  // Section 4: Unakkaaga Picks (6 songs: 2 cols x 3 rows)
+  const picksSongs = deduplicated.slice(0, 6)
+
+  // Section 5: New Releases (rolling last 30 days filter verification)
+  const nowMs = Date.now()
+  const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000
+  const verifiedNewReleases = deduplicated.filter((song) => {
+    const pub = (song as any).publishedAt
+    if (!pub) return true
+    const pubDate = new Date(pub).getTime()
+    return !isNaN(pubDate) && (nowMs - pubDate) <= thirtyDaysMs
+  }).slice(0, 12)
+  const displayNewReleases = verifiedNewReleases.length >= 4 ? verifiedNewReleases : deduplicated.slice(6, 18)
+
+  // Section 6: Mood Cards
+  const moodCards = [
+    { title: 'Love', emoji: '💖', query: `${activeLanguage} love romantic hit songs`, gradient: 'linear-gradient(135deg, rgba(236,72,153,0.3), rgba(139,92,246,0.3))' },
+    { title: 'Chill', emoji: '☕', query: `${activeLanguage} lo-fi chill rain songs`, gradient: 'linear-gradient(135deg, rgba(99,102,241,0.3), rgba(168,85,247,0.3))' },
+    { title: 'Gym', emoji: '⚡', query: `${activeLanguage} energetic gym workout bgm beats`, gradient: 'linear-gradient(135deg, rgba(16,185,129,0.3), rgba(6,182,212,0.3))' },
+    { title: 'Travel', emoji: '🚗', query: `${activeLanguage} road trip travel songs`, gradient: 'linear-gradient(135deg, rgba(245,158,11,0.3), rgba(239,68,68,0.3))' }
+  ]
+
+  // Section 7: Artists
+  const displayArtists = POPULAR_ARTISTS_BY_LANG[activeLanguage] || POPULAR_ARTISTS_BY_LANG['Tamil']
+
+  if (isLoading && deduplicated.length === 0) {
+    return (
+      <div style={{ paddingBottom: '120px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+        <div style={{ height: '60px', background: 'var(--surface-card)', borderRadius: '16px' }} />
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat( auto-fit, minmax(200px, 1fr) )', gap: '16px' }}>
+          {[1, 2, 3, 4, 5, 6].map((n) => <SkeletonSongCard key={n} />)}
+        </div>
+      </div>
+    )
   }
 
-  // 2. Trending Viral Hits (20 songs)
-  const displayTrending = rankedTrending.slice(24, 44).length >= 6
-    ? rankedTrending.slice(24, 44)
-    : rankedTrending.slice(0, 20)
-
-  // 3. Soulful Melodies & Romance (20 songs)
-  const melodyFiltered = rankedTrending.filter(s => {
-    const t = (s.title + ' ' + s.channelTitle).toLowerCase()
-    return t.includes('melody') || t.includes('love') || t.includes('kadhal') || t.includes('rahman') ||
-           t.includes('harris') || t.includes('sid sriram') || t.includes('feel good') || t.includes('soul') ||
-           t.includes('romance') || t.includes('nenj') || t.includes('kanave')
-  })
-  const melodySongs = melodyFiltered.length >= 6 ? melodyFiltered.slice(0, 20) : rankedTrending.slice(10, 30)
-
-  // 4. Party & Mass Kuthu Beats (20 songs)
-  const partyFiltered = rankedTrending.filter(s => {
-    const t = (s.title + ' ' + s.channelTitle).toLowerCase()
-    return t.includes('kuthu') || t.includes('party') || t.includes('dance') || t.includes('mass') ||
-           t.includes('anirudh') || t.includes('sana') || t.includes('beat') || t.includes('energy') ||
-           t.includes('fast') || t.includes('thara') || t.includes('local')
-  })
-  const partySongs = partyFiltered.length >= 6 ? partyFiltered.slice(0, 20) : rankedTrending.slice(20, 40)
-
-  // 5. Retro & 90s Evergreens (20 songs)
-  const retroFiltered = rankedTrending.filter(s => {
-    const t = (s.title + ' ' + s.channelTitle).toLowerCase()
-    return t.includes('ilayaraja') || t.includes('ilaiyaraaja') || t.includes('spb') || t.includes('90s') ||
-           t.includes('golden') || t.includes('classic') || t.includes('evergreen') || t.includes('deva') ||
-           t.includes('chitra') || t.includes('hariharan') || t.includes('swarnalatha')
-  })
-  const retroSongs = retroFiltered.length >= 6 ? retroFiltered.slice(0, 20) : rankedTrending.slice(30, 50)
-
-  // 6. Recommended For You: 20 songs
-  const recommendedSongs = rankedTrending.slice(12, 32).length > 0 ? rankedTrending.slice(12, 32) : displayTrending
-
-  // 7. Discover All Songs Grid: 24 to 100+ songs
-  const gridSongs = rankedTrending.slice(0, gridLimit)
-
-  const getDynamicGreeting = () => {
-    const hour = new Date().getHours()
-    if (hour >= 5 && hour < 12) return 'Good Morning'
-    if (hour >= 12 && hour < 17) return 'Good Afternoon'
-    if (hour >= 17 && hour < 22) return 'Good Evening'
-    return 'Night Vibes'
-  }
-
-  const handleActivityChipClick = (chip: typeof YTM_ACTIVITY_CHIPS[0]) => {
-    if (activeChip === chip.id) {
-      setActiveChip(null)
-      onSelectCategory('')
-    } else {
-      setActiveChip(chip.id)
-      onSelectCategory(chip.query)
-    }
+  if (error && deduplicated.length === 0) {
+    return (
+      <div style={{ paddingBottom: '120px', paddingTop: '40px' }}>
+        <ErrorBanner message={error} onRetry={onRetry} />
+      </div>
+    )
   }
 
   return (
-    <div style={{ paddingBottom: '8px' }}>
-      {/* 1. YouTube Music Activity Mood Chips Bar */}
-      <div className="ytm-activity-chips-bar">
-        {YTM_ACTIVITY_CHIPS.map((chip) => {
-          const isSelected = activeChip === chip.id
-          return (
+    <div style={{ paddingBottom: '120px', display: 'flex', flexDirection: 'column', gap: '32px' }}>
+
+      {/* 1. Header Section */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+        <div>
+          <h1 style={{ fontSize: '26px', fontWeight: 900, color: 'var(--text-primary)', margin: 0 }}>
+            Vanakkam, <span style={{ color: 'var(--isai-lime)' }}>{userName}</span> 👋
+          </h1>
+          <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 600 }}>
+            Enjoying {activeLanguage} Music on ISAI
+          </span>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', position: 'relative' }}>
+          {/* Language Selector Dropdown */}
+          <div style={{ position: 'relative' }}>
             <button
-              key={chip.id}
-              className={`ytm-activity-chip ${isSelected ? 'active' : ''}`}
-              onClick={() => handleActivityChipClick(chip)}
+              onClick={() => setShowLangDropdown(!showLangDropdown)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '8px 14px',
+                borderRadius: '20px',
+                border: '1px solid rgba(200, 255, 0, 0.4)',
+                background: 'rgba(200, 255, 0, 0.1)',
+                color: 'var(--isai-lime)',
+                fontWeight: 800,
+                fontSize: '12px',
+                cursor: 'pointer'
+              }}
             >
-              {chip.label}
+              <Globe size={14} />
+              <span>{activeLanguage}</span>
+              <span style={{ fontSize: '10px' }}>▾</span>
             </button>
-          )
-        })}
-      </div>
 
-      {/* Hero Greeting Header */}
-      <div style={{ marginBottom: '24px' }}>
-        <span style={{ fontSize: '11px', fontWeight: 900, color: 'var(--isai-purple-light)', textTransform: 'uppercase', letterSpacing: '0.12em', display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <Sparkles size={14} /> LISTEN • FEEL • LIVE 🎧
-        </span>
-        <h1 style={{ fontSize: '28px', fontWeight: 900, marginTop: '2px', color: 'var(--text-primary)' }}>
-          {getDynamicGreeting()}, <span style={{ color: 'var(--isai-purple-light)' }}>JEEVA ⚡</span>
-        </h1>
-      </div>
-
-      {/* 2. YouTube Music Signature: Quick picks (4-Row Vertical Stack, Horizontal Scrolling) */}
-      {quickPickSongs.length > 0 && (
-        <div style={{ marginBottom: '40px' }}>
-          <div className="ytm-section-header">
-            <div className="ytm-section-subtitle">START RADIO FROM A SONG</div>
-            <div className="ytm-section-title-row">
-              <h2 className="ytm-section-title">Quick picks</h2>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button className="control-btn" onClick={() => scrollRow(quickPicksRef, 'left')} title="Previous">
-                  <ChevronLeft size={22} />
-                </button>
-                <button className="control-btn" onClick={() => scrollRow(quickPicksRef, 'right')} title="Next">
-                  <ChevronRight size={22} />
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div ref={quickPicksRef} className="ytm-quick-picks-container">
-            {quickPickColumns.map((col, colIdx) => (
-              <div key={colIdx} className="ytm-quick-picks-column">
-                {col.map((song) => {
-                  const isThisPlaying = currentSong?.videoId === song.videoId && isPlaying
-                  const isFav = isFavorite(song.videoId)
+            {showLangDropdown && (
+              <div
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  position: 'absolute',
+                  top: '42px',
+                  right: 0,
+                  backgroundColor: '#181824',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  borderRadius: '14px',
+                  padding: '8px',
+                  zIndex: 999,
+                  minWidth: '150px',
+                  boxShadow: '0 12px 30px rgba(0,0,0,0.8)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '4px'
+                }}
+              >
+                {SUPPORTED_LANGUAGES.map((lang) => {
+                  const isSelected = activeLanguage.toLowerCase() === lang.toLowerCase()
                   return (
-                    <div
-                      key={song.videoId}
-                      className={`ytm-quick-pick-item ${isThisPlaying ? 'playing' : ''}`}
-                      onClick={() => onPlaySong?.(song, rankedTrending)}
-                      title={`Play ${song.title}`}
+                    <button
+                      key={lang}
+                      onClick={() => {
+                        onSelectLanguage?.(lang)
+                        setShowLangDropdown(false)
+                      }}
+                      style={{
+                        padding: '8px 12px',
+                        borderRadius: '10px',
+                        border: 'none',
+                        background: isSelected ? 'rgba(200, 255, 0, 0.2)' : 'transparent',
+                        color: isSelected ? 'var(--isai-lime)' : '#fff',
+                        fontWeight: isSelected ? 800 : 500,
+                        fontSize: '13px',
+                        textAlign: 'left',
+                        cursor: 'pointer'
+                      }}
                     >
-                      <div className="ytm-qp-thumb-wrap">
-                        <img
-                          src={song.thumbnailUrl || 'https://c.saavncdn.com/187/Jailer-Tamil-2023-20230728081443-500x500.jpg'}
-                          alt={song.title}
-                          className="ytm-qp-thumb"
-                          loading="lazy"
-                          onError={(e) => {
-                            const target = e.currentTarget
-                            if (!target.src.includes('Jailer-Tamil-2023')) {
-                              target.src = 'https://c.saavncdn.com/187/Jailer-Tamil-2023-20230728081443-500x500.jpg'
-                            }
-                          }}
-                        />
-                        <div className={`ytm-qp-play-overlay ${isThisPlaying ? 'active' : ''}`}>
-                          {isThisPlaying ? (
-                            <div className="equalizer-wave compact">
-                              <div className="equalizer-bar" />
-                              <div className="equalizer-bar" />
-                              <div className="equalizer-bar" />
-                            </div>
-                          ) : (
-                            <Play size={16} fill="#ffffff" color="#ffffff" style={{ marginLeft: '2px' }} />
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="ytm-qp-info">
-                        <div className="ytm-qp-title">{song.title}</div>
-                        <div className="ytm-qp-artist">
-                          {song.channelTitle} • {song.durationFormatted || 'Audio'}
-                        </div>
-                      </div>
-
-                      <div className="ytm-qp-actions" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          className={`ytm-qp-btn ${isFav ? 'liked' : ''}`}
-                          onClick={() => onToggleFavorite(song)}
-                          title={isFav ? 'Remove Favorite' : 'Save to Favorites'}
-                        >
-                          <Heart
-                            size={16}
-                            color={isFav ? '#EC4899' : 'currentColor'}
-                            fill={isFav ? '#EC4899' : 'none'}
-                          />
-                        </button>
-                        {onPlayNext && (
-                          <button
-                            className="ytm-qp-btn"
-                            onClick={() => onPlayNext(song)}
-                            title="Play next"
-                          >
-                            <ListStart size={16} />
-                          </button>
-                        )}
-                        {onAddToQueue && (
-                          <button
-                            className="ytm-qp-btn"
-                            onClick={() => onAddToQueue(song)}
-                            title="Add to queue"
-                          >
-                            <ListPlus size={16} />
-                          </button>
-                        )}
-                        {onAddToPlaylist && (
-                          <button
-                            className="ytm-qp-btn"
-                            onClick={() => onAddToPlaylist(song)}
-                            title="Add to playlist"
-                          >
-                            <Plus size={16} />
-                          </button>
-                        )}
-                      </div>
-                    </div>
+                      {lang} {isSelected && '✓'}
+                    </button>
                   )
                 })}
               </div>
-            ))}
+            )}
           </div>
-        </div>
-      )}
 
-      {isLoading ? (
-        <div className="carousel-row">
-          {[...Array(6)].map((_, i) => (
-            <SkeletonSongCard key={i} />
-          ))}
+          {/* Profile Button */}
+          <button
+            onClick={onOpenProfile}
+            style={{
+              width: '38px',
+              height: '38px',
+              borderRadius: '50%',
+              background: 'var(--surface-glass)',
+              border: '1px solid var(--border-subtle)',
+              color: '#fff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer'
+            }}
+            title="Profile & Settings"
+          >
+            <User size={18} />
+          </button>
         </div>
-      ) : error ? (
-        <ErrorBanner title="Failed to Load Music Feed" message={error} onRetry={onRetry} />
-      ) : (
+      </div>
+
+      {/* 2. Full Width Search Bar */}
+      <div
+        onClick={onOpenSearch}
+        style={{
+          width: '100%',
+          padding: '14px 18px',
+          borderRadius: '16px',
+          background: 'var(--surface-card)',
+          border: '1.5px solid var(--border-subtle)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          cursor: 'pointer',
+          transition: 'all 0.2s ease'
+        }}
+      >
+        <Search size={20} style={{ color: 'var(--isai-lime)' }} />
+        <span style={{ fontSize: '14px', color: 'var(--text-muted)', fontWeight: 500 }}>
+          Paadal, artist, album thedu…
+        </span>
+      </div>
+
+      {/* 3. Continue Listening (Hidden if no history) */}
+      {actualHistory.length > 0 && (
         <div>
-          {/* Section: Mixed For You */}
-          {dailyMixes.length > 0 && (
-            <div style={{ marginBottom: '38px' }}>
-              <div className="ytm-section-header">
-                <div className="ytm-section-subtitle">COMMUNITY PLAYLISTS & MIXES</div>
-                <div className="ytm-section-title-row">
-                  <h2 className="ytm-section-title">Mixed for you</h2>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button className="control-btn" onClick={() => scrollRow(mixesRef, 'left')} title="Previous">
-                      <ChevronLeft size={22} />
-                    </button>
-                    <button className="control-btn" onClick={() => scrollRow(mixesRef, 'right')} title="Next">
-                      <ChevronRight size={22} />
-                    </button>
-                  </div>
-                </div>
-              </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+            <h2 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              Continue Listening 🎧
+            </h2>
+            <div style={{ display: 'flex', gap: '6px' }}>
+              <button className="control-btn" onClick={() => scrollRow(historyRowRef, 'left')}><ChevronLeft size={18} /></button>
+              <button className="control-btn" onClick={() => scrollRow(historyRowRef, 'right')}><ChevronRight size={18} /></button>
+            </div>
+          </div>
 
-              <div className="carousel-row" ref={mixesRef}>
-                {dailyMixes.map((mix) => (
-                  <div
-                    key={mix.id}
-                    className="song-card"
-                    style={{ flex: '0 0 185px', cursor: 'pointer' }}
-                    onClick={() => onSelectPlaylistDetail?.(mix.title, mix.subtitle, mix.songs, mix.coverUrl, mix.gradient)}
-                  >
+          <div
+            ref={historyRowRef}
+            style={{
+              display: 'flex',
+              gap: '14px',
+              overflowX: 'auto',
+              scrollBehavior: 'smooth',
+              paddingBottom: '8px'
+            }}
+          >
+            {actualHistory.map((song) => {
+              const isThisPlaying = currentSong?.videoId === song.videoId && isPlaying
+              return (
+                <div
+                  key={song.videoId}
+                  onClick={() => onPlaySong?.(song, actualHistory)}
+                  style={{
+                    minWidth: '120px',
+                    maxWidth: '120px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '6px'
+                  }}
+                >
+                  <div style={{ position: 'relative', width: '120px', height: '120px', borderRadius: '14px', overflow: 'hidden' }}>
+                    <img src={song.thumbnailUrl} alt={song.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     <div
-                      className="song-thumbnail-wrap"
                       style={{
-                        background: mix.gradient,
-                        aspectRatio: '1',
-                        borderRadius: 'var(--radius-lg)',
-                        boxShadow: '0 8px 24px rgba(0, 0, 0, 0.45)',
-                        position: 'relative',
-                        overflow: 'hidden'
+                        position: 'absolute',
+                        inset: 0,
+                        background: 'rgba(0,0,0,0.3)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        opacity: isThisPlaying ? 1 : 0.8
                       }}
                     >
-                      {mix.coverUrl ? (
-                        <img src={mix.coverUrl} alt={mix.title} className="song-thumbnail" loading="lazy" />
+                      {isThisPlaying ? (
+                        <div className="equalizer-wave compact">
+                          <div className="equalizer-bar" />
+                          <div className="equalizer-bar" />
+                          <div className="equalizer-bar" />
+                        </div>
                       ) : (
-                        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '36px' }}>
-                          🎧
-                        </div>
+                        <Play size={22} fill="#fff" color="#fff" />
                       )}
-                      <div className="play-hover-overlay">
-                        <div
-                          className="play-icon-circle"
-                          style={{ background: 'var(--isai-purple)', width: '46px', height: '46px' }}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            if (mix.songs.length > 0) onPlaySong?.(mix.songs[0], mix.songs)
-                          }}
-                        >
-                          <Play size={20} fill="#ffffff" color="#ffffff" style={{ marginLeft: '2px' }} />
-                        </div>
-                      </div>
                     </div>
-                    <h3 className="song-title" style={{ marginTop: '10px', fontSize: '14.5px', fontWeight: 700 }}>{mix.title}</h3>
-                    <p className="song-artist" style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{mix.subtitle}</p>
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Section 1: Trending Songs Carousel (Pure Audio) */}
-          <div style={{ marginBottom: '38px' }}>
-            <div className="ytm-section-header">
-              <div className="ytm-section-subtitle">LISTEN AGAIN & VIRAL HITS</div>
-              <div className="ytm-section-title-row">
-                <h2 className="ytm-section-title">Trending songs</h2>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button className="control-btn" onClick={() => scrollRow(trendingRef, 'left')} title="Previous">
-                    <ChevronLeft size={22} />
-                  </button>
-                  <button className="control-btn" onClick={() => scrollRow(trendingRef, 'right')} title="Next">
-                    <ChevronRight size={22} />
-                  </button>
+                  <span style={{ fontSize: '12px', fontWeight: 700, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                    {song.title}
+                  </span>
                 </div>
-              </div>
-            </div>
-
-            <div ref={trendingRef} className="carousel-row">
-              {displayTrending.map((song) => (
-                <SongCard
-                  key={song.videoId}
-                  song={song}
-                  isPlaying={currentSong?.videoId === song.videoId && isPlaying}
-                  isFavorite={isFavorite(song.videoId)}
-                  onToggleFavorite={onToggleFavorite}
-                  onPlay={(s) => onPlaySong?.(s, rankedTrending)}
-                  onAddToPlaylist={onAddToPlaylist}
-                  onAddToQueue={onAddToQueue}
-                  onPlayNext={onPlayNext}
-                />
-              ))}
-            </div>
-          </div>
-
-          {/* Section 2: Popular Artists Carousel */}
-          <div style={{ marginBottom: '38px' }}>
-            <div className="ytm-section-header">
-              <div className="ytm-section-subtitle">SIMILAR TO YOUR FAVORITES</div>
-              <div className="ytm-section-title-row">
-                <h2 className="ytm-section-title">Popular artists</h2>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button className="control-btn" onClick={() => scrollRow(artistsRef, 'left')} title="Previous">
-                    <ChevronLeft size={22} />
-                  </button>
-                  <button className="control-btn" onClick={() => scrollRow(artistsRef, 'right')} title="Next">
-                    <ChevronRight size={22} />
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div ref={artistsRef} className="carousel-row">
-              {POPULAR_ARTISTS.map((artist) => (
-                <ArtistCard
-                  key={artist.name}
-                  artist={artist}
-                  onSelectArtist={(art) => onSelectArtist?.(art)}
-                />
-              ))}
-            </div>
-          </div>
-
-          {/* Section 3: Recommended Music Carousel */}
-          <div style={{ marginBottom: '38px' }}>
-            <div className="ytm-section-header">
-              <div className="ytm-section-subtitle">RECOMMENDED FOR YOU</div>
-              <div className="ytm-section-title-row">
-                <h2 className="ytm-section-title">Recommended music</h2>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button className="control-btn" onClick={() => scrollRow(recsRef, 'left')} title="Previous">
-                    <ChevronLeft size={22} />
-                  </button>
-                  <button className="control-btn" onClick={() => scrollRow(recsRef, 'right')} title="Next">
-                    <ChevronRight size={22} />
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div ref={recsRef} className="carousel-row">
-              {recommendedSongs.map((song) => (
-                <SongCard
-                  key={song.videoId}
-                  song={song}
-                  isPlaying={currentSong?.videoId === song.videoId && isPlaying}
-                  isFavorite={isFavorite(song.videoId)}
-                  onToggleFavorite={onToggleFavorite}
-                  onPlay={(s) => onPlaySong?.(s, rankedTrending)}
-                  onAddToPlaylist={onAddToPlaylist}
-                  onAddToQueue={onAddToQueue}
-                  onPlayNext={onPlayNext}
-                />
-              ))}
-            </div>
-          </div>
-
-          {/* Section: Soulful Melodies & Romance */}
-          {melodySongs.length > 0 && (
-            <div style={{ marginBottom: '38px' }}>
-              <div className="ytm-section-header">
-                <div className="ytm-section-subtitle">FEEL-GOOD ROMANTIC VIBES</div>
-                <div className="ytm-section-title-row">
-                  <h2 className="ytm-section-title">Soulful Melodies & Romance 💖</h2>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button className="control-btn" onClick={() => scrollRow(melodiesRef, 'left')} title="Previous">
-                      <ChevronLeft size={22} />
-                    </button>
-                    <button className="control-btn" onClick={() => scrollRow(melodiesRef, 'right')} title="Next">
-                      <ChevronRight size={22} />
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div ref={melodiesRef} className="carousel-row">
-                {melodySongs.map((song) => (
-                  <SongCard
-                    key={song.videoId}
-                    song={song}
-                    isPlaying={currentSong?.videoId === song.videoId && isPlaying}
-                    isFavorite={isFavorite(song.videoId)}
-                    onToggleFavorite={onToggleFavorite}
-                    onPlay={(s) => onPlaySong?.(s, rankedTrending)}
-                    onAddToPlaylist={onAddToPlaylist}
-                    onAddToQueue={onAddToQueue}
-                    onPlayNext={onPlayNext}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Section: Party & Mass Kuthu Beats */}
-          {partySongs.length > 0 && (
-            <div style={{ marginBottom: '38px' }}>
-              <div className="ytm-section-header">
-                <div className="ytm-section-subtitle">HIGH ENERGY CLUB & FAST BEATS</div>
-                <div className="ytm-section-title-row">
-                  <h2 className="ytm-section-title">Party & Mass Kuthu Beats 🔥</h2>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button className="control-btn" onClick={() => scrollRow(partyRef, 'left')} title="Previous">
-                      <ChevronLeft size={22} />
-                    </button>
-                    <button className="control-btn" onClick={() => scrollRow(partyRef, 'right')} title="Next">
-                      <ChevronRight size={22} />
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div ref={partyRef} className="carousel-row">
-                {partySongs.map((song) => (
-                  <SongCard
-                    key={song.videoId}
-                    song={song}
-                    isPlaying={currentSong?.videoId === song.videoId && isPlaying}
-                    isFavorite={isFavorite(song.videoId)}
-                    onToggleFavorite={onToggleFavorite}
-                    onPlay={(s) => onPlaySong?.(s, rankedTrending)}
-                    onAddToPlaylist={onAddToPlaylist}
-                    onAddToQueue={onAddToQueue}
-                    onPlayNext={onPlayNext}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Section: Retro & 90s Golden Era */}
-          {retroSongs.length > 0 && (
-            <div style={{ marginBottom: '38px' }}>
-              <div className="ytm-section-header">
-                <div className="ytm-section-subtitle">TIMELESS EVERGREEN HITS</div>
-                <div className="ytm-section-title-row">
-                  <h2 className="ytm-section-title">Retro & 90s Evergreens 📻</h2>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button className="control-btn" onClick={() => scrollRow(retroRef, 'left')} title="Previous">
-                      <ChevronLeft size={22} />
-                    </button>
-                    <button className="control-btn" onClick={() => scrollRow(retroRef, 'right')} title="Next">
-                      <ChevronRight size={22} />
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div ref={retroRef} className="carousel-row">
-                {retroSongs.map((song) => (
-                  <SongCard
-                    key={song.videoId}
-                    song={song}
-                    isPlaying={currentSong?.videoId === song.videoId && isPlaying}
-                    isFavorite={isFavorite(song.videoId)}
-                    onToggleFavorite={onToggleFavorite}
-                    onPlay={(s) => onPlaySong?.(s, rankedTrending)}
-                    onAddToPlaylist={onAddToPlaylist}
-                    onAddToQueue={onAddToQueue}
-                    onPlayNext={onPlayNext}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Section: Discover All Chartbusters Grid (Continuous Browser Feed) */}
-          {gridSongs.length > 0 && (
-            <div style={{ marginBottom: '45px' }}>
-              <div className="ytm-section-header">
-                <div className="ytm-section-subtitle">UNLIMITED PLAYLIST EXPLORER</div>
-                <div className="ytm-section-title-row">
-                  <h2 className="ytm-section-title">All Trending Chartbusters ({rankedTrending.length} Songs)</h2>
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '20px' }}>
-                {gridSongs.map((song) => (
-                  <SongCard
-                    key={song.videoId}
-                    song={song}
-                    isPlaying={currentSong?.videoId === song.videoId && isPlaying}
-                    isFavorite={isFavorite(song.videoId)}
-                    onToggleFavorite={onToggleFavorite}
-                    onPlay={(s) => onPlaySong?.(s, rankedTrending)}
-                    onAddToPlaylist={onAddToPlaylist}
-                    onAddToQueue={onAddToQueue}
-                    onPlayNext={onPlayNext}
-                  />
-                ))}
-              </div>
-
-              {gridLimit < rankedTrending.length && (
-                <div style={{ display: 'flex', justifyContent: 'center', marginTop: '28px' }}>
-                  <button
-                    className="pill-button active"
-                    style={{
-                      padding: '12px 32px',
-                      fontSize: '15px',
-                      fontWeight: 700,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      borderRadius: '50px',
-                      background: 'linear-gradient(135deg, var(--isai-purple), var(--isai-purple-dark))',
-                      boxShadow: '0 6px 20px rgba(124, 58, 237, 0.4)'
-                    }}
-                    onClick={() => setGridLimit((prev) => Math.min(rankedTrending.length, prev + 24))}
-                  >
-                    <ChevronDown size={18} />
-                    Load More Hits ({rankedTrending.length - gridLimit} remaining)
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Section: Genre / Mood Grid */}
-          <div style={{ marginBottom: '40px' }}>
-            <div className="ytm-section-header">
-              <div className="ytm-section-subtitle">EXPLORE GENRES & MOODS</div>
-              <h2 className="ytm-section-title" style={{ marginBottom: '16px' }}>
-                Browse by mood
-              </h2>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '16px' }}>
-              {GENRE_TILES.map((genre) => (
-                <GenreTile
-                  key={genre.id}
-                  genre={genre}
-                  onSelect={(q) => onSelectCategory(q)}
-                />
-              ))}
-            </div>
+              )
+            })}
           </div>
         </div>
       )}
+
+      {/* 4. Unakkaaga Picks ✨ (2 Columns x 3 Rows = 6 items) */}
+      <div>
+        <div style={{ marginBottom: '14px' }}>
+          <h2 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            Unakkaaga Picks ✨
+          </h2>
+          <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+            {actualHistory.length > 0 ? `Personalized for your ${activeLanguage} taste` : `${activeLanguage}-la Popular`}
+          </span>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '12px' }}>
+          {picksSongs.map((song) => {
+            const isThisPlaying = currentSong?.videoId === song.videoId && isPlaying
+            const isFav = isFavorite(song.videoId)
+            return (
+              <div
+                key={song.videoId}
+                onClick={() => onPlaySong?.(song, deduplicated)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  padding: '10px',
+                  borderRadius: '14px',
+                  background: isThisPlaying ? 'rgba(200, 255, 0, 0.12)' : 'var(--surface-card)',
+                  border: isThisPlaying ? '1px solid var(--isai-lime)' : '1px solid var(--border-subtle)',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                <img
+                  src={song.thumbnailUrl}
+                  alt={song.title}
+                  style={{ width: '54px', height: '54px', borderRadius: '10px', objectFit: 'cover' }}
+                />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: '13px', fontWeight: 700, color: isThisPlaying ? 'var(--isai-lime)' : '#fff', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                    {song.title}
+                  </div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {song.channelTitle}
+                  </div>
+                </div>
+
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onToggleFavorite(song)
+                  }}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '6px' }}
+                >
+                  <Heart size={18} fill={isFav ? '#FF007A' : 'none'} color={isFav ? '#FF007A' : 'var(--text-muted)'} />
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* 5. New Releases (Pudhu {Language} Paadalgal) */}
+      <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+          <div>
+            <h2 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)' }}>
+              Pudhu {activeLanguage} Paadalgal 🎵
+            </h2>
+            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Latest releases (Last 30 Days)</span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button
+              onClick={onSeeAllNewReleases || (() => onSelectCategory(`${activeLanguage} new releases 2026`))}
+              style={{ background: 'none', border: 'none', color: 'var(--isai-lime)', fontWeight: 800, fontSize: '12px', cursor: 'pointer' }}
+            >
+              See all
+            </button>
+            <button className="control-btn" onClick={() => scrollRow(newReleasesRowRef, 'left')}><ChevronLeft size={18} /></button>
+            <button className="control-btn" onClick={() => scrollRow(newReleasesRowRef, 'right')}><ChevronRight size={18} /></button>
+          </div>
+        </div>
+
+        <div
+          ref={newReleasesRowRef}
+          style={{ display: 'flex', gap: '16px', overflowX: 'auto', scrollBehavior: 'smooth', paddingBottom: '8px' }}
+        >
+          {displayNewReleases.map((song) => {
+            const isThisPlaying = currentSong?.videoId === song.videoId && isPlaying
+            return (
+              <div
+                key={song.videoId}
+                onClick={() => onPlaySong?.(song, displayNewReleases)}
+                style={{ minWidth: '150px', maxWidth: '150px', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: '8px' }}
+              >
+                <div style={{ position: 'relative', width: '150px', height: '150px', borderRadius: '16px', overflow: 'hidden', border: isThisPlaying ? '2px solid var(--isai-lime)' : 'none' }}>
+                  <img src={song.thumbnailUrl} alt={song.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  <div style={{ position: 'absolute', top: '8px', right: '8px', background: 'rgba(0,0,0,0.7)', color: 'var(--isai-lime)', fontSize: '10px', fontWeight: 800, padding: '2px 6px', borderRadius: '6px' }}>
+                    NEW
+                  </div>
+                </div>
+                <span style={{ fontSize: '13px', fontWeight: 700, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                  {song.title}
+                </span>
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {song.channelTitle}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* 6. Innaiku Enna Mood? */}
+      <div>
+        <h2 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '14px' }}>
+          Innaiku Enna Mood? 💫
+        </h2>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px' }}>
+          {moodCards.map((m) => (
+            <div
+              key={m.title}
+              onClick={() => onSelectCategory(m.query)}
+              style={{
+                padding: '16px',
+                borderRadius: '16px',
+                background: m.gradient,
+                border: '1px solid rgba(255,255,255,0.1)',
+                cursor: 'pointer',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+                transition: 'transform 0.2s ease'
+              }}
+            >
+              <span style={{ fontSize: '24px' }}>{m.emoji}</span>
+              <span style={{ fontSize: '15px', fontWeight: 800, color: '#fff' }}>{m.title}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 7. Un Favourite Artists */}
+      <div>
+        <h2 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '14px' }}>
+          {actualHistory.length > 0 ? 'Un Favourite Artists 🎤' : `Explore ${activeLanguage} Artists 🎤`}
+        </h2>
+        <div style={{ display: 'flex', gap: '20px', overflowX: 'auto', paddingBottom: '8px' }}>
+          {displayArtists.map((artist) => (
+            <div
+              key={artist.name}
+              onClick={() => onSelectArtist?.(artist)}
+              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', cursor: 'pointer', minWidth: '90px' }}
+            >
+              <img
+                src={artist.image}
+                alt={artist.name}
+                style={{ width: '84px', height: '84px', borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--border-subtle)' }}
+              />
+              <span style={{ fontSize: '12px', fontWeight: 700, color: '#fff', textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100px' }}>
+                {artist.name}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+
     </div>
   )
 }

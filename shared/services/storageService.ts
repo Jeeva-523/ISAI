@@ -185,6 +185,18 @@ export class LocalMusicStorageService {
     if (typeof window === 'undefined' || !window.localStorage) return
     localStorage.setItem('isai_multi_device_separate', String(enabled))
   }
+
+  getAudioQuality(): '320kbps' | '160kbps' | '96kbps' {
+    if (typeof window === 'undefined' || !window.localStorage) return '320kbps'
+    const q = localStorage.getItem('isai_audio_quality')
+    if (q === '160kbps' || q === '96kbps' || q === '320kbps') return q
+    return '320kbps'
+  }
+
+  setAudioQuality(quality: '320kbps' | '160kbps' | '96kbps') {
+    if (typeof window === 'undefined' || !window.localStorage) return
+    localStorage.setItem('isai_audio_quality', quality)
+  }
 }
 
 export const storageService = new LocalMusicStorageService()

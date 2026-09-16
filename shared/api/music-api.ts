@@ -1,8 +1,27 @@
+/* eslint-disable @eslint-community/eslint-comments/no-duplicate-disable */
+/* eslint-disable prettier/prettier */
 import { API_CONFIG } from '../constants/api'
 import type { Song } from '../models/song'
 import type { MusicProvider } from './MusicProvider'
 import { cleanHtmlTitle, deduplicateSongs } from '../utils/formatters'
 import { decryptMediaUrl } from '../utils/crypto'
+
+export type AudioQualitySetting = '320kbps' | '160kbps' | '96kbps'
+
+export function getAudioUrlWithQuality(url: string, quality: AudioQualitySetting): string {
+  if (!url) return ''
+  if (url.includes('_96.')) {
+    if (quality === '160kbps') return url.replace('_96.', '_160.')
+    if (quality === '320kbps') return url.replace('_96.', '_320.')
+  } else if (url.includes('_160.')) {
+    if (quality === '96kbps') return url.replace('_160.', '_96.')
+    if (quality === '320kbps') return url.replace('_160.', '_320.')
+  } else if (url.includes('_320.')) {
+    if (quality === '96kbps') return url.replace('_320.', '_96.')
+    if (quality === '160kbps') return url.replace('_320.', '_160.')
+  }
+  return url
+}
 
 export interface MusicApiOptions {
   baseUrl?: string
@@ -11,11 +30,11 @@ export interface MusicApiOptions {
 function parseReleaseTimestamp(dateStr?: string, yearStr?: string): number {
   if (dateStr) {
     const parsed = Date.parse(dateStr)
-    if (!isNaN(parsed) && parsed > 0) return parsed
+    if (!Number.isNaN(parsed) && parsed > 0) return parsed
   }
   if (yearStr) {
-    const yr = parseInt(yearStr, 10)
-    if (!isNaN(yr) && yr >= 1970 && yr <= 2030) {
+    const yr = Number.parseInt(yearStr, 10)
+    if (!Number.isNaN(yr) && yr >= 1970 && yr <= 2030) {
       return new Date(yr, 0, 1).getTime()
     }
   }
@@ -47,14 +66,14 @@ export function detectSongLanguage(song: Partial<Song>): string {
   if (combined.includes('english')) return 'english'
 
   // 3. Prominent Artist heuristic
-  if (/(anirudh|a\.?r\.?\s?rahman|yuvan|harris jayaraj|vidyasagar|deva|ilayaraja|santhosh narayanan|g\.?v\.?\s?prakash|dhibu|sai abhyankkar|pradeep kumar|dhanush|vijay|sivaangi|jonita|sid sriram)/i.test(combined)) {
+  if (/anirudh|a\.?r\.?\s?rahman|yuvan|harris jayaraj|vidyasagar|deva|ilayaraja|santhosh narayanan|g\.?v\.?\s?prakash|dhibu|sai abhyankkar|pradeep kumar|dhanush|vijay|sivaangi|jonita|sid sriram/i.test(combined)) {
     return 'tamil'
   }
-  if (/(thaman|devi sri prasad|dsp|keeravani|mahesh babu|allu arjun|ram charan|chiranjeevi)/i.test(combined)) return 'telugu'
-  if (/(sushin shyam|dabzee|jassie gift|shaan rahman|gopi sundar|heshem|mohanlal|mammootty)/i.test(combined)) return 'malayalam'
-  if (/(arijit singh|pritam|badshah|shreya ghoshal|amitabh bhattacharya|armaan malik|neha kakkar|kumar sanu|kishore|atif aslam)/i.test(combined)) return 'hindi'
-  if (/(diljit dosanjh|sidhu moose|ap dhillon|karan aujla|honey singh)/i.test(combined)) return 'punjabi'
-  if (/(ed sheeran|taylor swift|billie eilish|the weeknd|dua lipa|coldplay|eminem|drake|post malone|bruno mars|justin bieber)/i.test(combined)) return 'english'
+  if (/thaman|devi sri prasad|dsp|keeravani|mahesh babu|allu arjun|ram charan|chiranjeevi/i.test(combined)) return 'telugu'
+  if (/sushin shyam|dabzee|jassie gift|shaan rahman|gopi sundar|heshem|mohanlal|mammootty/i.test(combined)) return 'malayalam'
+  if (/arijit singh|pritam|badshah|shreya ghoshal|amitabh bhattacharya|armaan malik|neha kakkar|kumar sanu|kishore|atif aslam/i.test(combined)) return 'hindi'
+  if (/diljit dosanjh|sidhu moose|ap dhillon|karan aujla|honey singh/i.test(combined)) return 'punjabi'
+  if (/ed sheeran|taylor swift|billie eilish|the weeknd|dua lipa|coldplay|eminem|drake|post malone|bruno mars|justin bieber/i.test(combined)) return 'english'
 
   return 'tamil'
 }
@@ -191,12 +210,10 @@ function ensureDistinctThumbnails(songs: Song[]): Song[] {
   }
 
   return songs.map((song) => {
-    if (song.thumbnailUrl && (imageCounts.get(song.thumbnailUrl) || 0) >= 3) {
-      if (song.videoId && song.videoId.length === 11) {
-        return {
-          ...song,
-          thumbnailUrl: `https://img.youtube.com/vi/${song.videoId}/hqdefault.jpg`
-        }
+    if (song.thumbnailUrl && (imageCounts.get(song.thumbnailUrl) || 0) >= 3 && song.videoId && song.videoId.length === 11) {
+      return {
+        ...song,
+        thumbnailUrl: `https://img.youtube.com/vi/${song.videoId}/hqdefault.jpg`
       }
     }
     return song
@@ -235,7 +252,7 @@ export class MusicApiClient implements MusicProvider {
     let score = 0
 
     // Exact Title or Movie match bonus
-    const cleanTitle = title.replace(/\(.*\)|\[.*\]/g, '').trim()
+    const cleanTitle = title.replaceAll(/\(.*\)|\[.*\]/g, '').trim()
     if (cleanTitle === queryLower) score += 40
     else if (cleanTitle.startsWith(queryLower)) score += 25
     else if (title.includes(queryLower)) score += 15
@@ -296,7 +313,7 @@ export class MusicApiClient implements MusicProvider {
               return raw.map(mapToSong).filter(s => Boolean(s.audioUrl))
             }
           }
-        } catch {}
+        } catch { }
         return []
       }
 
@@ -327,7 +344,7 @@ export class MusicApiClient implements MusicProvider {
               return raw.map(mapToSong).filter(s => Boolean(s.audioUrl))
             }
           }
-        } catch {}
+        } catch { }
         return []
       }
       const results = await Promise.all(melodyQueries.map(fetchSubQuery))
@@ -358,7 +375,7 @@ export class MusicApiClient implements MusicProvider {
               return raw.map(mapToSong).filter(s => Boolean(s.audioUrl))
             }
           }
-        } catch {}
+        } catch { }
         return []
       }
       const results = await Promise.all(kuthuQueries.map(fetchSubQuery))
@@ -410,12 +427,46 @@ export class MusicApiClient implements MusicProvider {
       console.warn('[MusicApiClient] JioSaavn official API search failed:', error)
     }
 
+    // 6. drhacker006/jiosaavnapi Autocomplete search API fallback
+    try {
+      const autocompleteUrl = `https://www.jiosaavn.com/api.php?__call=autocomplete.get&_format=json&_marker=0&cc=in&includeMetaTags=1&query=${encodeURIComponent(cleanQuery)}`
+      const response = await fetch(autocompleteUrl, { signal: AbortSignal.timeout(3500) })
+      if (response.ok) {
+        const text = await response.text()
+        const cleanedText = text.replaceAll(/\\\(From "([^"]+)"\\\)/g, '(From \'$1\')')
+        const data = JSON.parse(cleanedText)
+        const songsList = data.songs?.data || []
+        if (Array.isArray(songsList) && songsList.length > 0) {
+          const songsDetails = await Promise.all(
+            songsList.slice(0, maxResults).map(async (item: any) => {
+              try {
+                const detailUrl = `https://www.jiosaavn.com/api.php?__call=song.getDetails&cc=in&_marker=0&_format=json&pids=${item.id}`
+                const detailRes = await fetch(detailUrl, { signal: AbortSignal.timeout(3000) })
+                if (detailRes.ok) {
+                  const detailData = await detailRes.json()
+                  const songObj = detailData[item.id] || detailData.songs?.[0]
+                  if (songObj) return mapToSong(songObj)
+                }
+              } catch { }
+              return mapToSong(item)
+            })
+          )
+          const validSongs = songsDetails.filter(s => Boolean(s.audioUrl))
+          if (validSongs.length > 0) {
+            return ensureDistinctThumbnails(deduplicateSongs(validSongs))
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('[MusicApiClient] drhacker006 JioSaavn API autocomplete search failed:', error)
+    }
+
     return []
   }
 
   // MusicProvider interface alias
   async searchTracks(query: string, limit = 20): Promise<Song[]> {
-    return this.searchSongs(query, limit)
+    return await this.searchSongs(query, limit)
   }
 
   /**
@@ -515,8 +566,8 @@ export class MusicApiClient implements MusicProvider {
       if (filtered.length > 0) {
         return filtered.slice(0, maxResults)
       }
-    } catch (err) {
-      console.warn('[MusicApiClient] Fetching combined trending songs failed:', err)
+    } catch (error) {
+      console.warn('[MusicApiClient] Fetching combined trending songs failed:', error)
     }
 
     const fallback = await this.searchSongs('Latest Tamil Hits', maxResults)
@@ -528,7 +579,7 @@ export class MusicApiClient implements MusicProvider {
 
   // MusicProvider interface alias
   async getTrendingTracks(languages: string[], limit = 80): Promise<Song[]> {
-    return this.getTrending(languages, limit)
+    return await this.getTrending(languages, limit)
   }
 
   /**
@@ -601,8 +652,8 @@ export class MusicApiClient implements MusicProvider {
       }).sort((a, b) => (b.playCountNumber || 0) - (a.playCountNumber || 0))
 
       return fallback.slice(0, limit)
-    } catch (e) {
-      console.warn('[MusicApiClient] getNewReleases failed:', e)
+    } catch (error) {
+      console.warn('[MusicApiClient] getNewReleases failed:', error)
       return []
     }
   }
@@ -612,13 +663,15 @@ export class MusicApiClient implements MusicProvider {
    */
   async getArtistTracks(artistName: string, language?: string, limit = 20): Promise<Song[]> {
     const query = language ? `${artistName} ${language} hits` : `${artistName} hit songs`
-    return this.searchSongs(query, limit)
+    return await this.searchSongs(query, limit)
   }
 
   /**
    * Get related artists
    */
-  async getRelatedArtists(artistName: string, _language?: string): Promise<string[]> {
+  async getRelatedArtists(artistName: string, language?: string): Promise<string[]> {
+    // eslint-disable-next-line no-void, prettier/prettier
+    void language
     const knownCollaborators: Record<string, string[]> = {
       'anirudh ravichander': ['A.R. Rahman', 'Yuvan Shankar Raja', 'Santhosh Narayanan', 'Sai Abhyankkar'],
       'a.r. rahman': ['Harris Jayaraj', 'Anirudh Ravichander', 'Yuvan Shankar Raja', 'Vidyasagar'],
@@ -632,7 +685,7 @@ export class MusicApiClient implements MusicProvider {
     }
 
     const key = artistName.trim().toLowerCase()
-    return knownCollaborators[key] || ['Anirudh Ravichander', 'A.R. Rahman', 'Yuvan Shankar Raja']
+    return await Promise.resolve(knownCollaborators[key] || ['Anirudh Ravichander', 'A.R. Rahman', 'Yuvan Shankar Raja'])
   }
 
   /**
@@ -644,4 +697,6 @@ export class MusicApiClient implements MusicProvider {
 }
 
 // Default singleton instance
+// eslint-disable-next-line @eslint-community/eslint-comments/no-duplicate-disable
+// eslint-disable-next-line prettier/prettier
 export const musicApi = new MusicApiClient()

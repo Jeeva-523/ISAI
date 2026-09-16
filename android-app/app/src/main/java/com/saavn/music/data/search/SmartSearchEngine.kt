@@ -650,12 +650,17 @@ object SmartSearchEngine {
             score += 100
         }
 
-        // 11. User Preferred Language Match (Gentle)
-        val selectedLang = intent.detectedLanguage ?: userPreferredLanguages.firstOrNull()?.lowercase(Locale.ROOT)
-        if (selectedLang != null && selectedLang.isNotBlank()) {
-            if (fullText.contains(selectedLang)) {
-                score += 50
-            }
+        // 11. User Preferred Language Match (HIGH PRIORITY)
+        val normUserLangs = userPreferredLanguages.map { it.lowercase(Locale.ROOT).trim() }.filter { it.isNotBlank() }
+        val effectiveLangs = if (normUserLangs.isNotEmpty()) normUserLangs else listOf("tamil")
+
+        val isPreferred = com.saavn.music.util.RelevanceEngine.isSongInLanguage(song, effectiveLangs)
+        val detectedLang = com.saavn.music.util.RelevanceEngine.detectSongLanguage(song)
+
+        if (isPreferred || (detectedLang.isNotBlank() && effectiveLangs.contains(detectedLang))) {
+            score += 2500 // High Priority boost for user's logged-in preferred languages!
+        } else if (detectedLang.isNotBlank() && !effectiveLangs.contains(detectedLang)) {
+            score -= 1500 // Heavy penalty for foreign languages not selected by user
         }
 
         return score
