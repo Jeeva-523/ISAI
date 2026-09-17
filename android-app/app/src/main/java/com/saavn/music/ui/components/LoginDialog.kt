@@ -175,7 +175,7 @@ fun LoginDialog(
                             text = userProfile.displayName.ifBlank { "ISAI User" },
                             fontSize = 20.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color.White
+                            color = TextPrimary
                         )
 
                         Spacer(modifier = Modifier.height(4.dp))
@@ -286,7 +286,7 @@ fun LoginDialog(
                                 text = "Verify Your Email",
                                 fontSize = 22.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color.White
+                                color = TextPrimary
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
@@ -390,8 +390,8 @@ fun LoginDialog(
                                 colors = OutlinedTextFieldDefaults.colors(
                                     focusedBorderColor = NeonCyan,
                                     unfocusedBorderColor = GlassBorderSubtle,
-                                    focusedTextColor = Color.White,
-                                    unfocusedTextColor = Color.White
+                                    focusedTextColor = TextPrimary,
+                                    unfocusedTextColor = TextPrimary
                                 )
                             )
 
@@ -418,8 +418,8 @@ fun LoginDialog(
                                 colors = OutlinedTextFieldDefaults.colors(
                                     focusedBorderColor = NeonCyan,
                                     unfocusedBorderColor = GlassBorderSubtle,
-                                    focusedTextColor = Color.White,
-                                    unfocusedTextColor = Color.White
+                                    focusedTextColor = TextPrimary,
+                                    unfocusedTextColor = TextPrimary
                                 )
                             )
 
@@ -482,8 +482,8 @@ fun LoginDialog(
                                 colors = OutlinedTextFieldDefaults.colors(
                                     focusedBorderColor = NeonCyan,
                                     unfocusedBorderColor = GlassBorderSubtle,
-                                    focusedTextColor = Color.White,
-                                    unfocusedTextColor = Color.White
+                                    focusedTextColor = TextPrimary,
+                                    unfocusedTextColor = TextPrimary
                                 )
                             )
 
@@ -500,8 +500,8 @@ fun LoginDialog(
                                 colors = OutlinedTextFieldDefaults.colors(
                                     focusedBorderColor = NeonCyan,
                                     unfocusedBorderColor = GlassBorderSubtle,
-                                    focusedTextColor = Color.White,
-                                    unfocusedTextColor = Color.White
+                                    focusedTextColor = TextPrimary,
+                                    unfocusedTextColor = TextPrimary
                                 )
                             )
 

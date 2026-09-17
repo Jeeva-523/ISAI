@@ -3,7 +3,16 @@ package com.saavn.music.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -12,8 +21,16 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -25,9 +42,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import com.saavn.music.ui.theme.*
+import com.saavn.music.ui.theme.DarkBackground
+import com.saavn.music.ui.theme.DarkSurface
+import com.saavn.music.ui.theme.DarkSurfaceGlass
+import com.saavn.music.ui.theme.GlassBorderSubtle
+import com.saavn.music.ui.theme.NeonCyan
+import com.saavn.music.ui.theme.NeonPurple
+import com.saavn.music.ui.theme.TextMuted
+import com.saavn.music.ui.theme.TextPrimary
+import com.saavn.music.ui.theme.TextSecondary
 
-data class LanguageItem(
+data class MusicLanguageItem(
     val id: String,
     val name: String,
     val nativeName: String,
@@ -36,45 +61,36 @@ data class LanguageItem(
 )
 
 val MUSIC_LANGUAGES = listOf(
-    LanguageItem("tamil", "Tamil", "தமிழ்", "🎵", listOf(Color(0xFFEC4899), Color(0xFF8B5CF6))),
-    LanguageItem("telugu", "Telugu", "తెలుగు", "🔥", listOf(Color(0xFFF59E0B), Color(0xFFEF4444))),
-    LanguageItem("hindi", "Hindi", "हिंदी", "✨", listOf(Color(0xFF8B5CF6), Color(0xFF3B82F6))),
-    LanguageItem("malayalam", "Malayalam", "മലയാളം", "🌴", listOf(Color(0xFF10B981), Color(0xFF06B6D4))),
-    LanguageItem("english", "English", "Global Hits", "🌍", listOf(Color(0xFF6366F1), Color(0xFFA855F7))),
-    LanguageItem("kannada", "Kannada", "ಕನ್ನಡ", "🎼", listOf(Color(0xFFF97316), Color(0xFFEAB308))),
-    LanguageItem("punjabi", "Punjabi", "ਪੰਜਾਬੀ", "🥁", listOf(Color(0xFF84CC16), Color(0xFF10B981)))
+    MusicLanguageItem("tamil", "Tamil", "தமிழ்", "🎵", listOf(Color(0xFF8B5CF6), Color(0xFF6D28D9))),
+    MusicLanguageItem("telugu", "Telugu", "తెలుగు", "🎶", listOf(Color(0xFFEC4899), Color(0xFFBE185D))),
+    MusicLanguageItem("hindi", "Hindi", "हिंदी", "✨", listOf(Color(0xFFF59E0B), Color(0xFFD97706))),
+    MusicLanguageItem("malayalam", "Malayalam", "മലയാളം", "🌴", listOf(Color(0xFF10B981), Color(0xFF047857))),
+    MusicLanguageItem("kannada", "Kannada", "ಕನ್ನಡ", "🌟", listOf(Color(0xFF06B6D4), Color(0xFF0E7490))),
+    MusicLanguageItem("english", "English", "English", "🎧", listOf(Color(0xFF6366F1), Color(0xFF4338CA)))
 )
 
 @Composable
 fun LanguageSelectionDialog(
-    initialSelected: List<String> = listOf("tamil"),
+    initialSelected: List<String> = emptyList(),
+    currentLanguages: List<String> = initialSelected,
     onSaveLanguages: (List<String>) -> Unit,
     onDismiss: (() -> Unit)? = null
 ) {
     var selectedLanguages by remember {
-        mutableStateOf(
-            if (initialSelected.isNotEmpty()) initialSelected.toSet() else setOf("tamil")
-        )
+        val base = currentLanguages.ifEmpty { initialSelected }
+        mutableStateOf(if (base.isEmpty()) listOf("tamil") else base)
     }
 
     Dialog(
         onDismissRequest = { onDismiss?.invoke() },
-        properties = DialogProperties(
-            dismissOnBackPress = onDismiss != null,
-            dismissOnClickOutside = onDismiss != null,
-            usePlatformDefaultWidth = false
-        )
+        properties = DialogProperties(dismissOnBackPress = onDismiss != null, dismissOnClickOutside = onDismiss != null)
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth(0.92f)
                 .clip(RoundedCornerShape(28.dp))
-                .background(
-                    Brush.verticalGradient(
-                        listOf(Color(0xFF1A1329), Color(0xFF110B1D))
-                    )
-                )
-                .border(1.dp, Color(0xFF8B5CF6).copy(alpha = 0.35f), RoundedCornerShape(28.dp))
+                .background(DarkBackground)
+                .border(1.dp, GlassBorderSubtle, RoundedCornerShape(28.dp))
                 .padding(24.dp)
         ) {
             if (onDismiss != null) {
@@ -84,12 +100,12 @@ fun LanguageSelectionDialog(
                         .align(Alignment.TopEnd)
                         .size(32.dp)
                         .clip(CircleShape)
-                        .background(Color(0xFF1E1730))
+                        .background(DarkSurfaceGlass)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Close,
                         contentDescription = "Close",
-                        tint = Color(0xFFA78BFA),
+                        tint = TextSecondary,
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -99,17 +115,16 @@ fun LanguageSelectionDialog(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                // Header badge
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(20.dp))
-                        .background(Color(0xFF8B5CF6).copy(alpha = 0.15f))
-                        .border(1.dp, Color(0xFF8B5CF6).copy(alpha = 0.3f), RoundedCornerShape(20.dp))
+                        .background(NeonCyan.copy(alpha = 0.15f))
+                        .border(1.dp, GlassBorderSubtle, RoundedCornerShape(20.dp))
                         .padding(horizontal = 14.dp, vertical = 6.dp)
                 ) {
                     Text(
                         text = "🌐 PERSONALIZE YOUR MUSIC",
-                        color = Color(0xFFA78BFA),
+                        color = NeonCyan,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.ExtraBold,
                         letterSpacing = 1.sp
@@ -120,7 +135,7 @@ fun LanguageSelectionDialog(
 
                 Text(
                     text = "What do you want to listen to?",
-                    color = Color.White,
+                    color = TextPrimary,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Center
@@ -130,7 +145,7 @@ fun LanguageSelectionDialog(
 
                 Text(
                     text = "Choose your music languages to customize your Home feed. Universal search finds songs from any language anytime!",
-                    color = Color(0xFF9CA3AF),
+                    color = TextMuted,
                     fontSize = 12.sp,
                     textAlign = TextAlign.Center,
                     lineHeight = 16.sp
@@ -138,7 +153,6 @@ fun LanguageSelectionDialog(
 
                 Spacer(modifier = Modifier.height(20.dp))
 
-                // Language Grid
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(2),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -153,13 +167,12 @@ fun LanguageSelectionDialog(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(16.dp))
                                 .background(
-                                    Brush.linearGradient(
-                                        if (isSelected) item.gradientColors else listOf(Color(0xFF1E1730), Color(0xFF161026))
-                                    )
+                                    if (isSelected) Brush.linearGradient(item.gradientColors)
+                                    else Brush.linearGradient(listOf(DarkSurface, DarkSurfaceGlass))
                                 )
                                 .border(
                                     width = if (isSelected) 2.dp else 1.dp,
-                                    color = if (isSelected) Color.White else Color(0xFF8B5CF6).copy(alpha = 0.2f),
+                                    color = if (isSelected) NeonCyan else GlassBorderSubtle,
                                     shape = RoundedCornerShape(16.dp)
                                 )
                                 .clickable {
@@ -191,7 +204,7 @@ fun LanguageSelectionDialog(
                                             Icon(
                                                 imageVector = Icons.Default.Check,
                                                 contentDescription = "Selected",
-                                                tint = Color(0xFF8B5CF6),
+                                                tint = NeonCyan,
                                                 modifier = Modifier.size(14.dp)
                                             )
                                         }
@@ -202,14 +215,14 @@ fun LanguageSelectionDialog(
 
                                 Text(
                                     text = item.name,
-                                    color = Color.White,
+                                    color = if (isSelected) Color.White else TextPrimary,
                                     fontSize = 15.sp,
                                     fontWeight = FontWeight.Bold
                                 )
 
                                 Text(
                                     text = item.nativeName,
-                                    color = if (isSelected) Color.White.copy(alpha = 0.85f) else Color(0xFF9CA3AF),
+                                    color = if (isSelected) Color.White.copy(alpha = 0.85f) else TextSecondary,
                                     fontSize = 11.sp
                                 )
                             }
@@ -219,7 +232,6 @@ fun LanguageSelectionDialog(
 
                 Spacer(modifier = Modifier.height(22.dp))
 
-                // Continue / Save Button
                 Button(
                     onClick = {
                         if (selectedLanguages.isNotEmpty()) {
@@ -231,7 +243,7 @@ fun LanguageSelectionDialog(
                         .height(50.dp),
                     shape = RoundedCornerShape(25.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF8B5CF6)
+                        containerColor = NeonCyan
                     )
                 ) {
                     val btnLabel = if (onDismiss != null) {
@@ -241,7 +253,7 @@ fun LanguageSelectionDialog(
                     }
                     Text(
                         text = btnLabel,
-                        color = Color.White,
+                        color = DarkBackground,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Bold
                     )

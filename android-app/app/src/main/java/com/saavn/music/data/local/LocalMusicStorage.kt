@@ -140,12 +140,16 @@ class LocalMusicStorage(context: Context) {
 
     // --- Favorites ---
     fun isFavorite(videoId: String): Boolean {
-        return _favorites.value.any { it.videoId == videoId }
+        val cleanId = videoId.trim()
+        if (cleanId.isBlank()) return false
+        return _favorites.value.any { it.videoId.trim() == cleanId }
     }
 
     fun toggleFavorite(song: YouTubeSong) {
+        val cleanId = song.videoId.trim()
+        if (cleanId.isBlank()) return
         val current = _favorites.value.toMutableList()
-        val exists = current.indexOfFirst { it.videoId == song.videoId }
+        val exists = current.indexOfFirst { it.videoId.trim() == cleanId }
         if (exists >= 0) {
             current.removeAt(exists)
         } else {

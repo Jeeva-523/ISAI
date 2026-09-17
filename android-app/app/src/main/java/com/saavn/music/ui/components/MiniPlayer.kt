@@ -75,6 +75,7 @@ fun MiniPlayer(
     val isBuffering by viewModel.ytPlayerController.isBuffering.collectAsState()
     val positionSecLocal by viewModel.ytPlayerController.currentPositionSec.collectAsState()
     val durationSecLocal by viewModel.ytPlayerController.durationSec.collectAsState()
+    val favorites by viewModel.favorites.collectAsState()
 
     val syncState by viewModel.isaiConnectManager.playbackState.collectAsState()
     val isSeparateMode by viewModel.isMultiDevicePlaybackSeparate.collectAsState()
@@ -254,7 +255,7 @@ fun MiniPlayer(
                     Spacer(modifier = Modifier.width(4.dp))
 
                     // Direct Favorite Heart Button
-                    val isFav = viewModel.isFavorite(song.videoId)
+                    val isFav = favorites.any { it.videoId.trim() == song.videoId.trim() }
                     IconButton(
                         onClick = { viewModel.toggleFavorite(song) },
                         modifier = Modifier.size(36.dp)

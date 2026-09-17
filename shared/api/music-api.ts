@@ -1,10 +1,8 @@
-/* eslint-disable @eslint-community/eslint-comments/no-duplicate-disable */
-/* eslint-disable prettier/prettier */
 import { API_CONFIG } from '../constants/api'
 import type { Song } from '../models/song'
-import type { MusicProvider } from './MusicProvider'
-import { cleanHtmlTitle, deduplicateSongs } from '../utils/formatters'
 import { decryptMediaUrl } from '../utils/crypto'
+import { cleanHtmlTitle, deduplicateSongs } from '../utils/formatters'
+import type { MusicProvider } from './MusicProvider'
 
 export type AudioQualitySetting = '320kbps' | '160kbps' | '96kbps'
 
@@ -669,9 +667,8 @@ export class MusicApiClient implements MusicProvider {
   /**
    * Get related artists
    */
-  async getRelatedArtists(artistName: string, language?: string): Promise<string[]> {
-    // eslint-disable-next-line no-void, prettier/prettier
-    void language
+  async getRelatedArtists(artistName: string, _language?: string): Promise<string[]> {
+    void _language
     const knownCollaborators: Record<string, string[]> = {
       'anirudh ravichander': ['A.R. Rahman', 'Yuvan Shankar Raja', 'Santhosh Narayanan', 'Sai Abhyankkar'],
       'a.r. rahman': ['Harris Jayaraj', 'Anirudh Ravichander', 'Yuvan Shankar Raja', 'Vidyasagar'],
@@ -697,6 +694,4 @@ export class MusicApiClient implements MusicProvider {
 }
 
 // Default singleton instance
-// eslint-disable-next-line @eslint-community/eslint-comments/no-duplicate-disable
-// eslint-disable-next-line prettier/prettier
 export const musicApi = new MusicApiClient()

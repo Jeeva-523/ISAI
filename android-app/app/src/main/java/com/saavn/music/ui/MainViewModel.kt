@@ -93,7 +93,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val showPlanSelectionDialog: StateFlow<Boolean> = _showPlanSelectionDialog.asStateFlow()
 
     fun openPlanSelectionDialog() {
-        _showPlanSelectionDialog.value = true
+        // Paid/subscription options hidden for now as per user preference
+        _showPlanSelectionDialog.value = false
     }
 
     fun closePlanSelectionDialog() {
@@ -1010,46 +1011,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun selectCategory(category: String) {
         _selectedCategory.value = category
-        viewModelScope.launch(Dispatchers.IO) {
-            _isLoadingHome.value = true
-            try {
-                if (category == "Most Played" || category == "Trending") {
-                    _categorySongs.value = trendingService.getMostPlayedSongs(_trendingSongs.value)
-                    _isLoadingHome.value = false
-                    return@launch
-                }
-                val query = when (category) {
-                    "Tamil Songs" -> "Tamil all time hit songs"
-                    "Melody" -> "Tamil melody hits"
-                    "Love Songs" -> "Tamil love romantic songs"
-                    "Folk" -> "Tamil folk village hits"
-                    "Devotional" -> "Tamil devotional songs"
-                    "Gaana" -> "Tamil gaana hits"
-                    "Classical" -> "Tamil classical hits"
-                    "New Releases" -> "Latest Tamil Movie Songs 2025 2026"
-                    else -> "Latest Tamil Movie Songs 2025 2026"
-                }
-                val saavnResult = musicRepo.search(query)
-                val saavnSongs = saavnResult.getOrNull()?.map { it.toYouTubeSong() } ?: emptyList()
-                val cleanSaavn = saavnSongs.filterNot { s ->
-                    val t = s.title.lowercase()
-                    t.contains("trending") || t.contains("jukebox") || t.contains("full album") || t.contains("non stop")
-                }
-                if (cleanSaavn.isNotEmpty()) {
-                    _categorySongs.value = ytRepo.deduplicateSongs(cleanSaavn)
-                } else {
-                    val fallback = ytRepo.searchTamilSongs(query, maxResults = 50).getOrDefault(emptyList()).filterNot { s ->
-                        val t = s.title.lowercase()
-                        t.contains("trending") || t.contains("jukebox") || t.contains("full album") || t.contains("non stop")
-                    }
-                    _categorySongs.value = ytRepo.deduplicateSongs(fallback)
-                }
-            } catch (e: Exception) {
-                // Handled
-            } finally {
-                _isLoadingHome.value = false
-            }
-        }
+        _searchQuery.value = category
+        setScreen(AppScreen.SEARCH)
+        onSearchQueryChanged(category)
     }
 
     fun refreshCategorySongs() {
@@ -1062,6 +1026,47 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     selectCategory(_selectedCategory.value)
                 }
             } catch (_: Exception) {
+            } finally {
+                _isLoadingHome.value = false
+            }
+        }
+    }
+
+    fun refreshMostPlayed() {
+        viewModelScope.launch(Dispatchers.IO) {
+            _isLoadingHome.value = true
+            try {
+                val langs = _preferredLanguages.value.ifEmpty { listOf("tamil") }
+                val primaryLang = langs.first().lowercase().trim()
+
+                val queries = listOf(
+                    "Top $primaryLang hits 2025 2026",
+                    "Latest $primaryLang super hit songs",
+                    "Most played $primaryLang songs 2026",
+                    "$primaryLang chartbusters top 50"
+                )
+                val randomQuery = queries.random()
+                val saavnHits = musicRepo.search(randomQuery, limit = 50).getOrNull()?.map { it.toYouTubeSong() } ?: emptyList()
+                val ytHits = ytRepo.searchSongs(randomQuery, maxResults = 50).getOrDefault(emptyList())
+
+                val combined = (saavnHits + ytHits + _trendingSongs.value)
+                    .filterNot { s ->
+                        val t = s.title.lowercase()
+                        t.contains("jukebox") || t.contains("full album") || t.contains("non stop") || t.contains("all time hits")
+                    }
+
+                val filteredByLang = combined.filter { com.saavn.music.util.RelevanceEngine.isSongInLanguage(it, langs) }
+                val deduped = ytRepo.deduplicateSongs(if (filteredByLang.isNotEmpty()) filteredByLang else combined)
+                val shuffledFresh = deduped.shuffled()
+                val reRanked = trendingService.getMostPlayedSongs(shuffledFresh)
+
+                if (reRanked.isNotEmpty()) {
+                    _trendingSongs.value = reRanked
+                    _categorySongs.value = reRanked
+                    isaiConnectManager.syncHomeSongs(reRanked)
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("ISAI_PLAYER", "[MainViewModel] refreshMostPlayed error: ${e.message}")
             } finally {
                 _isLoadingHome.value = false
             }
@@ -1354,7 +1359,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         )
                     }.map { it.first }
 
-                    _searchResults.value = ranked
+                    val filteredByLang = ranked.filter { song ->
+                        com.saavn.music.util.RelevanceEngine.isSongInLanguage(song, userLangs)
+                    }
+
+                    _searchResults.value = if (filteredByLang.isNotEmpty()) filteredByLang else ranked
                     _searchError.value = null
                 } else {
                     _searchResults.value = emptyList()
@@ -1800,20 +1809,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val artistResult = artistResultDeferred.await()
 
                 val pool = (searchResult + artistResult + _trendingSongs.value).distinctBy { it.videoId }
-                val filteredPool = pool.filter { 
-                    it.videoId != song.videoId &&
-                    com.saavn.music.util.RelevanceEngine.isSongInLanguage(it, activeLangs) &&
-                    com.saavn.music.util.RelevanceEngine.scoreSongRelevance(song, it, activeLangs) > 0
+                val currentQueue = ytPlayerController.playbackQueue.value
+                val filteredPool = pool.filter { candidate ->
+                    candidate.videoId != song.videoId &&
+                    !com.saavn.music.util.RelevanceEngine.isSameSongOrDuplicate(song, candidate) &&
+                    currentQueue.none { com.saavn.music.util.RelevanceEngine.isSameSongOrDuplicate(it, candidate) } &&
+                    com.saavn.music.util.RelevanceEngine.isSongInLanguage(candidate, activeLangs) &&
+                    com.saavn.music.util.RelevanceEngine.scoreSongRelevance(song, candidate, activeLangs) > 0
                 }
 
                 val relevantMatches = if (filteredPool.isNotEmpty()) {
                     com.saavn.music.util.RelevanceEngine.buildRelevantQueue(song, filteredPool, activeLangs, maxItems = 50).filter { it.videoId != song.videoId }
                 } else {
                     val ytResult = ytRepo.searchTamilSongs(query, maxResults = 35).getOrDefault(emptyList())
-                    val filteredYt = ytResult.filter { 
-                        it.videoId != song.videoId &&
-                        com.saavn.music.util.RelevanceEngine.isSongInLanguage(it, activeLangs) &&
-                        com.saavn.music.util.RelevanceEngine.scoreSongRelevance(song, it, activeLangs) > 0
+                    val filteredYt = ytResult.filter { candidate ->
+                        candidate.videoId != song.videoId &&
+                        !com.saavn.music.util.RelevanceEngine.isSameSongOrDuplicate(song, candidate) &&
+                        currentQueue.none { com.saavn.music.util.RelevanceEngine.isSameSongOrDuplicate(it, candidate) } &&
+                        com.saavn.music.util.RelevanceEngine.isSongInLanguage(candidate, activeLangs) &&
+                        com.saavn.music.util.RelevanceEngine.scoreSongRelevance(song, candidate, activeLangs) > 0
                     }
                     com.saavn.music.util.RelevanceEngine.buildRelevantQueue(song, filteredYt, activeLangs, maxItems = 50).filter { it.videoId != song.videoId }
                 }
@@ -1875,22 +1889,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     }
                     val combinedHits = (searchHits.await() + artistHits.await() + _trendingSongs.value)
 
-                    val existingVideoIds = currentQueue.map { it.videoId }.toSet()
-                    val existingNormTitles = currentQueue.map { 
-                        it.title.lowercase().filter { ch: Char -> ch.isLetterOrDigit() }.take(15) 
-                    }.toSet()
-
                     val newSongs = mutableListOf<YouTubeSong>()
-                    val seenInBatch = mutableSetOf<String>()
-
                     for (candidate in combinedHits) {
                         if (candidate.videoId == song.videoId) continue
-                        if (existingVideoIds.contains(candidate.videoId)) continue
+                        if (com.saavn.music.util.RelevanceEngine.isSameSongOrDuplicate(song, candidate)) continue
+                        if (currentQueue.any { com.saavn.music.util.RelevanceEngine.isSameSongOrDuplicate(it, candidate) }) continue
+                        if (newSongs.any { com.saavn.music.util.RelevanceEngine.isSameSongOrDuplicate(it, candidate) }) continue
                         if (!com.saavn.music.util.RelevanceEngine.isSongInLanguage(candidate, activeLangs)) continue
                         if (com.saavn.music.util.RelevanceEngine.scoreSongRelevance(song, candidate, activeLangs) <= 0) continue
-                        val norm = candidate.title.lowercase().filter { ch: Char -> ch.isLetterOrDigit() }.take(15)
-                        if (existingNormTitles.contains(norm) || seenInBatch.contains(norm)) continue
-                        seenInBatch.add(norm)
                         newSongs.add(candidate)
                         if (newSongs.size >= 20) break
                     }
@@ -1916,10 +1922,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             android.util.Log.i("ISAI_PLAYER", "[MainViewModel] Auto-play triggered by onQueueExhausted!")
             val activeLangs = _preferredLanguages.value.ifEmpty { listOf("tamil") }
-            val currentSuggestions = _suggestions.value.filter { com.saavn.music.util.RelevanceEngine.isSongInLanguage(it, activeLangs) }
-            val currentId = ytPlayerController.currentSong.value?.videoId
-            val candidate = currentSuggestions.firstOrNull { it.videoId != currentId }
-                ?: _trendingSongs.value.firstOrNull { it.videoId != currentId && com.saavn.music.util.RelevanceEngine.isSongInLanguage(it, activeLangs) }
+            val currentQueue = ytPlayerController.playbackQueue.value
+            val currentSong = ytPlayerController.currentSong.value
+            val candidate = _suggestions.value.firstOrNull { candidate ->
+                (currentSong == null || !com.saavn.music.util.RelevanceEngine.isSameSongOrDuplicate(currentSong, candidate)) &&
+                currentQueue.none { com.saavn.music.util.RelevanceEngine.isSameSongOrDuplicate(it, candidate) } &&
+                com.saavn.music.util.RelevanceEngine.isSongInLanguage(candidate, activeLangs)
+            } ?: _trendingSongs.value.firstOrNull { candidate ->
+                (currentSong == null || !com.saavn.music.util.RelevanceEngine.isSameSongOrDuplicate(currentSong, candidate)) &&
+                currentQueue.none { com.saavn.music.util.RelevanceEngine.isSameSongOrDuplicate(it, candidate) } &&
+                com.saavn.music.util.RelevanceEngine.isSongInLanguage(candidate, activeLangs)
+            }
 
             if (candidate != null) {
                 android.util.Log.i("ISAI_PLAYER", "[MainViewModel] Auto-advancing to: '${candidate.title}'")
@@ -2143,7 +2156,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         localStorage.saveUserProfile(withLogin)
         subscriptionRepo.attachSubscriptionListener(withLogin.id)
         closeLoginDialog()
-        openPlanSelectionDialog()
     }
 
     fun updateUsername(newUsername: String) {
@@ -2172,7 +2184,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         localStorage.saveUserProfile(profile)
         subscriptionRepo.attachSubscriptionListener(profile.id)
         closeLoginDialog()
-        openPlanSelectionDialog()
     }
 
     fun logoutUser() {

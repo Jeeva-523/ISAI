@@ -73,6 +73,7 @@ fun SearchScreen(
 ) {
     val query by viewModel.searchQuery.collectAsState()
     val results by viewModel.searchResults.collectAsState()
+    val favorites by viewModel.favorites.collectAsState()
     val isSearching by viewModel.isSearching.collectAsState()
     val searchError by viewModel.searchError.collectAsState()
     val currentSong by viewModel.ytPlayerController.currentSong.collectAsState()
@@ -91,33 +92,34 @@ fun SearchScreen(
     val effectivePlayingId = if (isRemoteActive) syncState?.currentSongId else currentSong?.videoId
     val effectiveIsPlaying = if (isRemoteActive) (syncState?.isPlaying == true) else isPlaying
 
+    val preferredLanguages by viewModel.preferredLanguages.collectAsState()
+    val activeLang = preferredLanguages.firstOrNull()?.replaceFirstChar { it.uppercase() } ?: "Tamil"
+
     val languages = listOf("All", "Tamil", "Hindi", "English", "Telugu", "Malayalam", "Punjabi", "Kannada")
 
     val quickQueries = listOf(
-        "🔥 Trending",
-        "💖 Kadhal Melody",
-        "⚡ Anirudh Hits",
-        "🎼 A. R. Rahman",
-        "💔 Yuvan Sad",
-        "🥁 Tamil Kuthu",
-        "📻 90s Golden Hits",
-        "💪 Gym Workout",
-        "🌧️ Mazhai Songs",
-        "🎙️ Gaana Hits",
-        "🪔 Murugan Bhakti",
-        "🎧 Lo-Fi Chill"
+        "🔥 $activeLang Trending",
+        "💖 $activeLang Love Melodies",
+        "⚡ $activeLang Top Hits",
+        "🥁 $activeLang Kuthu Beats",
+        "📻 $activeLang 90s Golden Hits",
+        "💪 $activeLang Gym Workout",
+        "🌧️ $activeLang Rain Songs",
+        "🎙️ $activeLang Folk & Gaana",
+        "🪔 $activeLang Devotional",
+        "🎧 $activeLang Lo-Fi Chill"
     )
 
     val exploreCategories = listOf(
-        SearchCategory("🔥 Trending & Viral", "Top Chartbusters", "Trending hit songs", listOf(Color(0xFFE91E63), Color(0xFF9C27B0))),
-        SearchCategory("💖 Kadhal & Romance", "Love & Heartfelt Melodies", "kadhal romantic melody songs", listOf(Color(0xFFEC4899), Color(0xFF8B5CF6))),
-        SearchCategory("🌧️ Sad & Heartbreak", "Emotional & Sogam Hits", "sad heartbreak emotional songs", listOf(Color(0xFF3B82F6), Color(0xFF1E40AF))),
-        SearchCategory("🥁 Gaana & Kuthu", "High Energy Folk Beats", "tamil gaana kuthu songs", listOf(Color(0xFFFF5722), Color(0xFFFF9800))),
-        SearchCategory("📻 90s Golden Era", "Evergreen Raaja & ARR Classics", "90s tamil evergreen hit songs", listOf(Color(0xFFA855F7), Color(0xFFEC4899))),
-        SearchCategory("💪 Gym & Workout", "Pump-up Beats & Mass BGM", "gym workout motivational bgm beats", listOf(Color(0xFF10B981), Color(0xFF06B6D4))),
-        SearchCategory("🌧️ Rain & Mazhai", "Soulful Monsoon Melodies", "mazhai rain melody songs", listOf(Color(0xFF00BCD4), Color(0xFF3F51B5))),
-        SearchCategory("🪔 Devotional & Bhakti", "Murugan, Shiva & Temple Chants", "tamil devotional bhakti songs", listOf(Color(0xFFF97316), Color(0xFFEAB308))),
-        SearchCategory("🌙 Late Night Lo-Fi", "Acoustic & Midnight Beats", "tamil lofi acoustic chill songs", listOf(Color(0xFF673AB7), Color(0xFF2A124A)))
+        SearchCategory("🔥 Trending & Viral", "Top Chartbusters", "$activeLang trending hit songs", listOf(Color(0xFFE91E63), Color(0xFF9C27B0))),
+        SearchCategory("💖 Love & Romance", "Heartfelt Melodies", "$activeLang romantic love melody songs", listOf(Color(0xFFEC4899), Color(0xFF8B5CF6))),
+        SearchCategory("🌧️ Sad & Heartbreak", "Emotional & Melancholic Hits", "$activeLang sad heartbreak emotional songs", listOf(Color(0xFF3B82F6), Color(0xFF1E40AF))),
+        SearchCategory("🥁 Gaana & Kuthu", "High Energy Folk Beats", "$activeLang gaana kuthu party dance songs", listOf(Color(0xFFFF5722), Color(0xFFFF9800))),
+        SearchCategory("📻 90s Golden Era", "Evergreen Classics", "$activeLang 90s evergreen hit songs", listOf(Color(0xFFA855F7), Color(0xFFEC4899))),
+        SearchCategory("💪 Gym & Workout", "Pump-up Beats & Mass BGM", "$activeLang gym workout motivational bgm beats", listOf(Color(0xFF10B981), Color(0xFF06B6D4))),
+        SearchCategory("🌧️ Rain & Monsoon", "Soulful Rain Melodies", "$activeLang rain monsoon melody songs", listOf(Color(0xFF00BCD4), Color(0xFF3F51B5))),
+        SearchCategory("🪔 Devotional & Bhakti", "Temple Prayers & Chants", "$activeLang devotional bhakti songs", listOf(Color(0xFFF97316), Color(0xFFEAB308))),
+        SearchCategory("🌙 Late Night Lo-Fi", "Acoustic & Midnight Beats", "$activeLang lofi acoustic chill songs", listOf(Color(0xFF673AB7), Color(0xFF2A124A)))
     )
 
     Column(
@@ -404,7 +406,7 @@ fun SearchScreen(
 
                 itemsIndexed(results) { index, song ->
                         val isThisPlaying = (effectivePlayingId == song.videoId)
-                        val isFav = viewModel.isFavorite(song.videoId)
+                        val isFav = favorites.any { it.videoId.trim() == song.videoId.trim() }
                         YouTubeSongRowItem(
                             index = index + 1,
                             song = song,

@@ -28,6 +28,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.saavn.music.ui.theme.*
 import com.saavn.music.connect.ListenTogetherManager
 import com.saavn.music.connect.RoomSyncStatus
 import com.saavn.music.data.model.YouTubeSong
@@ -104,7 +105,7 @@ fun ListenTogetherBottomSheet(
                     Column {
                         Text(
                             text = "Listen Together",
-                            color = Color.White,
+                            color = TextPrimary,
                             fontSize = 20.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -275,7 +276,7 @@ fun ListenTogetherBottomSheet(
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         text = song.title,
-                                        color = Color.White,
+                                        color = TextPrimary,
                                         fontSize = 14.sp,
                                         fontWeight = FontWeight.Bold,
                                         maxLines = 1,
@@ -392,7 +393,7 @@ fun ListenTogetherBottomSheet(
                                     Column {
                                         Text(
                                             text = dev.deviceName + if (isMe) " (You)" else "",
-                                            color = if (isMe) IsaiLime else Color.White,
+                                            color = if (isMe) IsaiLime else TextPrimary,
                                             fontSize = 13.sp,
                                             fontWeight = FontWeight.SemiBold
                                         )
@@ -458,7 +459,7 @@ fun ListenTogetherBottomSheet(
                         ) {
                             Text(
                                 text = "Start a Listening Room",
-                                color = Color.White,
+                                color = TextPrimary,
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold
                             )
@@ -516,7 +517,7 @@ fun ListenTogetherBottomSheet(
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text(
                             text = "Enter Room Code",
-                            color = Color.White,
+                            color = TextPrimary,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -534,9 +535,9 @@ fun ListenTogetherBottomSheet(
                                 shape = RoundedCornerShape(12.dp),
                                 colors = OutlinedTextFieldDefaults.colors(
                                     focusedBorderColor = IsaiLime,
-                                    unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
-                                    focusedTextColor = Color.White,
-                                    unfocusedTextColor = Color.White
+                                    unfocusedBorderColor = TextMuted.copy(alpha = 0.4f),
+                                    focusedTextColor = TextPrimary,
+                                    unfocusedTextColor = TextPrimary
                                 )
                             )
 

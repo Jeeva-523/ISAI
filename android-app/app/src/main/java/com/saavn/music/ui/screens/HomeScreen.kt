@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -27,7 +28,9 @@ import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -70,22 +73,22 @@ data class ArtistItem(
 
 private val POPULAR_ARTISTS_BY_LANG = mapOf(
     "tamil" to listOf(
-        ArtistItem("Anirudh Ravichander", "Composer & Singer", "https://c.saavncdn.com/artists/Anirudh_Ravichander_004_20230222091040_500x500.jpg", "Anirudh Ravichander Tamil hits"),
-        ArtistItem("A.R. Rahman", "Composer & Maestro", "https://c.saavncdn.com/artists/A_R_Rahman_004_20230718070940_500x500.jpg", "A R Rahman Tamil hits"),
-        ArtistItem("Yuvan Shankar Raja", "Composer & Singer", "https://c.saavncdn.com/artists/Yuvan_Shankar_Raja_004_20220908070940_500x500.jpg", "Yuvan Shankar Raja Tamil hits"),
-        ArtistItem("Harris Jayaraj", "Composer", "https://c.saavncdn.com/artists/Harris_Jayaraj_002_20200812070940_500x500.jpg", "Harris Jayaraj Tamil hits"),
-        ArtistItem("Sid Sriram", "Singer", "https://c.saavncdn.com/artists/Sid_Sriram_003_20230516070940_500x500.jpg", "Sid Sriram Tamil hits")
+        ArtistItem("Anirudh Ravichander", "Composer & Singer", "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d4/Anirudh_Ravichander_at_Audi_R8_LMX_launch.jpg/480px-Anirudh_Ravichander_at_Audi_R8_LMX_launch.jpg", "Anirudh Ravichander Tamil hits"),
+        ArtistItem("A.R. Rahman", "Composer & Maestro", "https://upload.wikimedia.org/wikipedia/commons/thumb/9/9c/A._R._Rahman_WM2016.jpg/480px-A._R._Rahman_WM2016.jpg", "A R Rahman Tamil hits"),
+        ArtistItem("Yuvan Shankar Raja", "Composer & Singer", "https://upload.wikimedia.org/wikipedia/commons/thumb/1/14/Yuvan_Shankar_Raja.jpg/480px-Yuvan_Shankar_Raja.jpg", "Yuvan Shankar Raja Tamil hits"),
+        ArtistItem("Harris Jayaraj", "Composer", "https://upload.wikimedia.org/wikipedia/commons/thumb/9/91/Harris_Jayaraj_at_Irandaam_Ulagam_Audio_Launch.jpg/480px-Harris_Jayaraj_at_Irandaam_Ulagam_Audio_Launch.jpg", "Harris Jayaraj Tamil hits"),
+        ArtistItem("Sid Sriram", "Singer", "https://upload.wikimedia.org/wikipedia/commons/thumb/8/87/Sid_Sriram_at_Enai_Noki_Paayum_Thota_Audio_Launch.jpg/480px-Sid_Sriram_at_Enai_Noki_Paayum_Thota_Audio_Launch.jpg", "Sid Sriram Tamil hits")
     ),
     "telugu" to listOf(
-        ArtistItem("Devi Sri Prasad", "Composer & Singer", "https://c.saavncdn.com/artists/Devi_Sri_Prasad_002_20210608070940_500x500.jpg", "Devi Sri Prasad Telugu hits"),
-        ArtistItem("Thaman S", "Music Director", "https://c.saavncdn.com/artists/Thaman_S_003_20230116070940_500x500.jpg", "Thaman S Telugu hits"),
-        ArtistItem("M.M. Keeravani", "Maestro", "https://c.saavncdn.com/artists/M_M_Keeravani_002_20230314070940_500x500.jpg", "MM Keeravani Telugu hits"),
-        ArtistItem("Sid Sriram", "Singer", "https://c.saavncdn.com/artists/Sid_Sriram_003_20230516070940_500x500.jpg", "Sid Sriram Telugu hits")
+        ArtistItem("Devi Sri Prasad", "Composer & Singer", "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e3/Devi_Sri_Prasad.jpg/480px-Devi_Sri_Prasad.jpg", "Devi Sri Prasad Telugu hits"),
+        ArtistItem("Thaman S", "Music Director", "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b2/S_Thaman.jpg/480px-S_Thaman.jpg", "Thaman S Telugu hits"),
+        ArtistItem("M.M. Keeravani", "Maestro", "https://upload.wikimedia.org/wikipedia/commons/thumb/c/ca/MM_Keeravani_2023.jpg/480px-MM_Keeravani_2023.jpg", "MM Keeravani Telugu hits"),
+        ArtistItem("Sid Sriram", "Singer", "https://upload.wikimedia.org/wikipedia/commons/thumb/8/87/Sid_Sriram_at_Enai_Noki_Paayum_Thota_Audio_Launch.jpg/480px-Sid_Sriram_at_Enai_Noki_Paayum_Thota_Audio_Launch.jpg", "Sid Sriram Telugu hits")
     ),
     "hindi" to listOf(
-        ArtistItem("Arijit Singh", "Playback Singer", "https://c.saavncdn.com/artists/Arijit_Singh_002_20230323070940_500x500.jpg", "Arijit Singh Hindi hits"),
-        ArtistItem("Pritam", "Composer", "https://c.saavncdn.com/artists/Pritam_003_20220608070940_500x500.jpg", "Pritam Hindi hits"),
-        ArtistItem("Shreya Ghoshal", "Singer", "https://c.saavncdn.com/artists/Shreya_Ghoshal_003_20230412070940_500x500.jpg", "Shreya Ghoshal Hindi hits")
+        ArtistItem("Arijit Singh", "Playback Singer", "https://upload.wikimedia.org/wikipedia/commons/thumb/9/9b/Arijit_Singh_5th_GiMA_Awards.jpg/480px-Arijit_Singh_5th_GiMA_Awards.jpg", "Arijit Singh Hindi hits"),
+        ArtistItem("Pritam", "Composer", "https://upload.wikimedia.org/wikipedia/commons/thumb/f/f3/Pritam_Chakraborty.jpg/480px-Pritam_Chakraborty.jpg", "Pritam Hindi hits"),
+        ArtistItem("Shreya Ghoshal", "Singer", "https://upload.wikimedia.org/wikipedia/commons/thumb/b/bf/Shreya_Ghoshal_at_FCAT.jpg/480px-Shreya_Ghoshal_at_FCAT.jpg", "Shreya Ghoshal Hindi hits")
     )
 )
 
@@ -102,14 +105,16 @@ fun HomeScreen(
     val isPlaying by viewModel.ytPlayerController.isPlaying.collectAsState()
     val preferredLanguages by viewModel.preferredLanguages.collectAsState()
     val recentlyPlayed by viewModel.recentlyPlayed.collectAsState()
+    val favorites by viewModel.favorites.collectAsState()
+    val isLoadingHome by viewModel.isLoadingHome.collectAsState()
 
     var showLangMenu by remember { mutableStateOf(false) }
 
     val activeLang = preferredLanguages.firstOrNull()?.replaceFirstChar { it.uppercase() } ?: "Tamil"
     val userName = userProfile?.displayName?.ifBlank { "JEEVA ⚡" } ?: "JEEVA ⚡"
 
-    // Section 4: Unakkaaga Picks (6 songs)
-    val picksSongs = remember(trendingSongs) { trendingSongs.take(6) }
+    // Section 4: Picks For You (10 recommended songs)
+    val picksSongs = remember(trendingSongs) { trendingSongs.take(10) }
 
     // Section 5: New Releases (rolling recent releases)
     val verifiedNewReleases = remember(trendingSongs) { trendingSongs.drop(6).take(12) }
@@ -140,7 +145,7 @@ fun HomeScreen(
             ) {
                 Column {
                     Text(
-                        text = "Vanakkam, $userName 👋",
+                        text = "Welcome, $userName 👋",
                         color = TextPrimary,
                         fontSize = 22.sp,
                         fontWeight = FontWeight.ExtraBold
@@ -254,7 +259,7 @@ fun HomeScreen(
                     )
                     Spacer(modifier = Modifier.width(10.dp))
                     Text(
-                        text = "Paadal, artist, album thedu…",
+                        text = "Search songs, artists, albums…",
                         color = TextMuted,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium
@@ -331,79 +336,104 @@ fun HomeScreen(
             }
         }
 
-        // 4. Unakkaaga Picks ✨ Section (6 recommended songs)
+        // 4. Picks For You ✨ Section (YouTube Music Style Cards)
         item {
             Column {
                 Text(
-                    text = "Unakkaaga Picks ✨",
+                    text = "Picks For You ✨",
                     color = TextPrimary,
                     fontSize = 18.sp,
                     fontWeight = FontWeight.ExtraBold
                 )
                 Text(
-                    text = if (recentlyPlayed.isNotEmpty()) "Personalized for your $activeLang taste" else "$activeLang-la Popular",
+                    text = if (recentlyPlayed.isNotEmpty()) "Personalized for your $activeLang taste" else "Popular in $activeLang",
                     color = TextMuted,
                     fontSize = 12.sp,
                     modifier = Modifier.padding(bottom = 12.dp)
                 )
 
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    picksSongs.forEach { song ->
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    items(picksSongs) { song ->
                         val isThisPlaying = currentPlayingSong?.videoId == song.videoId && isPlaying
-                        val isFav = viewModel.isFavorite(song.videoId)
-                        Row(
+                        val isFav = favorites.any { it.videoId.trim() == song.videoId.trim() }
+                        Column(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(if (isThisPlaying) com.saavn.music.ui.theme.IsaiLime.copy(alpha = 0.12f) else DarkSurfaceVariant)
-                                .border(1.dp, if (isThisPlaying) com.saavn.music.ui.theme.IsaiLime else GlassBorderSubtle, RoundedCornerShape(14.dp))
-                                .clickable { viewModel.playSong(song, trendingSongs) }
-                                .padding(10.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                                .width(140.dp)
+                                .clickable { viewModel.playSong(song, picksSongs) },
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            AsyncImage(
-                                model = song.thumbnailUrl,
-                                contentDescription = song.title,
+                            Box(
                                 modifier = Modifier
-                                    .size(52.dp)
-                                    .clip(RoundedCornerShape(10.dp)),
-                                contentScale = ContentScale.Crop
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = song.title,
-                                    color = if (isThisPlaying) com.saavn.music.ui.theme.IsaiLime else TextPrimary,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Text(
-                                    text = song.channelTitle,
-                                    color = TextMuted,
-                                    fontSize = 11.sp,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                            IconButton(
-                                onClick = { viewModel.toggleFavorite(song) }
+                                    .size(140.dp)
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .border(
+                                        if (isThisPlaying) 2.dp else 1.dp,
+                                        if (isThisPlaying) com.saavn.music.ui.theme.IsaiLime else GlassBorderSubtle,
+                                        RoundedCornerShape(16.dp)
+                                    )
                             ) {
-                                Icon(
-                                    imageVector = if (isFav) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                    contentDescription = "Favorite",
-                                    tint = if (isFav) HeartColor else TextMuted,
-                                    modifier = Modifier.size(20.dp)
+                                AsyncImage(
+                                    model = song.thumbnailUrl,
+                                    contentDescription = song.title,
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop
                                 )
+                                Box(
+                                    modifier = Modifier
+                                        .padding(6.dp)
+                                        .align(Alignment.TopEnd)
+                                        .clip(CircleShape)
+                                        .background(Color.Black.copy(alpha = 0.65f))
+                                        .clickable { viewModel.toggleFavorite(song) }
+                                        .padding(6.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = if (isFav) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                        contentDescription = "Favorite",
+                                        tint = if (isFav) HeartColor else Color.White,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
+                                if (isThisPlaying) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .background(Color.Black.copy(alpha = 0.4f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.PlayArrow,
+                                            contentDescription = "Playing",
+                                            tint = com.saavn.music.ui.theme.IsaiLime,
+                                            modifier = Modifier.size(32.dp)
+                                        )
+                                    }
+                                }
                             }
+                            Text(
+                                text = song.title,
+                                color = if (isThisPlaying) com.saavn.music.ui.theme.IsaiLime else TextPrimary,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = song.channelTitle,
+                                color = TextMuted,
+                                fontSize = 11.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
                     }
                 }
             }
         }
 
-        // 5. New Releases Section (Pudhu {Language} Paadalgal)
+        // 5. New Releases Section (New {Language} Songs)
         item {
             Column {
                 Row(
@@ -413,7 +443,7 @@ fun HomeScreen(
                 ) {
                     Column {
                         Text(
-                            text = "Pudhu $activeLang Paadalgal 🎵",
+                            text = "New $activeLang Songs 🎵",
                             color = TextPrimary,
                             fontSize = 18.sp,
                             fontWeight = FontWeight.ExtraBold
@@ -501,11 +531,11 @@ fun HomeScreen(
             }
         }
 
-        // 6. Innaiku Enna Mood? Section
+        // 6. What's Your Mood Today? Section
         item {
             Column {
                 Text(
-                    text = "Innaiku Enna Mood? 💫",
+                    text = "What's Your Mood Today? 💫",
                     color = TextPrimary,
                     fontSize = 18.sp,
                     fontWeight = FontWeight.ExtraBold,
@@ -540,11 +570,11 @@ fun HomeScreen(
             }
         }
 
-        // 7. Un Favourite Artists Section
+        // 7. Your Favorite Artists Section
         item {
             Column {
                 Text(
-                    text = if (recentlyPlayed.isNotEmpty()) "Un Favourite Artists 🎤" else "Explore $activeLang Artists 🎤",
+                    text = if (recentlyPlayed.isNotEmpty()) "Your Favorite Artists 🎤" else "Explore $activeLang Artists 🎤",
                     color = TextPrimary,
                     fontSize = 18.sp,
                     fontWeight = FontWeight.ExtraBold,
@@ -561,15 +591,31 @@ fun HomeScreen(
                                 .width(90.dp)
                                 .clickable { viewModel.selectCategory(artist.query) }
                         ) {
-                            AsyncImage(
-                                model = artist.image,
-                                contentDescription = artist.name,
+                            Box(
                                 modifier = Modifier
                                     .size(80.dp)
                                     .clip(CircleShape)
+                                    .background(
+                                        Brush.linearGradient(
+                                            listOf(com.saavn.music.ui.theme.NeonPurple, com.saavn.music.ui.theme.NeonPink)
+                                        )
+                                    )
                                     .border(2.dp, GlassBorderSubtle, CircleShape),
-                                contentScale = ContentScale.Crop
-                            )
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = artist.name.take(1),
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 24.sp
+                                )
+                                AsyncImage(
+                                    model = artist.image,
+                                    contentDescription = artist.name,
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop
+                                )
+                            }
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
                                 text = artist.name,
@@ -579,6 +625,129 @@ fun HomeScreen(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
+                        }
+                    }
+                }
+            }
+        }
+
+        // 8. Most Played Songs Section (Adhigam Ketta Paadalgal 🔥)
+        item {
+            Column {
+                val mostPlayedList = remember(trendingSongs) { trendingSongs.take(25) }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "Most Played Songs 🔥",
+                            color = TextPrimary,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                        Text(
+                            text = "Top played hits by ISAI listeners (${mostPlayedList.size} songs)",
+                            color = TextMuted,
+                            fontSize = 12.sp
+                        )
+                    }
+
+                    IconButton(
+                        onClick = { viewModel.refreshMostPlayed() },
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(DarkSurfaceGlass)
+                            .border(1.dp, GlassBorderSubtle, CircleShape)
+                    ) {
+                        if (isLoadingHome) {
+                            CircularProgressIndicator(
+                                color = com.saavn.music.ui.theme.IsaiLime,
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "Refresh Most Played",
+                                tint = com.saavn.music.ui.theme.IsaiLime,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                }
+
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    mostPlayedList.forEachIndexed { index, song ->
+                        val isThisPlaying = currentPlayingSong?.videoId == song.videoId && isPlaying
+                        val isFav = favorites.any { it.videoId.trim() == song.videoId.trim() }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(if (isThisPlaying) com.saavn.music.ui.theme.IsaiLime.copy(alpha = 0.12f) else DarkSurfaceVariant)
+                                .border(1.dp, if (isThisPlaying) com.saavn.music.ui.theme.IsaiLime else GlassBorderSubtle, RoundedCornerShape(14.dp))
+                                .clickable { viewModel.playSong(song, mostPlayedList) }
+                                .padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(com.saavn.music.ui.theme.IsaiLime)
+                                    .padding(vertical = 4.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "#${index + 1}",
+                                    color = DarkBackground,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.ExtraBold
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            AsyncImage(
+                                model = song.thumbnailUrl,
+                                contentDescription = song.title,
+                                modifier = Modifier
+                                    .size(52.dp)
+                                    .clip(RoundedCornerShape(10.dp)),
+                                contentScale = ContentScale.Crop
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = song.title,
+                                    color = if (isThisPlaying) com.saavn.music.ui.theme.IsaiLime else TextPrimary,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = song.channelTitle,
+                                    color = TextMuted,
+                                    fontSize = 11.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            IconButton(
+                                onClick = { viewModel.toggleFavorite(song) }
+                            ) {
+                                Icon(
+                                    imageVector = if (isFav) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                    contentDescription = "Favorite",
+                                    tint = if (isFav) HeartColor else TextMuted,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
                         }
                     }
                 }

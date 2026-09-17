@@ -27,7 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.saavn.music.connect.DeviceInfo
 import com.saavn.music.connect.IsaiConnectManager
-import com.saavn.music.ui.theme.DarkBackground
+import com.saavn.music.ui.theme.*
 import com.saavn.music.ui.theme.DarkSurface
 import com.saavn.music.ui.theme.DarkSurfaceGlass
 import com.saavn.music.ui.theme.IsaiLime
@@ -108,7 +108,7 @@ fun IsaiConnectBottomSheet(
                             text = "ISAI Connect",
                             style = MaterialTheme.typography.titleLarge.copy(
                                 fontWeight = FontWeight.Bold,
-                                color = Color.White
+                                color = TextPrimary
                             )
                         )
                         val activeEmail = connectManager.userEmail.ifBlank { "Guest Account" }
@@ -171,7 +171,7 @@ fun IsaiConnectBottomSheet(
                                 text = "Multi-Device Separate Playback",
                                 style = MaterialTheme.typography.bodyMedium.copy(
                                     fontWeight = FontWeight.Bold,
-                                    color = Color.White
+                                    color = TextPrimary
                                 )
                             )
                             Spacer(modifier = Modifier.height(2.dp))
@@ -236,7 +236,7 @@ fun IsaiConnectBottomSheet(
                                 else
                                     "Playing on Remote Device",
                                 style = MaterialTheme.typography.bodyMedium.copy(
-                                    color = Color.White,
+                                    color = TextPrimary,
                                     fontWeight = FontWeight.SemiBold
                                 )
                             )
@@ -549,7 +549,7 @@ fun DeviceItemRow(
                         text = cleanName,
                         style = MaterialTheme.typography.bodyLarge.copy(
                             fontWeight = FontWeight.Bold,
-                            color = if (isActivePlayer) Color.White else TextSecondary
+                            color = TextPrimary
                         ),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis

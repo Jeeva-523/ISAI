@@ -228,7 +228,8 @@ fun PlayerScreen(
     val isPlaying = if (isRemoteActive) (syncState?.isPlaying == true) else isPlayingLocal
     val positionSec = if (isRemoteActive) ((syncState?.positionMs ?: 0L) / 1000f) else positionSecLocal
     val durationSec = if (isRemoteActive) ((syncState?.durationMs ?: 210000L) / 1000f) else durationSecLocal
-    val isFav = viewModel.isFavorite(currentSong.videoId)
+    val favorites by viewModel.favorites.collectAsState()
+    val isFav = favorites.any { it.videoId.trim() == currentSong.videoId.trim() }
     val context = LocalContext.current
     val currentAudioQuality by viewModel.ytPlayerController.audioQuality.collectAsState()
     var showQualityDialog by remember { mutableStateOf(false) }
@@ -304,42 +305,44 @@ fun PlayerScreen(
             verticalArrangement = Arrangement.SpaceBetween
         ) {
             // Top Navigation Bar
-            Box(
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(48.dp)
+                    .height(48.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                // ↓ Back Button (Far Left)
-                IconButton(
-                    onClick = { viewModel.closeFullPlayer() },
-                    modifier = Modifier
-                        .align(Alignment.CenterStart)
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(DarkSurfaceGlass)
-                        .border(1.dp, GlassBorderSubtle, CircleShape)
+                // Left: Back Button & NOW PLAYING Title
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.KeyboardArrowDown,
-                        contentDescription = "Back",
-                        tint = TextPrimary,
-                        modifier = Modifier.size(26.dp)
+                    IconButton(
+                        onClick = { viewModel.closeFullPlayer() },
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(CircleShape)
+                            .background(DarkSurfaceGlass)
+                            .border(1.dp, GlassBorderSubtle, CircleShape)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.KeyboardArrowDown,
+                            contentDescription = "Back",
+                            tint = TextPrimary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                    Text(
+                        text = "NOW PLAYING",
+                        color = TextPrimary,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 1.5.sp
                     )
                 }
 
-                // Center Title: NOW PLAYING (Guaranteed 100% Centered)
-                Text(
-                    text = "NOW PLAYING",
-                    color = TextPrimary,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    letterSpacing = 2.sp,
-                    modifier = Modifier.align(Alignment.Center)
-                )
-
-                // Top Right Action Buttons: Connected Devices + Listen Together + More Options Menu
+                // Right: Action Buttons (Connected Devices + Listen Together + More Options Menu)
                 Row(
-                    modifier = Modifier.align(Alignment.CenterEnd),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
@@ -349,7 +352,7 @@ fun PlayerScreen(
                     IconButton(
                         onClick = { showConnectSheet = true },
                         modifier = Modifier
-                            .size(38.dp)
+                            .size(36.dp)
                             .clip(CircleShape)
                             .background(
                                 if (isConnectedToOther) com.saavn.music.ui.theme.IsaiLime.copy(alpha = 0.2f)
@@ -366,7 +369,7 @@ fun PlayerScreen(
                             imageVector = Icons.Default.Devices,
                             contentDescription = "Connect Devices",
                             tint = if (isConnectedToOther) com.saavn.music.ui.theme.IsaiLime else TextPrimary,
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(18.dp)
                         )
                     }
 
@@ -375,7 +378,7 @@ fun PlayerScreen(
                     IconButton(
                         onClick = { showListenTogetherSheet = true },
                         modifier = Modifier
-                            .size(38.dp)
+                            .size(36.dp)
                             .clip(CircleShape)
                             .background(
                                 if (isRoomActive) com.saavn.music.ui.theme.IsaiLime.copy(alpha = 0.2f)
@@ -392,7 +395,7 @@ fun PlayerScreen(
                             imageVector = Icons.Default.CloudSync,
                             contentDescription = "Listen Together",
                             tint = if (isRoomActive) com.saavn.music.ui.theme.IsaiLime else TextPrimary,
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(18.dp)
                         )
                     }
 
@@ -401,7 +404,7 @@ fun PlayerScreen(
                         IconButton(
                             onClick = { showMoreMenu = true },
                             modifier = Modifier
-                                .size(38.dp)
+                                .size(36.dp)
                                 .clip(CircleShape)
                                 .background(DarkSurfaceGlass)
                                 .border(1.dp, GlassBorderSubtle, CircleShape)
@@ -410,7 +413,7 @@ fun PlayerScreen(
                                 imageVector = Icons.Default.MoreVert,
                                 contentDescription = "More Options",
                                 tint = TextPrimary,
-                                modifier = Modifier.size(22.dp)
+                                modifier = Modifier.size(20.dp)
                             )
                         }
 
@@ -747,32 +750,64 @@ fun PlayerScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // Song Title, Channel, and Heart Favorite
-                Row(
+                // Song Title, Channel, Audio Quality, and Heart Favorite
+                Column(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
+                    // Line 1: Song Title + Favorite Heart Button
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
                         Text(
                             text = currentSong.title,
                             color = TextPrimary,
                             fontSize = 19.sp,
                             fontWeight = FontWeight.ExtraBold,
                             maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
                         )
-                        Spacer(modifier = Modifier.height(2.dp))
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        IconButton(
+                            onClick = { viewModel.toggleFavorite(currentSong) },
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(if (isFav) HeartColor.copy(alpha = 0.18f) else DarkSurfaceGlass)
+                                .border(1.dp, if (isFav) HeartColor else GlassBorderSubtle, CircleShape)
+                        ) {
+                            Icon(
+                                imageVector = if (isFav) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                contentDescription = "Favorite",
+                                tint = if (isFav) HeartColor else TextMuted,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
+
+                    // Line 2: Artist Subtitle & Verified Badge (Left) + Audio Quality Chip (Right)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            horizontalArrangement = Arrangement.spacedBy(5.dp),
+                            modifier = Modifier.weight(1f)
                         ) {
                             Text(
                                 text = currentSong.channelTitle,
                                 color = TextSecondary,
                                 fontSize = 13.sp,
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false)
                             )
                             Text(
                                 text = "✓",
@@ -780,49 +815,36 @@ fun PlayerScreen(
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold
                             )
-                            Surface(
-                                onClick = { showQualityDialog = true },
-                                shape = CircleShape,
-                                color = com.saavn.music.ui.theme.IsaiLime.copy(alpha = 0.15f),
-                                border = BorderStroke(1.dp, com.saavn.music.ui.theme.IsaiLime.copy(alpha = 0.4f))
+                        }
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        Surface(
+                            onClick = { showQualityDialog = true },
+                            shape = CircleShape,
+                            color = com.saavn.music.ui.theme.IsaiLime.copy(alpha = 0.15f),
+                            border = BorderStroke(1.dp, com.saavn.music.ui.theme.IsaiLime.copy(alpha = 0.4f))
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                             ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(3.dp),
-                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(5.dp)
-                                            .clip(CircleShape)
-                                            .background(if (isPlaying) com.saavn.music.ui.theme.IsaiLime else TextMuted)
-                                    )
-                                    Text(
-                                        text = "${currentAudioQuality.bitrate} KBPS ⚙️",
-                                        color = com.saavn.music.ui.theme.IsaiLime,
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        letterSpacing = 0.5.sp
-                                    )
-                                }
+                                Box(
+                                    modifier = Modifier
+                                        .size(6.dp)
+                                        .clip(CircleShape)
+                                        .background(if (isPlaying) com.saavn.music.ui.theme.IsaiLime else TextMuted)
+                                )
+                                Text(
+                                    text = "${currentAudioQuality.bitrate} KBPS ⚙️",
+                                    color = com.saavn.music.ui.theme.IsaiLime,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    letterSpacing = 0.5.sp
+                                )
                             }
                         }
-                    }
-
-                    IconButton(
-                        onClick = { viewModel.toggleFavorite(currentSong) },
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .background(if (isFav) HeartColor.copy(alpha = 0.18f) else DarkSurfaceGlass)
-                            .border(1.dp, if (isFav) HeartColor else GlassBorderSubtle, CircleShape)
-                    ) {
-                        Icon(
-                            imageVector = if (isFav) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                            contentDescription = "Favorite",
-                            tint = if (isFav) HeartColor else TextMuted,
-                            modifier = Modifier.size(24.dp)
-                        )
                     }
                 }
 
@@ -897,7 +919,10 @@ fun PlayerScreen(
                     // Shuffle Button
                     IconButton(
                         onClick = { viewModel.toggleShuffle() },
-                        modifier = Modifier.size(38.dp)
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(if (isShuffle) NeonCyan.copy(alpha = 0.15f) else Color.Transparent)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Shuffle,
@@ -910,20 +935,20 @@ fun PlayerScreen(
                     // Previous
                     IconButton(
                         onClick = { viewModel.playPrevious() },
-                        modifier = Modifier.size(44.dp)
+                        modifier = Modifier.size(46.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.SkipPrevious,
                             contentDescription = "Previous",
                             tint = TextPrimary,
-                            modifier = Modifier.size(30.dp)
+                            modifier = Modifier.size(28.dp)
                         )
                     }
 
                     // Glowing Neon FAB Play/Pause Button
                     Box(
                         modifier = Modifier
-                            .size(60.dp)
+                            .size(64.dp)
                             .shadow(
                                 elevation = 16.dp,
                                 shape = CircleShape,
@@ -952,7 +977,7 @@ fun PlayerScreen(
                                 imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                                 contentDescription = if (isPlaying) "Pause" else "Play",
                                 tint = DarkBackground,
-                                modifier = Modifier.size(32.dp)
+                                modifier = Modifier.size(34.dp)
                             )
                         }
                     }
@@ -960,20 +985,23 @@ fun PlayerScreen(
                     // Next
                     IconButton(
                         onClick = { viewModel.playNext() },
-                        modifier = Modifier.size(44.dp)
+                        modifier = Modifier.size(46.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.SkipNext,
                             contentDescription = "Next",
                             tint = TextPrimary,
-                            modifier = Modifier.size(30.dp)
+                            modifier = Modifier.size(28.dp)
                         )
                     }
 
                     // Repeat Button
                     IconButton(
                         onClick = { viewModel.toggleRepeat() },
-                        modifier = Modifier.size(38.dp)
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(if (isRepeat) NeonPink.copy(alpha = 0.15f) else Color.Transparent)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Repeat,
@@ -987,7 +1015,7 @@ fun PlayerScreen(
                 // Modern Compact Sound Volume Control Bar
                 Row(
                     modifier = Modifier
-                        .fillMaxWidth(0.88f)
+                        .fillMaxWidth()
                         .clip(RoundedCornerShape(14.dp))
                         .background(DarkSurfaceGlass)
                         .border(1.dp, GlassBorderSubtle, RoundedCornerShape(14.dp))
@@ -1004,7 +1032,7 @@ fun PlayerScreen(
                                 viewModel.setVolume(previousVol.coerceAtLeast(40))
                             }
                         },
-                        modifier = Modifier.size(26.dp)
+                        modifier = Modifier.size(28.dp)
                     ) {
                         Icon(
                             imageVector = when {
@@ -1014,7 +1042,7 @@ fun PlayerScreen(
                             },
                             contentDescription = "Volume Toggle",
                             tint = if (volume > 0) NeonCyan else TextMuted,
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier.size(18.dp)
                         )
                     }
 
@@ -1071,7 +1099,10 @@ fun PlayerScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f, fill = false)
+                    ) {
                         Icon(
                             imageVector = Icons.Default.QueueMusic,
                             contentDescription = "Queue",
@@ -1079,7 +1110,7 @@ fun PlayerScreen(
                             modifier = Modifier.size(20.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
-                        Column {
+                        Column(modifier = Modifier.weight(1f, fill = false)) {
                             Text(
                                 text = "UP NEXT",
                                 color = TextPrimary,
@@ -1099,6 +1130,8 @@ fun PlayerScreen(
                             }
                         }
                     }
+
+                    Spacer(modifier = Modifier.width(8.dp))
 
                     Row(
                         verticalAlignment = Alignment.CenterVertically,

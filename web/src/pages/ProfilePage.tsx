@@ -44,8 +44,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
   onNavigateToLogin,
   onLogout,
   onNavigateHome,
-  onOpenLanguageModal,
-  onOpenPlanModal
+  onOpenLanguageModal
 }) => {
   const [showEditModal, setShowEditModal] = useState(false)
   const [editNameInput, setEditNameInput] = useState(user.name || 'ISAI Listener')
@@ -217,8 +216,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
           </div>
 
           {/* ISAI Plan Badge */}
-          <button
-            onClick={onOpenPlanModal}
+          <div
             style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -231,15 +229,12 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
               border: user.isPremium ? '1px solid rgba(6, 182, 212, 0.6)' : '1px solid rgba(255, 255, 255, 0.16)',
               color: user.isPremium ? '#06B6D4' : '#E2E8F0',
               fontSize: '12px',
-              fontWeight: 800,
-              cursor: onOpenPlanModal ? 'pointer' : 'default',
-              transition: 'all 0.2s ease'
+              fontWeight: 800
             }}
-            title="Click to view or switch Plan"
           >
             {user.isPremium ? <Star size={14} fill="#06B6D4" /> : <span>🆓</span>}
             <span>{user.isPremium ? '💎 ISAI Premium' : '🆓 ISAI Free'}</span>
-          </button>
+          </div>
         </div>
       </div>
 
@@ -276,14 +271,12 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
 
         {/* Current Plan Row */}
         <div
-          onClick={onOpenPlanModal}
           style={{
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
             padding: '12px 0',
-            borderBottom: '1px solid var(--divider)',
-            cursor: onOpenPlanModal ? 'pointer' : 'default'
+            borderBottom: '1px solid var(--divider)'
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', color: 'var(--text-secondary)' }}>
@@ -304,9 +297,6 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
             >
               {user.isPremium ? '💎 ISAI Premium' : '🆓 ISAI Free'}
             </span>
-            {onOpenPlanModal && (
-              <span style={{ fontSize: '11px', color: '#06B6D4', fontWeight: 600 }}>Change</span>
-            )}
           </div>
         </div>
 

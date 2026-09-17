@@ -14,6 +14,7 @@ import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.listeners.Abs
 import com.saavn.music.data.local.LocalMusicStorage
 import com.saavn.music.data.model.YouTubeSong
 import com.saavn.music.service.MusicPlaybackService
+import com.saavn.music.util.RelevanceEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -284,12 +285,13 @@ class YouTubePlayerController(
 
     fun prepareForPlayback(song: YouTubeSong, queue: List<YouTubeSong>? = null) {
         _currentSong.value = song
-        val targetQueue = when {
+        val baseQueue = when {
             queue != null -> queue
-            _playbackQueue.value.any { it.videoId == song.videoId } -> _playbackQueue.value
+            _playbackQueue.value.any { RelevanceEngine.isSameSongOrDuplicate(it, song) } -> _playbackQueue.value
             _playbackQueue.value.isNotEmpty() -> _playbackQueue.value + song
             else -> listOf(song)
         }
+        val targetQueue = RelevanceEngine.deduplicateSongs(baseQueue)
         _playbackQueue.value = targetQueue
         val idx = targetQueue.indexOfFirst { it.videoId == song.videoId }
         _currentQueueIndex.value = if (idx >= 0) idx else 0
@@ -300,12 +302,13 @@ class YouTubePlayerController(
     fun playSong(song: YouTubeSong, queue: List<YouTubeSong>? = null, startPositionSec: Float = 0f) {
         Log.i("ISAI_PLAYER", "[YouTubePlayerController] playSong: '${song.title}' (${song.videoId}) | startPos=${startPositionSec}s | audioUrl=${song.audioUrl}")
         _currentSong.value = song
-        val targetQueue = when {
+        val baseQueue = when {
             queue != null -> queue
-            _playbackQueue.value.any { it.videoId == song.videoId } -> _playbackQueue.value
+            _playbackQueue.value.any { RelevanceEngine.isSameSongOrDuplicate(it, song) } -> _playbackQueue.value
             _playbackQueue.value.isNotEmpty() -> _playbackQueue.value + song
             else -> listOf(song)
         }
+        val targetQueue = RelevanceEngine.deduplicateSongs(baseQueue)
         _playbackQueue.value = targetQueue
         val idx = targetQueue.indexOfFirst { it.videoId == song.videoId }
         _currentQueueIndex.value = if (idx >= 0) idx else 0
@@ -440,7 +443,7 @@ class YouTubePlayerController(
 
     fun addToQueue(song: YouTubeSong) {
         val list = _playbackQueue.value.toMutableList()
-        list.removeAll { it.videoId == song.videoId }
+        list.removeAll { it.videoId == song.videoId || RelevanceEngine.isSameSongOrDuplicate(it, song) }
         val currentSongId = _currentSong.value?.videoId
         val curIdx = if (!currentSongId.isNullOrBlank()) {
             val idx = list.indexOfFirst { it.videoId == currentSongId }
@@ -450,23 +453,24 @@ class YouTubePlayerController(
         }
         val insertPos = (curIdx + 1).coerceIn(0, list.size)
         list.add(insertPos, song)
-        _playbackQueue.value = list
-        Log.i("ISAI_PLAYER", "[YouTubePlayerController] Added to queue after current song ($currentSongId at $curIdx -> $insertPos): '${song.title}', total=${list.size}")
+        _playbackQueue.value = RelevanceEngine.deduplicateSongs(list)
+        Log.i("ISAI_PLAYER", "[YouTubePlayerController] Added to queue after current song ($currentSongId at $curIdx -> $insertPos): '${song.title}', total=${_playbackQueue.value.size}")
     }
 
     fun appendQueue(songs: List<YouTubeSong>) {
         if (songs.isEmpty()) return
         val list = _playbackQueue.value.toMutableList()
+        val deduppedCandidates = RelevanceEngine.deduplicateSongs(songs)
         var addedCount = 0
-        songs.forEach { song ->
-            if (list.none { it.videoId == song.videoId }) {
+        deduppedCandidates.forEach { song ->
+            if (list.none { RelevanceEngine.isSameSongOrDuplicate(it, song) }) {
                 list.add(song)
                 addedCount++
             }
         }
         if (addedCount > 0) {
             _playbackQueue.value = list
-            Log.i("ISAI_PLAYER", "[YouTubePlayerController] Appended $addedCount new songs to queue, total=${list.size}")
+            Log.i("ISAI_PLAYER", "[YouTubePlayerController] Appended $addedCount new distinct songs to queue, total=${list.size}")
         }
     }
 
@@ -476,21 +480,26 @@ class YouTubePlayerController(
         val curIdx = _currentQueueIndex.value
         val playedSoFar = current.take(curIdx + 1)
         val existingUpcoming = current.drop(curIdx + 1)
-        val existingUpcomingIds = existingUpcoming.map { it.videoId }.toSet()
-        val filteredNew = newUpcoming.filterNot { it.videoId in existingUpcomingIds }
-        val combined = (playedSoFar + existingUpcoming + filteredNew).distinctBy { it.videoId }
+        val deduppedNew = RelevanceEngine.deduplicateSongs(newUpcoming)
+
+        // Filter out any song that is already present anywhere in current (played or upcoming)
+        val filteredNew = deduppedNew.filter { candidate ->
+            current.none { RelevanceEngine.isSameSongOrDuplicate(it, candidate) }
+        }
+        val combined = RelevanceEngine.deduplicateSongs(playedSoFar + existingUpcoming + filteredNew)
         _playbackQueue.value = combined
         Log.i("ISAI_PLAYER", "[YouTubePlayerController] Updated upcoming queue: preserved=${existingUpcoming.size}, added=${filteredNew.size}, total=${combined.size}")
     }
 
     fun setPlaybackQueue(songs: List<YouTubeSong>, newIndex: Int = _currentQueueIndex.value) {
-        _playbackQueue.value = songs
-        _currentQueueIndex.value = newIndex.coerceIn(0, (songs.size - 1).coerceAtLeast(0))
+        val deduped = RelevanceEngine.deduplicateSongs(songs)
+        _playbackQueue.value = deduped
+        _currentQueueIndex.value = newIndex.coerceIn(0, (deduped.size - 1).coerceAtLeast(0))
     }
 
     fun playNextInQueue(song: YouTubeSong) {
         val list = _playbackQueue.value.toMutableList()
-        list.removeAll { it.videoId == song.videoId }
+        list.removeAll { it.videoId == song.videoId || RelevanceEngine.isSameSongOrDuplicate(it, song) }
         val currentSongId = _currentSong.value?.videoId
         val curIdx = if (!currentSongId.isNullOrBlank()) {
             val idx = list.indexOfFirst { it.videoId == currentSongId }
@@ -500,8 +509,8 @@ class YouTubePlayerController(
         }
         val insertPos = (curIdx + 1).coerceIn(0, list.size)
         list.add(insertPos, song)
-        _playbackQueue.value = list
-        Log.i("ISAI_PLAYER", "[YouTubePlayerController] Play Next inserted at $insertPos: '${song.title}', total=${list.size}")
+        _playbackQueue.value = RelevanceEngine.deduplicateSongs(list)
+        Log.i("ISAI_PLAYER", "[YouTubePlayerController] Play Next inserted at $insertPos: '${song.title}', total=${_playbackQueue.value.size}")
     }
 
     fun removeFromQueue(index: Int) {
