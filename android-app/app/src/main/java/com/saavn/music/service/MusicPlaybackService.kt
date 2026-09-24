@@ -10,12 +10,16 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.graphics.Bitmap
 import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.Icon
 import android.media.MediaMetadata
 import android.media.session.MediaSession
 import android.media.session.PlaybackState
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
+import androidx.core.app.ServiceCompat
+import coil.Coil
+import coil.request.ImageRequest
 import com.saavn.music.MainActivity
 import com.saavn.music.R
 import com.saavn.music.data.model.YouTubeSong
@@ -42,11 +46,12 @@ class MusicPlaybackService : Service() {
     override fun onCreate() {
         super.onCreate()
         Log.i(TAG, "MusicPlaybackService onCreate")
+        isServiceRunning = true
         try {
             createNotificationChannel()
-            setupMediaSession()
             // Immediately promote service to foreground on creation to satisfy OS startForegroundService requirement
             startForegroundSafely(buildNotification())
+            setupMediaSession()
         } catch (e: Exception) {
             Log.e(TAG, "Error in MusicPlaybackService onCreate: ${e.message}", e)
         }
@@ -55,17 +60,23 @@ class MusicPlaybackService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        isServiceRunning = true
         val action = intent?.action
         Log.i(TAG, "onStartCommand: action=$action")
 
-        // Ensure startForeground is called immediately on every onStartCommand invocation
-        // to fulfill Android's startForegroundService timeout requirement under all conditions.
-        val startedForeground = startForegroundSafely(buildNotification())
-        if (!startedForeground) {
-            Log.e(TAG, "startForegroundSafely failed in onStartCommand, stopping service to prevent ForegroundServiceDidNotStartInTimeException")
+        if (action == ACTION_STOP) {
+            try {
+                YouTubePlayerController.getInstance()?.pause()
+            } catch (e: Exception) {
+                Log.w(TAG, "Error pausing player on stop: ${e.message}")
+            }
+            stopForegroundState()
             stopSelf()
             return START_NOT_STICKY
         }
+
+        // Ensure startForeground is called immediately on every onStartCommand invocation
+        startForegroundSafely(buildNotification())
 
         try {
             when (action) {
@@ -77,12 +88,6 @@ class MusicPlaybackService : Service() {
                 }
                 ACTION_PREV -> {
                     YouTubePlayerController.getInstance()?.playPrevious()
-                }
-                ACTION_STOP -> {
-                    YouTubePlayerController.getInstance()?.pause()
-                    stopForegroundState()
-                    stopSelf()
-                    return START_NOT_STICKY
                 }
                 ACTION_START_OR_UPDATE -> {
                     val newTitle = intent.getStringExtra(EXTRA_TITLE) ?: currentTitle
@@ -192,29 +197,49 @@ class MusicPlaybackService : Service() {
 
     private fun startForegroundSafely(notification: Notification): Boolean {
         return try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                startForeground(
-                    NOTIFICATION_ID,
-                    notification,
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
-                )
+            val foregroundServiceType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
             } else {
-                startForeground(NOTIFICATION_ID, notification)
+                0
             }
+            ServiceCompat.startForeground(
+                this,
+                NOTIFICATION_ID,
+                notification,
+                foregroundServiceType
+            )
             true
         } catch (e: Exception) {
-            Log.w(TAG, "Failed startForeground with mediaPlayback type: ${e.message}")
-            try {
-                startForeground(NOTIFICATION_ID, notification)
-                true
-            } catch (inner: Exception) {
-                Log.e(TAG, "Complete startForeground fallback failed: ${inner.message}")
-                false
-            }
+            Log.e(TAG, "Failed startForeground: ${e.message}", e)
+            false
         }
     }
 
     private fun buildNotification(): Notification {
+        return try {
+            buildCustomNotification()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to build custom notification, using fallback: ${e.message}", e)
+            buildFallbackNotification()
+        }
+    }
+
+    private fun buildFallbackNotification(): Notification {
+        val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Notification.Builder(this, CHANNEL_ID)
+        } else {
+            @Suppress("DEPRECATION")
+            Notification.Builder(this)
+        }
+        return builder
+            .setContentTitle(currentTitle.ifBlank { "ISAI Music" })
+            .setContentText(currentArtist.ifBlank { "ISAI Tamil Music" })
+            .setSmallIcon(R.drawable.ic_notification_music)
+            .setOngoing(isPlaying)
+            .build()
+    }
+
+    private fun buildCustomNotification(): Notification {
         val playPauseIcon = if (isPlaying) {
             R.drawable.ic_noti_pause
         } else {
@@ -255,7 +280,14 @@ class MusicPlaybackService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val builder = Notification.Builder(this, CHANNEL_ID)
+        val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Notification.Builder(this, CHANNEL_ID)
+        } else {
+            @Suppress("DEPRECATION")
+            Notification.Builder(this)
+        }
+
+        builder
             .setContentTitle(currentTitle)
             .setContentText(currentArtist.ifBlank { "ISAI Tamil Music" })
             .setSmallIcon(R.drawable.ic_notification_music)
@@ -272,28 +304,28 @@ class MusicPlaybackService : Service() {
             )
             .addAction(
                 Notification.Action.Builder(
-                    android.graphics.drawable.Icon.createWithResource(this, R.drawable.ic_noti_prev),
+                    Icon.createWithResource(this, R.drawable.ic_noti_prev),
                     "Previous",
                     prevIntent
                 ).build()
             )
             .addAction(
                 Notification.Action.Builder(
-                    android.graphics.drawable.Icon.createWithResource(this, playPauseIcon),
+                    Icon.createWithResource(this, playPauseIcon),
                     playPauseText,
                     playPauseIntent
                 ).build()
             )
             .addAction(
                 Notification.Action.Builder(
-                    android.graphics.drawable.Icon.createWithResource(this, R.drawable.ic_noti_next),
+                    Icon.createWithResource(this, R.drawable.ic_noti_next),
                     "Next",
                     nextIntent
                 ).build()
             )
             .addAction(
                 Notification.Action.Builder(
-                    android.graphics.drawable.Icon.createWithResource(this, R.drawable.ic_noti_close),
+                    Icon.createWithResource(this, R.drawable.ic_noti_close),
                     "Close",
                     stopIntent
                 ).build()
@@ -310,8 +342,8 @@ class MusicPlaybackService : Service() {
         if (url.isBlank()) return
         serviceScope.launch(Dispatchers.IO) {
             try {
-                val loader = coil.Coil.imageLoader(applicationContext)
-                val request = coil.request.ImageRequest.Builder(applicationContext)
+                val loader = Coil.imageLoader(applicationContext)
+                val request = ImageRequest.Builder(applicationContext)
                     .data(url)
                     .allowHardware(false) // Software bitmap required for Notification largeIcon
                     .build()
@@ -347,13 +379,14 @@ class MusicPlaybackService : Service() {
     }
 
     private fun stopForegroundState() {
+        isServiceRunning = false
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             stopForeground(STOP_FOREGROUND_REMOVE)
         } else {
             @Suppress("DEPRECATION")
             stopForeground(true)
         }
-        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+        val notificationManager = getSystemService(NOTIFICATION_SERVICE) as? NotificationManager
         notificationManager?.cancel(NOTIFICATION_ID)
     }
 
@@ -373,6 +406,7 @@ class MusicPlaybackService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         Log.i(TAG, "MusicPlaybackService onDestroy")
+        isServiceRunning = false
         serviceScope.cancel()
         mediaSession?.release()
         mediaSession = null
@@ -397,6 +431,10 @@ class MusicPlaybackService : Service() {
         const val EXTRA_DURATION_SEC = "extra_duration_sec"
         const val EXTRA_POSITION_SEC = "extra_position_sec"
 
+        @Volatile
+        var isServiceRunning: Boolean = false
+            private set
+
         fun startOrUpdate(
             context: Context,
             song: YouTubeSong?,
@@ -404,6 +442,12 @@ class MusicPlaybackService : Service() {
             durationSec: Float = 0f,
             positionSec: Float = 0f
         ) {
+            // Do not start a brand new foreground service from background when nothing is playing
+            if (!isServiceRunning && !isPlaying) {
+                Log.i(TAG, "startOrUpdate skipped: service not running and isPlaying is false")
+                return
+            }
+
             val intent = Intent(context, MusicPlaybackService::class.java).apply {
                 action = ACTION_START_OR_UPDATE
                 putExtra(EXTRA_TITLE, song?.title ?: "ISAI Music")
@@ -413,16 +457,25 @@ class MusicPlaybackService : Service() {
                 putExtra(EXTRA_DURATION_SEC, durationSec)
                 putExtra(EXTRA_POSITION_SEC, positionSec)
             }
+
             try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    context.startForegroundService(intent)
-                } else {
+                if (isServiceRunning) {
                     context.startService(intent)
+                } else {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        context.startForegroundService(intent)
+                    } else {
+                        context.startService(intent)
+                    }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to start/update MusicPlaybackService: ${e.message}", e)
                 try {
-                    context.startService(intent)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        context.startForegroundService(intent)
+                    } else {
+                        context.startService(intent)
+                    }
                 } catch (inner: Exception) {
                     Log.w(TAG, "Secondary startService fallback failed: ${inner.message}")
                 }
@@ -430,6 +483,7 @@ class MusicPlaybackService : Service() {
         }
 
         fun stop(context: Context) {
+            if (!isServiceRunning) return
             val intent = Intent(context, MusicPlaybackService::class.java).apply {
                 action = ACTION_STOP
             }

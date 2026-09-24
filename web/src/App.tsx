@@ -447,8 +447,16 @@ export function App() {
   }, [])
 
   // Handle URL router for Email Verification callback and App Update Page
-  const [isVerifyView, setIsVerifyView] = useState(false)
-  const [isUpdateView, setIsUpdateView] = useState(false)
+  const [isVerifyView, setIsVerifyView] = useState(() => {
+    if (typeof window === 'undefined') return false
+    const path = window.location.pathname
+    return path === '/verify-email' || window.location.search.includes('mode=verifyEmail')
+  })
+  const [isUpdateView, setIsUpdateView] = useState(() => {
+    if (typeof window === 'undefined') return false
+    const path = window.location.pathname
+    return path === '/update' || path.startsWith('/update') || window.location.search.includes('action=update')
+  })
   useEffect(() => {
     const path = window.location.pathname
     if (path === '/verify-email' || window.location.search.includes('mode=verifyEmail')) {

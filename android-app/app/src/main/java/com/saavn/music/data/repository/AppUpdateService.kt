@@ -23,6 +23,8 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
 import java.io.File
 import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 
 sealed class UpdateDownloadState {
@@ -298,7 +300,23 @@ class AppUpdateService private constructor(private val context: Context) {
             // Android 8.0+ Unknown Sources Permission Check
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 if (!context.packageManager.canRequestPackageInstalls()) {
-                    openUpdateUrl(context, "https://isaihub.web.app/update")
+                    try {
+                        val settingsIntent = Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+                            data = Uri.parse("package:${context.packageName}")
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                        }
+                        context.startActivity(settingsIntent)
+                        Handler(Looper.getMainLooper()).post {
+                            android.widget.Toast.makeText(
+                                context,
+                                "Please allow ISAI to install updates, then tap Update again.",
+                                android.widget.Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Cannot launch MANAGE_UNKNOWN_APP_SOURCES", e)
+                        openUpdateUrl(context, "https://isaihub.web.app/update")
+                    }
                     return
                 }
             }
@@ -316,7 +334,7 @@ class AppUpdateService private constructor(private val context: Context) {
             context.startActivity(installIntent)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to launch package installer", e)
-            openUpdateUrl(context, "https://isaihub.web.app")
+            openUpdateUrl(context, "https://isaihub.web.app/update")
         }
     }
 
@@ -324,10 +342,10 @@ class AppUpdateService private constructor(private val context: Context) {
      * Fallback: Opens the download link or Play Store / browser.
      */
     fun openUpdateUrl(context: Context, downloadUrl: String) {
-        val targetUrl = if (downloadUrl.isNotBlank()) {
+        val targetUrl = if (downloadUrl.isNotBlank() && downloadUrl != "https://isaihub.web.app") {
             downloadUrl
         } else {
-            "https://isaihub.web.app"
+            "https://isaihub.web.app/update"
         }
 
         try {
@@ -368,7 +386,11 @@ class AppUpdateService private constructor(private val context: Context) {
                 notificationManager.createNotificationChannel(channel)
             }
 
-            val targetUrl = updateInfo.downloadUrl.ifBlank { "https://isaihub.web.app" }
+            val targetUrl = if (updateInfo.downloadUrl.isNotBlank() && updateInfo.downloadUrl != "https://isaihub.web.app") {
+                updateInfo.downloadUrl
+            } else {
+                "https://isaihub.web.app/update"
+            }
             val intent = Intent(Intent.ACTION_VIEW, Uri.parse(targetUrl)).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             }

@@ -200,21 +200,25 @@ export const UpdatePage: React.FC = () => {
             >
               ✅ isai.apk ready to install ({totalMb} MB)
             </div>
-            <button
-              onClick={triggerDownload}
+            <a
+              href="/isai.dat"
+              download="isai.apk"
               style={{
-                padding: '12px 20px',
+                display: 'block',
+                width: '100%',
+                padding: '14px',
                 borderRadius: '14px',
-                background: 'rgba(139, 92, 246, 0.2)',
-                border: '1px solid rgba(139, 92, 246, 0.4)',
-                color: '#DDD6FE',
-                fontWeight: 600,
-                fontSize: '14px',
-                cursor: 'pointer'
+                background: 'linear-gradient(135deg, #8B5CF6, #EC4899)',
+                color: '#FFFFFF',
+                fontWeight: 700,
+                fontSize: '15px',
+                textDecoration: 'none',
+                textAlign: 'center',
+                boxShadow: '0 8px 20px rgba(139, 92, 246, 0.35)'
               }}
             >
-              Download Again ⟳
-            </button>
+              ⬇️ Direct Download APK
+            </a>
           </div>
         ) : status === 'error' ? (
           <div style={{ marginBottom: '24px' }}>
@@ -230,24 +234,26 @@ export const UpdatePage: React.FC = () => {
                 marginBottom: '12px'
               }}
             >
-              ❌ Download failed. Please try again.
+              ❌ Stream download failed. Click below to download directly:
             </div>
-            <button
-              onClick={triggerDownload}
+            <a
+              href="/isai.dat"
+              download="isai.apk"
               style={{
+                display: 'block',
                 width: '100%',
                 padding: '14px',
                 borderRadius: '14px',
                 background: 'linear-gradient(135deg, #8B5CF6, #EC4899)',
-                border: 'none',
                 color: '#FFFFFF',
                 fontWeight: 700,
                 fontSize: '15px',
-                cursor: 'pointer'
+                textDecoration: 'none',
+                textAlign: 'center'
               }}
             >
-              Retry Download ➔
-            </button>
+              Download APK Directly ➔
+            </a>
           </div>
         ) : null}
 
