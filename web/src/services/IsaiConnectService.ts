@@ -1,5 +1,5 @@
+import { off, onDisconnect, onValue, ref, set, update } from 'firebase/database'
 import { rtdb } from '../firebase'
-import { ref, set, update, onValue, onDisconnect, off } from 'firebase/database'
 
 export interface DeviceInfo {
   deviceId: string
@@ -16,6 +16,17 @@ export interface SyncSong {
   artwork: string
   duration?: string
   audioUrl?: string
+}
+
+export interface SyncedHomeFeed {
+  revision: number
+  language: string
+  updatedAt: number
+  generatedBy: 'web' | 'android' | string
+  picksForYou: any[]
+  newReleases: any[]
+  trending: any[]
+  mostPlayed: any[]
 }
 
 export interface PlaybackStateSync {
@@ -38,7 +49,8 @@ export interface PlaybackStateSync {
 }
 
 export interface RemoteCommand {
-  action: 'PLAY' | 'PAUSE' | 'NEXT' | 'PREV' | 'SEEK' | 'PLAY_SONG' | 'SET_VOLUME' | 'ADD_TO_QUEUE' | 'PLAY_NEXT_IN_QUEUE'
+  action:
+    'PLAY' | 'PAUSE' | 'NEXT' | 'PREV' | 'SEEK' | 'PLAY_SONG' | 'SET_VOLUME' | 'ADD_TO_QUEUE' | 'PLAY_NEXT_IN_QUEUE'
   targetDeviceId?: string
   positionMs?: number
   songId?: string
@@ -121,7 +133,7 @@ class IsaiConnectServiceManager {
     if (typeof window === 'undefined') return 'web_default'
     let id = localStorage.getItem('isai_device_id')
     if (!id) {
-      id = `web_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 6)}`
+      id = `web_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`
       localStorage.setItem('isai_device_id', id)
     }
     return id
@@ -174,7 +186,10 @@ class IsaiConnectServiceManager {
 
   public sanitizeUserId(rawId: string): string {
     if (!rawId) return ''
-    return rawId.toLowerCase().trim().replace(/[.#$\[\]]/g, '_')
+    return rawId
+      .toLowerCase()
+      .trim()
+      .replaceAll(/[.#$[\]]/g, '_')
   }
 
   public updateDeviceOwner(userName?: string) {
@@ -189,7 +204,8 @@ class IsaiConnectServiceManager {
 
   public initialize(rawUserId: string, rawUserName?: string) {
     const sanitized = this.sanitizeUserId(rawUserId)
-    const resolvedName = rawUserName?.trim() || (rawUserId && !rawUserId.includes('guest') ? rawUserId.split('@')[0] : '')
+    const resolvedName =
+      rawUserName?.trim() || (rawUserId && !rawUserId.includes('guest') ? rawUserId.split('@')[0] : '')
     const newName = this.detectDeviceName(resolvedName)
     const nameChanged = this.deviceName !== newName
     this.deviceName = newName
@@ -199,7 +215,7 @@ class IsaiConnectServiceManager {
 
     this.userEmail = rawUserId
     this.userId = sanitized
-    console.log(`[ISAI Connect] Initializing device ${this.deviceId} (${this.deviceName}) for user: ${this.userId}`)
+    console.info(`[ISAI Connect] Initializing device ${this.deviceId} (${this.deviceName}) for user: ${this.userId}`)
 
     this.registerDevice()
     this.startHeartbeat()
@@ -219,15 +235,17 @@ class IsaiConnectServiceManager {
       isActive: true
     }
 
-    set(deviceRef, deviceInfo).catch(err => {
-      console.warn('[ISAI Connect] Device registration warning:', err)
+    set(deviceRef, deviceInfo).catch((error) => {
+      console.warn('[ISAI Connect] Device registration warning:', error)
     })
 
     // Setup disconnect handler
-    onDisconnect(deviceRef).update({
-      isActive: false,
-      lastActiveAt: Date.now()
-    }).catch(() => {})
+    onDisconnect(deviceRef)
+      .update({
+        isActive: false,
+        lastActiveAt: Date.now()
+      })
+      .catch(() => {})
   }
 
   private startHeartbeat() {
@@ -246,12 +264,10 @@ class IsaiConnectServiceManager {
       const existing = map.get(key)
       if (!existing) {
         map.set(key, d)
-      } else {
-        if (d.deviceId === activePlayerId) {
-          map.set(key, d)
-        } else if (existing.deviceId !== activePlayerId && (d.lastActiveAt || 0) > (existing.lastActiveAt || 0)) {
-          map.set(key, d)
-        }
+      } else if (d.deviceId === activePlayerId) {
+        map.set(key, d)
+      } else if (existing.deviceId !== activePlayerId && (d.lastActiveAt || 0) > (existing.lastActiveAt || 0)) {
+        map.set(key, d)
       }
     }
     return Array.from(map.values())
@@ -270,11 +286,11 @@ class IsaiConnectServiceManager {
         this.rawDevices = list
         this.currentDevices = this.deduplicateDevices(
           list
-            .filter(d => this.isDeviceAvailable(d) || d.deviceId === this.deviceId)
+            .filter((d) => this.isDeviceAvailable(d) || d.deviceId === this.deviceId)
             .sort((a, b) => (b.lastActiveAt || 0) - (a.lastActiveAt || 0))
         )
       }
-      this.devicesChangeCallbacks.forEach(cb => cb(this.currentDevices))
+      this.devicesChangeCallbacks.forEach((cb) => cb(this.currentDevices))
     })
 
     // Periodic liveness check: drops offline devices automatically
@@ -283,16 +299,17 @@ class IsaiConnectServiceManager {
       if (this.rawDevices.length > 0) {
         const activeList = this.deduplicateDevices(
           this.rawDevices
-            .filter(d => this.isDeviceAvailable(d) || d.deviceId === this.deviceId)
+            .filter((d) => this.isDeviceAvailable(d) || d.deviceId === this.deviceId)
             .sort((a, b) => (b.lastActiveAt || 0) - (a.lastActiveAt || 0))
         )
 
-        const changed = activeList.length !== this.currentDevices.length ||
+        const changed =
+          activeList.length !== this.currentDevices.length ||
           activeList.some((d, idx) => d.deviceId !== this.currentDevices[idx]?.deviceId)
 
         if (changed) {
           this.currentDevices = activeList
-          this.devicesChangeCallbacks.forEach(cb => cb(this.currentDevices))
+          this.devicesChangeCallbacks.forEach((cb) => cb(this.currentDevices))
         }
       }
     }, 5000)
@@ -305,7 +322,7 @@ class IsaiConnectServiceManager {
       const val = snapshot.val()
       if (val) {
         this.currentPlaybackState = val
-        this.stateChangeCallbacks.forEach(cb => cb(val))
+        this.stateChangeCallbacks.forEach((cb) => cb(val))
       }
     })
   }
@@ -315,11 +332,13 @@ class IsaiConnectServiceManager {
     const cmdRef = ref(rtdb, `connect/${this.userId}/command`)
     this.commandListener = onValue(cmdRef, (snapshot) => {
       const val = snapshot.val()
-      if (val && val.timestamp && val.issuedByDeviceId !== this.deviceId) {
-        // Only process fresh commands (generous clock skew tolerant 10 mins window)
-        if (Math.abs(Date.now() - val.timestamp) < 600000) {
-          this.commandCallbacks.forEach(cb => cb(val))
-        }
+      if (
+        val &&
+        val.timestamp &&
+        val.issuedByDeviceId !== this.deviceId && // Only process fresh commands (generous clock skew tolerant 10 mins window)
+        Math.abs(Date.now() - val.timestamp) < 600000
+      ) {
+        this.commandCallbacks.forEach((cb) => cb(val))
       }
     })
   }
@@ -327,7 +346,7 @@ class IsaiConnectServiceManager {
   public subscribeCommands(callback: (cmd: RemoteCommand) => void) {
     this.commandCallbacks.push(callback)
     return () => {
-      this.commandCallbacks = this.commandCallbacks.filter(c => c !== callback)
+      this.commandCallbacks = this.commandCallbacks.filter((c) => c !== callback)
     }
   }
 
@@ -350,8 +369,8 @@ class IsaiConnectServiceManager {
       timestamp: Date.now(),
       issuedByDeviceId: this.deviceId
     }
-    set(cmdRef, cmd).catch(err => {
-      console.warn('[ISAI Connect] Send command warning:', err)
+    set(cmdRef, cmd).catch((error) => {
+      console.warn('[ISAI Connect] Send command warning:', error)
     })
   }
 
@@ -363,7 +382,7 @@ class IsaiConnectServiceManager {
     this.stateChangeCallbacks.push(callback)
     if (this.currentPlaybackState) callback(this.currentPlaybackState)
     return () => {
-      this.stateChangeCallbacks = this.stateChangeCallbacks.filter(c => c !== callback)
+      this.stateChangeCallbacks = this.stateChangeCallbacks.filter((c) => c !== callback)
     }
   }
 
@@ -371,7 +390,7 @@ class IsaiConnectServiceManager {
     this.devicesChangeCallbacks.push(callback)
     if (this.currentDevices.length > 0) callback(this.currentDevices)
     return () => {
-      this.devicesChangeCallbacks = this.devicesChangeCallbacks.filter(c => c !== callback)
+      this.devicesChangeCallbacks = this.devicesChangeCallbacks.filter((c) => c !== callback)
     }
   }
 
@@ -389,20 +408,17 @@ class IsaiConnectServiceManager {
     }
 
     // Optimistically update cached playback state and notify subscribers immediately
-    this.currentPlaybackState = {
-      ...(this.currentPlaybackState || {}),
-      ...updated
-    } as PlaybackStateSync
-    this.stateChangeCallbacks.forEach(cb => cb(this.currentPlaybackState))
+    this.currentPlaybackState = Object.assign({}, this.currentPlaybackState, updated)
+    this.stateChangeCallbacks.forEach((cb) => cb(this.currentPlaybackState))
 
-    update(stateRef, updated).catch(err => {
-      console.warn('[ISAI Connect] State update error:', err)
+    update(stateRef, updated).catch((error) => {
+      console.warn('[ISAI Connect] State update error:', error)
     })
   }
 
   public transferPlaybackToDevice(targetDeviceId: string, song?: any, positionMs?: number) {
     if (!this.userId) return
-    console.log(`[ISAI Connect] Handoff playback to device: ${targetDeviceId}`)
+    console.info(`[ISAI Connect] Handoff playback to device: ${targetDeviceId}`)
     const updatePayload: Partial<PlaybackStateSync> = {
       currentDeviceId: targetDeviceId,
       isPlaying: true
@@ -422,7 +438,7 @@ class IsaiConnectServiceManager {
 
   public syncRecentlyPlayed(songs: any[]) {
     if (!this.userId || !songs || songs.length === 0) return
-    const clean = songs.slice(0, 20).map(s => ({
+    const clean = songs.slice(0, 20).map((s) => ({
       id: s.videoId || s.id || '',
       title: s.title || '',
       artist: s.channelTitle || s.artist || '',
@@ -430,7 +446,7 @@ class IsaiConnectServiceManager {
       audioUrl: s.audioUrl || ''
     }))
     const historyRef = ref(rtdb, `connect/${this.userId}/recentlyPlayed`)
-    set(historyRef, clean).catch(e => console.warn('[ISAI Connect] syncRecentlyPlayed warning:', e))
+    set(historyRef, clean).catch((error) => console.warn('[ISAI Connect] syncRecentlyPlayed warning:', error))
   }
 
   public subscribeRecentlyPlayed(callback: (songs: any[]) => void): () => void {
@@ -439,7 +455,7 @@ class IsaiConnectServiceManager {
     onValue(historyRef, (snapshot) => {
       const data = snapshot.val()
       if (data) {
-        const raw = Array.isArray(data) ? data : (typeof data === 'object' ? Object.values(data) : [])
+        const raw = Array.isArray(data) ? data : typeof data === 'object' ? Object.values(data) : []
         const clean = (raw || []).filter(Boolean).map((s: any) => ({
           videoId: s.id || s.videoId || '',
           title: s.title || '',
@@ -461,10 +477,12 @@ class IsaiConnectServiceManager {
   public syncPreferences(prefs: { preferredLanguages?: string[]; isMultiDevicePlaybackSeparate?: boolean }) {
     if (!this.userId) return
     const prefRef = ref(rtdb, `connect/${this.userId}/preferences`)
-    update(prefRef, prefs).catch(e => console.warn('[ISAI Connect] syncPreferences warning:', e))
+    update(prefRef, prefs).catch((error) => console.warn('[ISAI Connect] syncPreferences warning:', error))
   }
 
-  public subscribePreferences(callback: (prefs: { preferredLanguages?: string[]; isMultiDevicePlaybackSeparate?: boolean }) => void): () => void {
+  public subscribePreferences(
+    callback: (prefs: { preferredLanguages?: string[]; isMultiDevicePlaybackSeparate?: boolean }) => void
+  ): () => void {
     if (!this.userId) return () => {}
     const prefRef = ref(rtdb, `connect/${this.userId}/preferences`)
     onValue(prefRef, (snapshot) => {
@@ -472,10 +490,11 @@ class IsaiConnectServiceManager {
       if (data && typeof data === 'object') {
         const preferredLanguages = Array.isArray(data.preferredLanguages)
           ? data.preferredLanguages
-          : (typeof data.preferredLanguages === 'string' ? [data.preferredLanguages] : undefined)
-        const isMultiDevicePlaybackSeparate = typeof data.isMultiDevicePlaybackSeparate === 'boolean'
-          ? data.isMultiDevicePlaybackSeparate
-          : undefined
+          : typeof data.preferredLanguages === 'string'
+            ? [data.preferredLanguages]
+            : undefined
+        const isMultiDevicePlaybackSeparate =
+          typeof data.isMultiDevicePlaybackSeparate === 'boolean' ? data.isMultiDevicePlaybackSeparate : undefined
         callback({ preferredLanguages, isMultiDevicePlaybackSeparate })
       }
     })
@@ -488,7 +507,7 @@ class IsaiConnectServiceManager {
 
   public syncHomeSongs(songs: any[]) {
     if (!this.userId || !songs || songs.length === 0) return
-    const clean = songs.slice(0, 60).map(s => ({
+    const clean = songs.slice(0, 60).map((s) => ({
       id: s.videoId || s.id || '',
       title: s.title || '',
       artist: s.channelTitle || s.artist || '',
@@ -499,7 +518,114 @@ class IsaiConnectServiceManager {
       playCount: s.playCountNumber || 0
     }))
     const homeRef = ref(rtdb, `connect/${this.userId}/homeSongs`)
-    set(homeRef, clean).catch(e => console.warn('[ISAI Connect] syncHomeSongs warning:', e))
+    set(homeRef, clean).catch((error) => console.warn('[ISAI Connect] syncHomeSongs warning:', error))
+  }
+
+  public syncHomeFeed(feed: {
+    language: string
+    picksForYou: any[]
+    newReleases: any[]
+    trending: any[]
+    mostPlayed: any[]
+    revision?: number
+  }) {
+    if (!this.userId) return
+    const mapItem = (s: any) => ({
+      id: s.videoId || s.id || '',
+      title: s.title || '',
+      artist: s.channelTitle || s.artist || '',
+      artwork: s.thumbnailUrl || s.artwork || '',
+      audioUrl: s.audioUrl || '',
+      durationFormatted: s.durationFormatted || '3:30',
+      durationMs: s.durationMs || 210000,
+      playCount: s.playCountNumber || s.playCount || 0
+    })
+
+    const payload: SyncedHomeFeed = {
+      revision: feed.revision || Date.now(),
+      language: (feed.language || 'tamil').toLowerCase(),
+      updatedAt: Date.now(),
+      generatedBy: 'web',
+      picksForYou: (feed.picksForYou || []).slice(0, 20).map(mapItem),
+      newReleases: (feed.newReleases || []).slice(0, 25).map(mapItem),
+      trending: (feed.trending || []).slice(0, 40).map(mapItem),
+      mostPlayed: (feed.mostPlayed || []).slice(0, 30).map(mapItem)
+    }
+
+    try {
+      localStorage.setItem(`isai_home_feed_${this.userId}_${payload.language}`, JSON.stringify(payload))
+    } catch {}
+
+    const feedRef = ref(rtdb, `connect/${this.userId}/homeFeed`)
+    set(feedRef, payload).catch((error) => console.warn('[ISAI Connect] syncHomeFeed warning:', error))
+
+    if (payload.trending.length > 0) {
+      const flatRef = ref(rtdb, `connect/${this.userId}/homeSongs`)
+      set(flatRef, payload.trending).catch(() => {})
+    }
+  }
+
+  public getCachedHomeFeed(language = 'tamil'): SyncedHomeFeed | null {
+    if (!this.userId) return null
+    try {
+      const raw = localStorage.getItem(`isai_home_feed_${this.userId}_${language.toLowerCase()}`)
+      if (raw) return JSON.parse(raw)
+    } catch {}
+    return null
+  }
+
+  public clearCachedHomeFeeds() {
+    if (typeof localStorage === 'undefined') return
+    try {
+      const keys = Object.keys(localStorage)
+      for (const k of keys) {
+        if (k.startsWith('isai_home_feed_')) {
+          localStorage.removeItem(k)
+        }
+      }
+    } catch {}
+  }
+
+  public subscribeHomeFeed(callback: (feed: SyncedHomeFeed) => void): () => void {
+    if (!this.userId) return () => {}
+    const feedRef = ref(rtdb, `connect/${this.userId}/homeFeed`)
+    const mapList = (raw: any) => {
+      const list = Array.isArray(raw) ? raw : typeof raw === 'object' && raw ? Object.values(raw) : []
+      return list.filter(Boolean).map((s: any) => ({
+        videoId: s.id || s.videoId || '',
+        title: s.title || '',
+        channelTitle: s.artist || s.channelTitle || '',
+        thumbnailUrl: s.artwork || s.thumbnailUrl || '',
+        audioUrl: s.audioUrl || '',
+        durationFormatted: s.durationFormatted || '3:30',
+        durationMs: s.durationMs || 210000,
+        viewCountFormatted: s.playCount ? `${Number(s.playCount).toLocaleString()} plays` : '',
+        playCountNumber: Number(s.playCount) || 0
+      }))
+    }
+
+    onValue(feedRef, (snapshot) => {
+      const data = snapshot.val()
+      if (data && data.revision) {
+        const feed: SyncedHomeFeed = {
+          revision: Number(data.revision) || Date.now(),
+          language: (data.language || 'tamil').toLowerCase(),
+          updatedAt: Number(data.updatedAt) || Date.now(),
+          generatedBy: data.generatedBy || 'unknown',
+          picksForYou: mapList(data.picksForYou),
+          newReleases: mapList(data.newReleases),
+          trending: mapList(data.trending),
+          mostPlayed: mapList(data.mostPlayed)
+        }
+
+        try {
+          localStorage.setItem(`isai_home_feed_${this.userId}_${feed.language}`, JSON.stringify(feed))
+        } catch {}
+
+        callback(feed)
+      }
+    })
+    return () => off(feedRef)
   }
 
   public subscribeHomeSongs(callback: (songs: any[]) => void): () => void {
@@ -508,7 +634,7 @@ class IsaiConnectServiceManager {
     onValue(homeRef, (snapshot) => {
       const data = snapshot.val()
       if (data) {
-        const raw = Array.isArray(data) ? data : (typeof data === 'object' ? Object.values(data) : [])
+        const raw = Array.isArray(data) ? data : typeof data === 'object' ? Object.values(data) : []
         const clean = (raw || []).filter(Boolean).map((s: any) => ({
           videoId: s.id || s.videoId || '',
           title: s.title || '',
@@ -529,7 +655,7 @@ class IsaiConnectServiceManager {
 
   public syncFavorites(songs: any[]) {
     if (!this.userId || !songs) return
-    const clean = songs.slice(0, 100).map(s => ({
+    const clean = songs.slice(0, 100).map((s) => ({
       id: s.videoId || s.id || '',
       title: s.title || '',
       artist: s.channelTitle || s.artist || '',
@@ -539,7 +665,7 @@ class IsaiConnectServiceManager {
       durationMs: s.durationMs || 210000
     }))
     const favRef = ref(rtdb, `connect/${this.userId}/favorites`)
-    set(favRef, clean).catch(e => console.warn('[ISAI Connect] syncFavorites warning:', e))
+    set(favRef, clean).catch((error) => console.warn('[ISAI Connect] syncFavorites warning:', error))
   }
 
   public subscribeFavorites(callback: (songs: any[]) => void): () => void {
@@ -548,7 +674,7 @@ class IsaiConnectServiceManager {
     onValue(favRef, (snapshot) => {
       const data = snapshot.val()
       if (data) {
-        const raw = Array.isArray(data) ? data : (typeof data === 'object' ? Object.values(data) : [])
+        const raw = Array.isArray(data) ? data : typeof data === 'object' ? Object.values(data) : []
         const clean = (raw || []).filter(Boolean).map((s: any) => ({
           videoId: s.id || s.videoId || '',
           title: s.title || '',
@@ -597,6 +723,7 @@ class IsaiConnectServiceManager {
       const historyRef = ref(rtdb, `connect/${this.userId}/recentlyPlayed`)
       const prefRef = ref(rtdb, `connect/${this.userId}/preferences`)
       const homeRef = ref(rtdb, `connect/${this.userId}/homeSongs`)
+      const feedRef = ref(rtdb, `connect/${this.userId}/homeFeed`)
       const favRef = ref(rtdb, `connect/${this.userId}/favorites`)
       off(devicesRef)
       off(stateRef)
@@ -604,6 +731,7 @@ class IsaiConnectServiceManager {
       off(historyRef)
       off(prefRef)
       off(homeRef)
+      off(feedRef)
       off(favRef)
     }
     this.userId = ''

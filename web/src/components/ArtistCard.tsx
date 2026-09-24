@@ -1,5 +1,5 @@
-import React, { useState } from 'react'
 import { Play } from 'lucide-react'
+import React, { useState } from 'react'
 
 export interface Artist {
   name: string

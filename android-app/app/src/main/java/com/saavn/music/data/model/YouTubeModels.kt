@@ -71,5 +71,7 @@ data class YouTubeSong(
     val audioUrl: String? = null,
     val addedAtTimestamp: Long = System.currentTimeMillis(),
     val playCount: Long = 0L,
-    val language: String = ""
+    val language: String = "",
+    val isManual: Boolean = false,
+    val year: String? = null
 )

@@ -1,27 +1,27 @@
-import React, { useState, useEffect } from 'react'
-import type { UserProfile } from '../components/LoginModal'
 import {
-  registerWithEmailPassword,
-  loginWithEmailPassword,
-  sendPasswordReset,
-  checkEmailVerificationStatus,
-  resendVerificationEmail
-} from '../firebase'
-import {
+  AlertCircle,
   ArrowLeft,
-  Mail,
-  Lock,
+  CheckCircle2,
+  Compass,
   Eye,
   EyeOff,
-  User,
-  LogIn,
-  UserPlus,
-  CheckCircle2,
-  AlertCircle,
-  RefreshCw,
   KeyRound,
-  Compass
+  Lock,
+  LogIn,
+  Mail,
+  RefreshCw,
+  User,
+  UserPlus
 } from 'lucide-react'
+import React, { useEffect, useState } from 'react'
+import {
+  checkEmailVerificationStatus,
+  loginWithEmailPassword,
+  registerWithEmailPassword,
+  resendVerificationEmail,
+  sendPasswordReset
+} from '../firebase'
+import type { UserProfile } from '../components/LoginModal'
 
 interface LoginPageProps {
   onLogin: (userData: Partial<UserProfile>) => void
@@ -31,13 +31,7 @@ interface LoginPageProps {
 
 type AuthMode = 'SIGN_IN' | 'REGISTER' | 'FORGOT_PASSWORD' | 'VERIFY_EMAIL'
 
-
-
-export const LoginPage: React.FC<LoginPageProps> = ({
-  onLogin,
-  onNavigateBack,
-  allowBack = false
-}) => {
+export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onNavigateBack, allowBack = false }) => {
   const [authMode, setAuthMode] = useState<AuthMode>('SIGN_IN')
   const [displayName, setDisplayName] = useState('')
   const [email, setEmail] = useState('')
@@ -79,8 +73,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         setAuthMode('VERIFY_EMAIL')
         setErrorMessage('Your email is not verified yet. Please check your inbox and click the verification link.')
       }
-    } catch (err: any) {
-      setErrorMessage(err?.message || 'Sign in failed. Please check your credentials.')
+    } catch (error: any) {
+      setErrorMessage(error?.message || 'Sign in failed. Please check your credentials.')
     } finally {
       setLoading(false)
     }
@@ -110,14 +104,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       setAuthMode('VERIFY_EMAIL')
       setStatusMessage(`Verification link sent to ${email}. Please verify your email before continuing.`)
       setResendCooldown(30)
-    } catch (err: any) {
-      setErrorMessage(err?.message || 'Registration failed.')
+    } catch (error: any) {
+      setErrorMessage(error?.message || 'Registration failed.')
     } finally {
       setLoading(false)
     }
   }
-
-
 
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -133,8 +125,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({
     try {
       await sendPasswordReset(email)
       setStatusMessage(`Password reset link sent to ${email}. Check your inbox or spam folder.`)
-    } catch (err: any) {
-      setErrorMessage(err?.message || 'Failed to send password reset email.')
+    } catch (error: any) {
+      setErrorMessage(error?.message || 'Failed to send password reset email.')
     } finally {
       setLoading(false)
     }
@@ -166,8 +158,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       } else {
         setErrorMessage('Email not verified yet. Please click the link sent to your inbox and retry.')
       }
-    } catch (err: any) {
-      setErrorMessage(err?.message || 'Error checking verification status.')
+    } catch (error: any) {
+      setErrorMessage(error?.message || 'Error checking verification status.')
     } finally {
       setLoading(false)
     }
@@ -183,8 +175,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       await resendVerificationEmail()
       setStatusMessage('Verification email sent again. Check your inbox and spam folder.')
       setResendCooldown(30)
-    } catch (err: any) {
-      setErrorMessage(err?.message || 'Failed to resend verification email.')
+    } catch (error: any) {
+      setErrorMessage(error?.message || 'Failed to resend verification email.')
     } finally {
       setLoading(false)
     }
@@ -321,7 +313,16 @@ export const LoginPage: React.FC<LoginPageProps> = ({
               color: '#FFFFFF'
             }}
           >
-            ISAI <span style={{ background: 'linear-gradient(90deg, #06B6D4, #A78BFA)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Music</span>
+            ISAI{' '}
+            <span
+              style={{
+                background: 'linear-gradient(90deg, #06B6D4, #A78BFA)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent'
+              }}
+            >
+              Music
+            </span>
           </h1>
 
           <p style={{ margin: 0, fontSize: '13px', color: 'rgba(255, 255, 255, 0.6)', fontWeight: 500 }}>
@@ -377,82 +378,96 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
         {/* Tab Switcher (Sign In vs Create Account) */}
         {(authMode === 'SIGN_IN' || authMode === 'REGISTER') && (
-            <div
+          <div
+            style={{
+              display: 'flex',
+              background: 'rgba(255, 255, 255, 0.05)',
+              borderRadius: '16px',
+              padding: '4px',
+              marginBottom: '22px',
+              border: '1px solid rgba(255, 255, 255, 0.08)'
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => {
+                setAuthMode('SIGN_IN')
+                setErrorMessage(null)
+                setStatusMessage(null)
+              }}
               style={{
+                flex: 1,
+                padding: '10px 16px',
+                borderRadius: '12px',
+                border: 'none',
+                background:
+                  authMode === 'SIGN_IN' ? 'linear-gradient(135deg, #8B5CF6 0%, #06B6D4 100%)' : 'transparent',
+                color: authMode === 'SIGN_IN' ? '#FFFFFF' : 'rgba(255, 255, 255, 0.6)',
+                fontWeight: 700,
+                fontSize: '13px',
+                cursor: 'pointer',
                 display: 'flex',
-                background: 'rgba(255, 255, 255, 0.05)',
-                borderRadius: '16px',
-                padding: '4px',
-                marginBottom: '22px',
-                border: '1px solid rgba(255, 255, 255, 0.08)'
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                boxShadow: authMode === 'SIGN_IN' ? '0 4px 14px rgba(139, 92, 246, 0.35)' : 'none',
+                transition: 'all 0.25s ease'
               }}
             >
-              <button
-                type="button"
-                onClick={() => {
-                  setAuthMode('SIGN_IN')
-                  setErrorMessage(null)
-                  setStatusMessage(null)
-                }}
-                style={{
-                  flex: 1,
-                  padding: '10px 16px',
-                  borderRadius: '12px',
-                  border: 'none',
-                  background: authMode === 'SIGN_IN' ? 'linear-gradient(135deg, #8B5CF6 0%, #06B6D4 100%)' : 'transparent',
-                  color: authMode === 'SIGN_IN' ? '#FFFFFF' : 'rgba(255, 255, 255, 0.6)',
-                  fontWeight: 700,
-                  fontSize: '13px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px',
-                  boxShadow: authMode === 'SIGN_IN' ? '0 4px 14px rgba(139, 92, 246, 0.35)' : 'none',
-                  transition: 'all 0.25s ease'
-                }}
-              >
-                <LogIn size={15} /> Sign In
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setAuthMode('REGISTER')
-                  setErrorMessage(null)
-                  setStatusMessage(null)
-                }}
-                style={{
-                  flex: 1,
-                  padding: '10px 16px',
-                  borderRadius: '12px',
-                  border: 'none',
-                  background: authMode === 'REGISTER' ? 'linear-gradient(135deg, #8B5CF6 0%, #06B6D4 100%)' : 'transparent',
-                  color: authMode === 'REGISTER' ? '#FFFFFF' : 'rgba(255, 255, 255, 0.6)',
-                  fontWeight: 700,
-                  fontSize: '13px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px',
-                  boxShadow: authMode === 'REGISTER' ? '0 4px 14px rgba(139, 92, 246, 0.35)' : 'none',
-                  transition: 'all 0.25s ease'
-                }}
-              >
-                <UserPlus size={15} /> Create Account
-              </button>
-            </div>
+              <LogIn size={15} /> Sign In
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAuthMode('REGISTER')
+                setErrorMessage(null)
+                setStatusMessage(null)
+              }}
+              style={{
+                flex: 1,
+                padding: '10px 16px',
+                borderRadius: '12px',
+                border: 'none',
+                background:
+                  authMode === 'REGISTER' ? 'linear-gradient(135deg, #8B5CF6 0%, #06B6D4 100%)' : 'transparent',
+                color: authMode === 'REGISTER' ? '#FFFFFF' : 'rgba(255, 255, 255, 0.6)',
+                fontWeight: 700,
+                fontSize: '13px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                boxShadow: authMode === 'REGISTER' ? '0 4px 14px rgba(139, 92, 246, 0.35)' : 'none',
+                transition: 'all 0.25s ease'
+              }}
+            >
+              <UserPlus size={15} /> Create Account
+            </button>
+          </div>
         )}
 
         {/* 4. SIGN IN FORM */}
         {authMode === 'SIGN_IN' && (
           <form onSubmit={handleSignIn} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: 'rgba(255, 255, 255, 0.7)', marginBottom: '7px' }}>
+              <label
+                style={{
+                  display: 'block',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  color: 'rgba(255, 255, 255, 0.7)',
+                  marginBottom: '7px'
+                }}
+              >
                 Email Address
               </label>
               <div style={{ position: 'relative' }}>
-                <Mail size={17} color="rgba(255, 255, 255, 0.4)" style={{ position: 'absolute', left: '15px', top: '50%', transform: 'translateY(-50%)' }} />
+                <Mail
+                  size={17}
+                  color="rgba(255, 255, 255, 0.4)"
+                  style={{ position: 'absolute', left: '15px', top: '50%', transform: 'translateY(-50%)' }}
+                />
                 <input
                   type="email"
                   value={email}
@@ -484,10 +499,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({
             </div>
 
             <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '7px' }}>
-                <label style={{ fontSize: '12px', fontWeight: 700, color: 'rgba(255, 255, 255, 0.7)' }}>
-                  Password
-                </label>
+              <div
+                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '7px' }}
+              >
+                <label style={{ fontSize: '12px', fontWeight: 700, color: 'rgba(255, 255, 255, 0.7)' }}>Password</label>
                 <button
                   type="button"
                   onClick={() => {
@@ -509,7 +524,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                 </button>
               </div>
               <div style={{ position: 'relative' }}>
-                <Lock size={17} color="rgba(255, 255, 255, 0.4)" style={{ position: 'absolute', left: '15px', top: '50%', transform: 'translateY(-50%)' }} />
+                <Lock
+                  size={17}
+                  color="rgba(255, 255, 255, 0.4)"
+                  style={{ position: 'absolute', left: '15px', top: '50%', transform: 'translateY(-50%)' }}
+                />
                 <input
                   type={showPassword ? 'text' : 'password'}
                   value={password}
@@ -590,16 +609,28 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         {authMode === 'REGISTER' && (
           <form onSubmit={handleRegister} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: 'rgba(255, 255, 255, 0.7)', marginBottom: '6px' }}>
+              <label
+                style={{
+                  display: 'block',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  color: 'rgba(255, 255, 255, 0.7)',
+                  marginBottom: '6px'
+                }}
+              >
                 Your Name
               </label>
               <div style={{ position: 'relative' }}>
-                <User size={17} color="rgba(255, 255, 255, 0.4)" style={{ position: 'absolute', left: '15px', top: '50%', transform: 'translateY(-50%)' }} />
+                <User
+                  size={17}
+                  color="rgba(255, 255, 255, 0.4)"
+                  style={{ position: 'absolute', left: '15px', top: '50%', transform: 'translateY(-50%)' }}
+                />
                 <input
                   type="text"
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
-                  placeholder="e.g. Jeeva"
+                  placeholder="Enter your name"
                   required
                   style={{
                     width: '100%',
@@ -617,11 +648,23 @@ export const LoginPage: React.FC<LoginPageProps> = ({
             </div>
 
             <div>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: 'rgba(255, 255, 255, 0.7)', marginBottom: '6px' }}>
+              <label
+                style={{
+                  display: 'block',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  color: 'rgba(255, 255, 255, 0.7)',
+                  marginBottom: '6px'
+                }}
+              >
                 Email Address
               </label>
               <div style={{ position: 'relative' }}>
-                <Mail size={17} color="rgba(255, 255, 255, 0.4)" style={{ position: 'absolute', left: '15px', top: '50%', transform: 'translateY(-50%)' }} />
+                <Mail
+                  size={17}
+                  color="rgba(255, 255, 255, 0.4)"
+                  style={{ position: 'absolute', left: '15px', top: '50%', transform: 'translateY(-50%)' }}
+                />
                 <input
                   type="email"
                   value={email}
@@ -644,11 +687,23 @@ export const LoginPage: React.FC<LoginPageProps> = ({
             </div>
 
             <div>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: 'rgba(255, 255, 255, 0.7)', marginBottom: '6px' }}>
+              <label
+                style={{
+                  display: 'block',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  color: 'rgba(255, 255, 255, 0.7)',
+                  marginBottom: '6px'
+                }}
+              >
                 Password (min 6 characters)
               </label>
               <div style={{ position: 'relative' }}>
-                <Lock size={17} color="rgba(255, 255, 255, 0.4)" style={{ position: 'absolute', left: '15px', top: '50%', transform: 'translateY(-50%)' }} />
+                <Lock
+                  size={17}
+                  color="rgba(255, 255, 255, 0.4)"
+                  style={{ position: 'absolute', left: '15px', top: '50%', transform: 'translateY(-50%)' }}
+                />
                 <input
                   type={showPassword ? 'text' : 'password'}
                   value={password}
@@ -689,11 +744,23 @@ export const LoginPage: React.FC<LoginPageProps> = ({
             </div>
 
             <div>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: 'rgba(255, 255, 255, 0.7)', marginBottom: '6px' }}>
+              <label
+                style={{
+                  display: 'block',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  color: 'rgba(255, 255, 255, 0.7)',
+                  marginBottom: '6px'
+                }}
+              >
                 Confirm Password
               </label>
               <div style={{ position: 'relative' }}>
-                <Lock size={17} color="rgba(255, 255, 255, 0.4)" style={{ position: 'absolute', left: '15px', top: '50%', transform: 'translateY(-50%)' }} />
+                <Lock
+                  size={17}
+                  color="rgba(255, 255, 255, 0.4)"
+                  style={{ position: 'absolute', left: '15px', top: '50%', transform: 'translateY(-50%)' }}
+                />
                 <input
                   type={showConfirmPassword ? 'text' : 'password'}
                   value={confirmPassword}
@@ -765,11 +832,23 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         {authMode === 'FORGOT_PASSWORD' && (
           <form onSubmit={handleForgotPassword} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: 'rgba(255, 255, 255, 0.7)', marginBottom: '7px' }}>
+              <label
+                style={{
+                  display: 'block',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  color: 'rgba(255, 255, 255, 0.7)',
+                  marginBottom: '7px'
+                }}
+              >
                 Account Email
               </label>
               <div style={{ position: 'relative' }}>
-                <Mail size={17} color="rgba(255, 255, 255, 0.4)" style={{ position: 'absolute', left: '15px', top: '50%', transform: 'translateY(-50%)' }} />
+                <Mail
+                  size={17}
+                  color="rgba(255, 255, 255, 0.4)"
+                  style={{ position: 'absolute', left: '15px', top: '50%', transform: 'translateY(-50%)' }}
+                />
                 <input
                   type="email"
                   value={email}
@@ -860,11 +939,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({
             </div>
 
             <div>
-              <h3 style={{ margin: '0 0 6px', fontSize: '18px', fontWeight: 800, color: '#fff' }}>
-                Check Your Inbox
-              </h3>
+              <h3 style={{ margin: '0 0 6px', fontSize: '18px', fontWeight: 800, color: '#fff' }}>Check Your Inbox</h3>
               <p style={{ margin: 0, fontSize: '13px', color: 'rgba(255, 255, 255, 0.6)', lineHeight: '1.5' }}>
-                We sent a verification link to <strong style={{ color: '#fff' }}>{email}</strong>. Please click the link to verify your email.
+                We sent a verification link to <strong style={{ color: '#fff' }}>{email}</strong>. Please click the link
+                to verify your email.
               </p>
             </div>
 
@@ -973,11 +1051,30 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         }}
       >
         <div>Protected by Firebase Security &bull; High-Fidelity Lossless Audio</div>
-        <div style={{ marginTop: '8px', fontSize: '11px', letterSpacing: '3px', textTransform: 'uppercase', color: 'rgba(255, 255, 255, 0.45)', fontWeight: 600 }}>
+        <div
+          style={{
+            marginTop: '8px',
+            fontSize: '11px',
+            letterSpacing: '3px',
+            textTransform: 'uppercase',
+            color: 'rgba(255, 255, 255, 0.45)',
+            fontWeight: 600
+          }}
+        >
           Powered by
         </div>
-        <div style={{ fontSize: '18px', fontWeight: 900, letterSpacing: '6px', background: 'linear-gradient(90deg, #8B5CF6, #06B6D4)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', marginTop: '2px' }}>
-          J  E  E  V  A
+        <div
+          style={{
+            fontSize: '18px',
+            fontWeight: 900,
+            letterSpacing: '6px',
+            background: 'linear-gradient(90deg, #8B5CF6, #06B6D4)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            marginTop: '2px'
+          }}
+        >
+          J E E V A
         </div>
       </div>
     </div>

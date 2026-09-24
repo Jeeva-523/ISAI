@@ -41,6 +41,18 @@ data class SyncSong(
 )
 
 @IgnoreExtraProperties
+data class HomeFeedData(
+    val revision: Long = 0L,
+    val language: String = "tamil",
+    val updatedAt: Long = 0L,
+    val generatedBy: String = "android",
+    val picksForYou: List<com.saavn.music.data.model.YouTubeSong> = emptyList(),
+    val newReleases: List<com.saavn.music.data.model.YouTubeSong> = emptyList(),
+    val trending: List<com.saavn.music.data.model.YouTubeSong> = emptyList(),
+    val mostPlayed: List<com.saavn.music.data.model.YouTubeSong> = emptyList()
+)
+
+@IgnoreExtraProperties
 data class PlaybackStateSync(
     val currentDeviceId: String = "",
     val currentSongId: String = "",
@@ -150,6 +162,10 @@ class IsaiConnectManager(private val context: Context) {
     private val _syncedHomeSongs = MutableStateFlow<List<com.saavn.music.data.model.YouTubeSong>>(emptyList())
     val syncedHomeSongs: StateFlow<List<com.saavn.music.data.model.YouTubeSong>> = _syncedHomeSongs.asStateFlow()
 
+    private var homeFeedListener: ValueEventListener? = null
+    private val _syncedHomeFeed = MutableStateFlow<HomeFeedData?>(null)
+    val syncedHomeFeed: StateFlow<HomeFeedData?> = _syncedHomeFeed.asStateFlow()
+
     private var favoritesListener: ValueEventListener? = null
     private val _syncedFavorites = MutableStateFlow<List<com.saavn.music.data.model.YouTubeSong>>(emptyList())
     val syncedFavorites: StateFlow<List<com.saavn.music.data.model.YouTubeSong>> = _syncedFavorites.asStateFlow()
@@ -212,6 +228,7 @@ class IsaiConnectManager(private val context: Context) {
         listenToRecentlyPlayed()
         listenToPreferences()
         listenToHomeSongs()
+        listenToHomeFeed()
         listenToFavorites()
     }
 
@@ -691,6 +708,106 @@ class IsaiConnectManager(private val context: Context) {
         homeRef.addValueEventListener(homeSongsListener!!)
     }
 
+    fun syncHomeFeed(feed: HomeFeedData) {
+        if (userId.isEmpty()) return
+        val mapItem = { s: com.saavn.music.data.model.YouTubeSong ->
+            mapOf(
+                "id" to s.videoId,
+                "title" to s.title,
+                "artist" to s.channelTitle,
+                "artwork" to s.thumbnailUrl,
+                "audioUrl" to (s.audioUrl ?: ""),
+                "durationFormatted" to s.durationFormatted,
+                "durationMs" to s.durationMs,
+                "playCount" to s.playCount
+            )
+        }
+
+        val payload = mapOf(
+            "revision" to if (feed.revision > 0L) feed.revision else System.currentTimeMillis(),
+            "language" to feed.language.lowercase().trim(),
+            "updatedAt" to System.currentTimeMillis(),
+            "generatedBy" to "android",
+            "picksForYou" to feed.picksForYou.take(20).map(mapItem),
+            "newReleases" to feed.newReleases.take(25).map(mapItem),
+            "trending" to feed.trending.take(40).map(mapItem),
+            "mostPlayed" to feed.mostPlayed.take(30).map(mapItem)
+        )
+
+        database.getReference("connect/$userId/homeFeed").setValue(payload)
+            .addOnFailureListener { e -> Log.w("IsaiConnect", "syncHomeFeed error: ${e.message}") }
+
+        if (feed.trending.isNotEmpty()) {
+            syncHomeSongs(feed.trending)
+        }
+    }
+
+    private fun parseSongList(snapshot: DataSnapshot): List<com.saavn.music.data.model.YouTubeSong> {
+        val list = mutableListOf<com.saavn.music.data.model.YouTubeSong>()
+        for (child in snapshot.children) {
+            val id = child.child("id").getValue(String::class.java) ?: ""
+            val title = child.child("title").getValue(String::class.java) ?: ""
+            val artist = child.child("artist").getValue(String::class.java) ?: ""
+            val artwork = child.child("artwork").getValue(String::class.java) ?: ""
+            val audioUrl = child.child("audioUrl").getValue(String::class.java)
+            val durFormatted = child.child("durationFormatted").getValue(String::class.java) ?: "3:30"
+            val durMs = child.child("durationMs").getValue(Long::class.java) ?: 210000L
+            val playCount = child.child("playCount").getValue(Long::class.java) ?: 0L
+
+            if (id.isNotBlank() && title.isNotBlank()) {
+                list.add(
+                    com.saavn.music.data.model.YouTubeSong(
+                        videoId = id,
+                        title = title,
+                        channelTitle = artist,
+                        thumbnailUrl = artwork,
+                        audioUrl = audioUrl,
+                        durationFormatted = durFormatted,
+                        durationMs = durMs,
+                        playCount = playCount
+                    )
+                )
+            }
+        }
+        return list
+    }
+
+    private fun listenToHomeFeed() {
+        if (userId.isEmpty()) return
+        val feedRef = database.getReference("connect/$userId/homeFeed")
+        homeFeedListener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val rev = snapshot.child("revision").getValue(Long::class.java) ?: 0L
+                if (rev > 0L) {
+                    val lang = snapshot.child("language").getValue(String::class.java) ?: "tamil"
+                    val updatedAt = snapshot.child("updatedAt").getValue(Long::class.java) ?: System.currentTimeMillis()
+                    val genBy = snapshot.child("generatedBy").getValue(String::class.java) ?: "unknown"
+                    val picks = parseSongList(snapshot.child("picksForYou"))
+                    val releases = parseSongList(snapshot.child("newReleases"))
+                    val trending = parseSongList(snapshot.child("trending"))
+                    val mostPlayed = parseSongList(snapshot.child("mostPlayed"))
+
+                    val data = HomeFeedData(
+                        revision = rev,
+                        language = lang,
+                        updatedAt = updatedAt,
+                        generatedBy = genBy,
+                        picksForYou = picks,
+                        newReleases = releases,
+                        trending = trending,
+                        mostPlayed = mostPlayed
+                    )
+                    _syncedHomeFeed.value = data
+                }
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                Log.w("IsaiConnect", "homeFeed listener cancelled: ${error.message}")
+            }
+        }
+        feedRef.addValueEventListener(homeFeedListener!!)
+    }
+
     fun syncFavorites(songs: List<com.saavn.music.data.model.YouTubeSong>) {
         if (userId.isEmpty()) return
         val clean = songs.take(100).map { s ->
@@ -770,6 +887,7 @@ class IsaiConnectManager(private val context: Context) {
             recentlyPlayedListener?.let { database.getReference("connect/$userId/recentlyPlayed").removeEventListener(it) }
             preferencesListener?.let { database.getReference("connect/$userId/preferences/preferredLanguages").removeEventListener(it) }
             homeSongsListener?.let { database.getReference("connect/$userId/homeSongs").removeEventListener(it) }
+            homeFeedListener?.let { database.getReference("connect/$userId/homeFeed").removeEventListener(it) }
             favoritesListener?.let { database.getReference("connect/$userId/favorites").removeEventListener(it) }
         }
         userId = ""

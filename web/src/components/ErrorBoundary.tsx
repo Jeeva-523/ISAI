@@ -1,4 +1,4 @@
-import { Component, ErrorInfo, ReactNode } from 'react'
+import { Component, type ErrorInfo, type ReactNode } from 'react'
 
 interface Props {
   children: ReactNode
@@ -25,7 +25,7 @@ export class ErrorBoundary extends Component<Props, State> {
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('[ISAI ErrorBoundary] Caught error:', error, errorInfo)
     try {
-      (window as any).__LAST_REACT_ERROR__ = {
+      ;(window as any).__LAST_REACT_ERROR__ = {
         message: error?.message,
         stack: error?.stack,
         info: errorInfo?.componentStack
@@ -51,50 +51,54 @@ export class ErrorBoundary extends Component<Props, State> {
       }
 
       return (
-        <div style={{
-          minHeight: '100vh',
-          backgroundColor: '#0B0B0F',
-          color: '#FFFFFF',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '24px',
-          fontFamily: 'system-ui, -apple-system, sans-serif'
-        }}>
-          <div style={{
-            background: '#16161F',
-            border: '1px solid rgba(139, 92, 246, 0.3)',
-            borderRadius: '20px',
-            padding: '32px',
-            maxWidth: '520px',
-            width: '100%',
-            textAlign: 'center',
-            boxShadow: '0 20px 40px rgba(0,0,0,0.6)'
-          }}>
+        <div
+          style={{
+            minHeight: '100vh',
+            backgroundColor: '#0B0B0F',
+            color: '#FFFFFF',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '24px',
+            fontFamily: 'system-ui, -apple-system, sans-serif'
+          }}
+        >
+          <div
+            style={{
+              background: '#16161F',
+              border: '1px solid rgba(139, 92, 246, 0.3)',
+              borderRadius: '20px',
+              padding: '32px',
+              maxWidth: '520px',
+              width: '100%',
+              textAlign: 'center',
+              boxShadow: '0 20px 40px rgba(0,0,0,0.6)'
+            }}
+          >
             <div style={{ fontSize: '48px', marginBottom: '16px' }}>🎵</div>
-            <h2 style={{ fontSize: '20px', fontWeight: 800, marginBottom: '8px', color: '#8B5CF6' }}>
-              ISAI HUB
-            </h2>
+            <h2 style={{ fontSize: '20px', fontWeight: 800, marginBottom: '8px', color: '#8B5CF6' }}>ISAI HUB</h2>
             <p style={{ fontSize: '14px', color: '#A5A5AE', marginBottom: '20px', lineHeight: 1.5 }}>
               A temporary display error occurred while updating playback.
             </p>
 
             {this.state.error && (
-              <div style={{
-                textAlign: 'left',
-                background: 'rgba(0,0,0,0.4)',
-                border: '1px solid rgba(239, 68, 68, 0.3)',
-                padding: '12px 16px',
-                borderRadius: '10px',
-                color: '#f87171',
-                fontSize: '12px',
-                marginBottom: '20px',
-                maxHeight: '140px',
-                overflowY: 'auto',
-                fontFamily: 'monospace',
-                wordBreak: 'break-all'
-              }}>
+              <div
+                style={{
+                  textAlign: 'left',
+                  background: 'rgba(0,0,0,0.4)',
+                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                  padding: '12px 16px',
+                  borderRadius: '10px',
+                  color: '#f87171',
+                  fontSize: '12px',
+                  marginBottom: '20px',
+                  maxHeight: '140px',
+                  overflowY: 'auto',
+                  fontFamily: 'monospace',
+                  wordBreak: 'break-all'
+                }}
+              >
                 <strong>Error:</strong> {this.state.error.message}
               </div>
             )}

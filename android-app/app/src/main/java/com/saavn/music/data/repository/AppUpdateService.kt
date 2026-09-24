@@ -298,11 +298,7 @@ class AppUpdateService private constructor(private val context: Context) {
             // Android 8.0+ Unknown Sources Permission Check
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 if (!context.packageManager.canRequestPackageInstalls()) {
-                    val settingsIntent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
-                        data = Uri.parse("package:${context.packageName}")
-                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                    }
-                    context.startActivity(settingsIntent)
+                    openUpdateUrl(context, "https://isaihub.web.app/update")
                     return
                 }
             }

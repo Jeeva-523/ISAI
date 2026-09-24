@@ -2,6 +2,7 @@ package com.saavn.music.connect
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.media.AudioManager
 import android.os.Build
 import android.provider.Settings
 import android.util.Log
@@ -23,6 +24,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.tasks.await
 import java.util.UUID
 import kotlin.math.abs
@@ -57,7 +59,8 @@ data class RoomPlaybackState(
     val serverTimestamp: Long = 0L,
     val version: Long = 0L,
     val song: RoomSong? = null,
-    val action: String = ""
+    val action: String = "",
+    val volume: Int = 100
 )
 
 @IgnoreExtraProperties
@@ -111,7 +114,13 @@ class ListenTogetherManager(
     private var driftJob: Job? = null
     private var heartbeatJob: Job? = null
     private var lastSeekTimestamp: Long = 0L
+    private var lastHostSyncTimestamp: Long = 0L
     private var lastProcessedVersion: Long = 0L
+
+    var onGuestPlaySongRequested: ((YouTubeSong, Float, Boolean) -> Unit)? = null
+
+    @Volatile
+    private var latestPlaybackState: RoomPlaybackState? = null
 
     private val _currentRoom = MutableStateFlow<RoomData?>(null)
     val currentRoom: StateFlow<RoomData?> = _currentRoom.asStateFlow()
@@ -212,7 +221,8 @@ class ListenTogetherManager(
                     serverTimestamp = now,
                     version = 1L,
                     song = songPayload,
-                    action = if (initialSong != null) "PLAY" else "INIT"
+                    action = if (initialSong != null) "PLAY" else "INIT",
+                    volume = playerController.volume.value
                 )
 
                 val myDevice = RoomDevice(
@@ -319,6 +329,7 @@ class ListenTogetherManager(
     }
 
     private fun attachToRoom(roomId: String) {
+        lastProcessedVersion = 0L
         _syncStatus.value = RoomSyncStatus.SYNCING
         val roomRef = database.getReference("rooms/$roomId")
 
@@ -353,13 +364,48 @@ class ListenTogetherManager(
                 }
 
                 val room = snapshot.getValue(RoomData::class.java) ?: return
-                _currentRoom.value = room
+                val prev = _currentRoom.value
+                latestPlaybackState = room.playbackState
+
+                val isJustProgressTick = prev != null &&
+                    prev.roomId == room.roomId &&
+                    prev.hostDeviceId == room.hostDeviceId &&
+                    prev.playbackState.version == room.playbackState.version &&
+                    prev.playbackState.state == room.playbackState.state &&
+                    prev.playbackState.song?.videoId == room.playbackState.song?.videoId &&
+                    prev.playbackState.volume == room.playbackState.volume &&
+                    prev.devices == room.devices
+
+                if (!isJustProgressTick) {
+                    _currentRoom.value = room
+                }
                 _syncStatus.value = RoomSyncStatus.SYNCED
 
                 evaluateHostFailover(room)
 
                 val pb = room.playbackState
-                if (pb.version >= lastProcessedVersion) {
+                if (!isHost()) {
+                    val hostVol = pb.volume
+                    if (hostVol in 0..100 && playerController.volume.value != hostVol) {
+                        playerController.updateSystemVolume(hostVol)
+                        scope.launch(Dispatchers.IO) {
+                            try {
+                                val am = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+                                if (am != null) {
+                                    val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                                    if (max > 0) {
+                                        val target = Math.round((hostVol.toFloat() / 100f) * max).coerceIn(0, max)
+                                        if (am.getStreamVolume(AudioManager.STREAM_MUSIC) != target) {
+                                            am.setStreamVolume(AudioManager.STREAM_MUSIC, target, 0)
+                                        }
+                                    }
+                                }
+                            } catch (_: Exception) {}
+                        }
+                    }
+                }
+
+                if (pb.version > lastProcessedVersion) {
                     lastProcessedVersion = pb.version
                     handleIncomingPlaybackState(room, pb)
                 }
@@ -370,6 +416,14 @@ class ListenTogetherManager(
             }
         }
         roomRef.addValueEventListener(currentRoomListener!!)
+
+        // Hardware sync callback when Guest finishes buffering
+        playerController.onPlaybackReady = {
+            if (!isHost()) {
+                // Ensure natural speed when playback commences; drift monitor seamlessly aligns via speed trimming
+                playerController.setPlaybackSpeed(1.0f)
+            }
+        }
 
         // Start Heartbeat & Drift monitor
         startHeartbeat(roomId)
@@ -384,8 +438,12 @@ class ListenTogetherManager(
         val currentSong = playerController.currentSong.value
 
         val isDifferentSong = currentSong == null || currentSong.videoId != roomSong.videoId
+        val needsAudioUrlUpgrade = currentSong != null &&
+            currentSong.videoId == roomSong.videoId &&
+            currentSong.audioUrl.isNullOrBlank() &&
+            roomSong.audioUrl.isNotBlank()
 
-        if (isDifferentSong) {
+        if (isDifferentSong || needsAudioUrlUpgrade) {
             val converted = YouTubeSong(
                 videoId = roomSong.videoId,
                 title = roomSong.title,
@@ -395,28 +453,36 @@ class ListenTogetherManager(
                 durationMs = if (roomSong.durationMs > 0) roomSong.durationMs else 210000L
             )
 
-            val expectedPos = getExpectedPosition(pb)
-            playerController.playSong(converted)
-            playerController.seekTo(expectedPos)
+            // Immediately prime controller with incoming room song so UI receives song without waiting for network stream resolution
+            playerController.prepareForPlayback(converted)
 
-            if (pb.state == "PLAYING") {
-                playerController.play()
+            val expectedPos = getExpectedPosition(pb)
+            val isPlaying = pb.state == "PLAYING"
+
+            val callback = onGuestPlaySongRequested
+            if (callback != null) {
+                callback(converted, expectedPos, isPlaying)
             } else {
-                playerController.pause()
+                playerController.playSong(converted, startPositionSec = expectedPos, autoPlay = isPlaying)
             }
         } else {
             // Same song, playback state changed
             if (pb.state == "PLAYING") {
                 val expectedPos = getExpectedPosition(pb)
                 val curPos = playerController.currentPositionSec.value
-                if (abs(curPos - expectedPos) > 1.2f) {
-                    playerController.seekTo(expectedPos)
+                if (abs(curPos - expectedPos) > 2.0f) {
+                    playerController.syncSeekTo(expectedPos)
                 }
                 playerController.play()
             } else if (pb.state == "PAUSED") {
                 playerController.pause()
-                playerController.seekTo(pb.positionSec)
+                playerController.syncSeekTo(pb.positionSec)
             }
+        }
+
+        // Synchronize room volume from Host
+        if (pb.volume in 0..100 && playerController.volume.value != pb.volume) {
+            playerController.updateSystemVolume(pb.volume)
         }
     }
 
@@ -497,8 +563,11 @@ class ListenTogetherManager(
         heartbeatJob = null
         currentRoomListener = null
         connectedListener = null
+        playerController.onPlaybackReady = null
 
         scope.launch(Dispatchers.Main) {
+            lastProcessedVersion = 0L
+            latestPlaybackState = null
             _currentRoom.value = null
             _syncStatus.value = RoomSyncStatus.DISCONNECTED
             playerController.setPlaybackSpeed(1.0f)
@@ -538,43 +607,74 @@ class ListenTogetherManager(
         driftJob?.cancel()
         driftJob = scope.launch(Dispatchers.Main) {
             while (isActive) {
-                delay(2500)
+                delay(400)
                 val room = _currentRoom.value ?: continue
                 if (room.hostDeviceId == deviceId) {
                     // Host keeps 1.0f speed
                     playerController.setPlaybackSpeed(1.0f)
+
+                    // Periodically calibrate Host position to Firebase every 3.0 seconds
+                    if (playerController.isPlaying.value && !playerController.isBuffering.value) {
+                        val now = getEstimatedServerTime()
+                        val curPos = playerController.getLivePositionSec()
+                        if (curPos > 0.1f && now - lastHostSyncTimestamp >= 3000L) {
+                            lastHostSyncTimestamp = now
+                            val syncUpdates = mapOf<String, Any>(
+                                "playbackState/positionSec" to curPos,
+                                "playbackState/serverTimestamp" to now,
+                                "updatedAt" to now
+                            )
+                            scope.launch(Dispatchers.IO) {
+                                try {
+                                    database.getReference("rooms/${room.roomId}").updateChildren(syncUpdates)
+                                } catch (_: Exception) {}
+                            }
+                        }
+                    }
                     continue
                 }
 
-                val pb = room.playbackState
+                val pb = latestPlaybackState ?: room.playbackState
                 if (pb.state != "PLAYING" || !playerController.isPlaying.value) {
                     playerController.setPlaybackSpeed(1.0f)
                     continue
                 }
 
+                // If player is actively buffering from network, do NOT interrupt or seek
+                if (playerController.isBuffering.value) {
+                    continue
+                }
+
                 val expected = getExpectedPosition(pb)
-                val actual = playerController.currentPositionSec.value
+                val actual = playerController.getLivePositionSec()
                 val drift = actual - expected
                 val absDrift = abs(drift)
 
                 when {
-                    // Tier 1: Tight sync (within 200ms) -> No action
-                    absDrift < 0.20f -> {
+                    // Tier 1: In tight sync (< 40ms) -> Normal 1.0x playback
+                    absDrift < 0.040f -> {
                         playerController.setPlaybackSpeed(1.0f)
                     }
 
-                    // Tier 2: Moderate drift (200ms - 1.5s) -> Smooth speed rate adjustment
-                    absDrift <= 1.5f -> {
-                        val rate = if (drift > 0) 0.96f else 1.04f
+                    // Tier 2: Micro drift (40ms - 250ms) -> Smooth pitch-preserved rate trim without buffering
+                    absDrift <= 0.25f -> {
+                        val rate = if (drift > 0) 0.95f else 1.05f
                         playerController.setPlaybackSpeed(rate)
                     }
 
-                    // Tier 3: Large drift (> 1.5s) -> Controlled debounced seek
+                    // Tier 3: Moderate drift (250ms - 2.5s) -> Dynamic Sonic speed catch-up (zero buffer dump, zero stutter)
+                    absDrift <= 2.50f -> {
+                        val rate = if (drift > 0) 0.90f else 1.10f
+                        playerController.setPlaybackSpeed(rate)
+                    }
+
+                    // Tier 4: Major drift (> 2.5s) -> Hard seek with safe 5-second debounce
                     else -> {
                         val now = System.currentTimeMillis()
-                        if (now - lastSeekTimestamp > 2500) {
+                        if (now - lastSeekTimestamp > 5000L) {
                             lastSeekTimestamp = now
-                            playerController.seekTo(expected)
+                            Log.i(TAG, "[ListenTogetherManager] Major drift (${drift}s) detected. Performing recovery seek to $expected")
+                            playerController.syncSeekTo(expected)
                             playerController.setPlaybackSpeed(1.0f)
                         }
                     }
@@ -600,6 +700,7 @@ class ListenTogetherManager(
             "playbackState/serverTimestamp" to now,
             "playbackState/version" to nextVersion,
             "playbackState/action" to "PLAY",
+            "playbackState/volume" to playerController.volume.value,
             "version" to nextVersion,
             "updatedAt" to now
         )
@@ -648,7 +749,7 @@ class ListenTogetherManager(
         database.getReference("rooms/${room.roomId}").updateChildren(updates)
     }
 
-    fun hostChangeSong(song: YouTubeSong) {
+    fun hostChangeSong(song: YouTubeSong, positionSec: Float = 0f) {
         val room = _currentRoom.value ?: return
         if (!isHost()) return
 
@@ -666,15 +767,38 @@ class ListenTogetherManager(
 
         val updates = mapOf<String, Any>(
             "playbackState/state" to "PLAYING",
-            "playbackState/positionSec" to 0f,
+            "playbackState/positionSec" to positionSec,
             "playbackState/serverTimestamp" to now,
             "playbackState/version" to nextVersion,
             "playbackState/song" to songPayload,
             "playbackState/action" to "SONG_CHANGED",
+            "playbackState/volume" to playerController.volume.value,
             "version" to nextVersion,
             "updatedAt" to now
         )
 
         database.getReference("rooms/${room.roomId}").updateChildren(updates)
+    }
+
+    fun hostSetVolume(volumePercent: Int) {
+        val room = _currentRoom.value ?: return
+        if (!isHost()) return
+
+        val now = getEstimatedServerTime()
+        val nextVersion = room.version + 1L
+        val clamped = volumePercent.coerceIn(0, 100)
+
+        val updates = mapOf<String, Any>(
+            "playbackState/volume" to clamped,
+            "playbackState/version" to nextVersion,
+            "version" to nextVersion,
+            "updatedAt" to now
+        )
+
+        scope.launch(Dispatchers.IO) {
+            try {
+                database.getReference("rooms/${room.roomId}").updateChildren(updates)
+            } catch (_: Exception) {}
+        }
     }
 }

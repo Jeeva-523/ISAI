@@ -1,17 +1,7 @@
+import { collection, deleteDoc, doc, getDocs, limit, orderBy, query, serverTimestamp, setDoc } from 'firebase/firestore'
 import { firestore } from '../firebase'
-import { authService } from './AuthService'
-import {
-  collection,
-  doc,
-  setDoc,
-  deleteDoc,
-  getDocs,
-  query,
-  orderBy,
-  limit,
-  serverTimestamp
-} from 'firebase/firestore'
 import type { Song } from '../../../shared/models/song'
+import { authService } from './AuthService'
 
 export interface PlaylistDoc {
   id: string
@@ -38,8 +28,8 @@ class PlaylistService {
         songData: song,
         likedAt: serverTimestamp()
       })
-    } catch (err) {
-      console.warn('[PlaylistService] Like song fallback:', err)
+    } catch (error) {
+      console.warn('[PlaylistService] Like song fallback:', error)
     }
   }
 
@@ -48,8 +38,8 @@ class PlaylistService {
     try {
       const songRef = doc(firestore, 'users', userId, 'likedSongs', songId)
       await deleteDoc(songRef)
-    } catch (err) {
-      console.warn('[PlaylistService] Unlike song fallback:', err)
+    } catch (error) {
+      console.warn('[PlaylistService] Unlike song fallback:', error)
     }
   }
 
@@ -67,7 +57,7 @@ class PlaylistService {
   // User Playlists
   async createPlaylist(name: string, description = ''): Promise<string> {
     const userId = this.getUserId()
-    const playlistId = 'pl_' + Math.random().toString(36).substring(2, 9)
+    const playlistId = `pl_${Math.random().toString(36).slice(2, 9)}`
     try {
       const plRef = doc(firestore, 'users', userId, 'playlists', playlistId)
       await setDoc(plRef, {
@@ -87,7 +77,19 @@ class PlaylistService {
     const userId = this.getUserId()
     try {
       const snap = await getDocs(collection(firestore, 'users', userId, 'playlists'))
-      return snap.docs.map((d) => ({ id: d.id, ...d.data() } as PlaylistDoc))
+      return snap.docs.map((d) => {
+        const docData = d.data()
+        const playlist: PlaylistDoc = {
+          id: d.id,
+          name: docData.name || '',
+          description: docData.description,
+          coverUrl: docData.coverUrl,
+          songCount: docData.songCount,
+          isPublic: docData.isPublic,
+          createdAt: docData.createdAt
+        }
+        return playlist
+      })
     } catch {
       return []
     }

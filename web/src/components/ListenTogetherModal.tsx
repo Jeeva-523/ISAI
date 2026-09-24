@@ -1,22 +1,7 @@
+import { AlertTriangle, Check, LogOut, Pause, Play, Radio, Share2, Users, Volume2, Wifi } from 'lucide-react'
 import React, { useEffect, useState } from 'react'
+import { ListenTogetherService, type RoomData, type SyncStatus } from '../services/ListenTogetherService'
 import type { Song } from '@shared/models/song'
-import {
-  ListenTogetherService,
-  RoomData,
-  SyncStatus
-} from '../services/ListenTogetherService'
-import {
-  Users,
-  Check,
-  LogOut,
-  Play,
-  Pause,
-  Share2,
-  Radio,
-  Wifi,
-  AlertTriangle,
-  Volume2
-} from 'lucide-react'
 
 interface ListenTogetherModalProps {
   isOpen: boolean
@@ -37,11 +22,6 @@ export const ListenTogetherModal: React.FC<ListenTogetherModalProps> = ({
   onClose,
   currentSong,
   currentTime = 0,
-  onPlaySong: _onPlaySong,
-  onTogglePlayPause: _onTogglePlayPause,
-  onSeek: _onSeek,
-  onNext: _onNext,
-  onPrev: _onPrev,
   needsAutoplayGesture = false,
   onAutoplayGestureUnlock
 }) => {
@@ -78,8 +58,8 @@ export const ListenTogetherModal: React.FC<ListenTogetherModalProps> = ({
     try {
       const created = await ListenTogetherService.createRoom(currentSong)
       setRoom(created)
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Unable to create room.')
+    } catch (error: any) {
+      setErrorMessage(error.message || 'Unable to create room.')
     } finally {
       setIsLoading(false)
     }
@@ -95,8 +75,8 @@ export const ListenTogetherModal: React.FC<ListenTogetherModalProps> = ({
       const joined = await ListenTogetherService.joinRoom(joinCode.trim())
       setRoom(joined)
       setJoinCode('')
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Unable to join room.')
+    } catch (error: any) {
+      setErrorMessage(error.message || 'Unable to join room.')
     } finally {
       setIsLoading(false)
     }
@@ -107,8 +87,8 @@ export const ListenTogetherModal: React.FC<ListenTogetherModalProps> = ({
     try {
       await ListenTogetherService.leaveRoom()
       setRoom(null)
-    } catch (err: any) {
-      console.warn('[ListenTogetherModal] Leave error:', err)
+    } catch (error: any) {
+      console.warn('[ListenTogetherModal] Leave error:', error)
     } finally {
       setIsLoading(false)
     }
@@ -117,35 +97,71 @@ export const ListenTogetherModal: React.FC<ListenTogetherModalProps> = ({
   const handleCopyShare = () => {
     if (!room) return
     const shareUrl = `${window.location.origin}/?room=${room.roomCode}`
-    navigator.clipboard.writeText(shareUrl).then(() => {
-      setCopiedLink(true)
-      setTimeout(() => setCopiedLink(false), 2000)
-    }).catch(() => {})
+    navigator.clipboard
+      .writeText(shareUrl)
+      .then(() => {
+        setCopiedLink(true)
+        setTimeout(() => setCopiedLink(false), 2000)
+      })
+      .catch(() => {})
   }
 
-  const connectedList = room?.devices
-    ? Object.values(room.devices).filter((d) => d && d.connected)
-    : []
+  const connectedList = room?.devices ? Object.values(room.devices).filter((d) => d && d.connected) : []
 
   const renderStatusBadge = () => {
     if (syncStatus === 'SYNCED') {
       return (
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#C8FF00', fontSize: '13px', fontWeight: 600 }}>
-          <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#C8FF00', boxShadow: '0 0 8px #C8FF00' }} />
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            color: '#C8FF00',
+            fontSize: '13px',
+            fontWeight: 600
+          }}
+        >
+          <span
+            style={{
+              width: '8px',
+              height: '8px',
+              borderRadius: '50%',
+              backgroundColor: '#C8FF00',
+              boxShadow: '0 0 8px #C8FF00'
+            }}
+          />
           Synchronized
         </span>
       )
     }
     if (syncStatus === 'SYNCING') {
       return (
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#FFD700', fontSize: '13px', fontWeight: 600 }}>
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            color: '#FFD700',
+            fontSize: '13px',
+            fontWeight: 600
+          }}
+        >
           <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#FFD700' }} />
           Syncing playback...
         </span>
       )
     }
     return (
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#FF9800', fontSize: '13px', fontWeight: 600 }}>
+      <span
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '6px',
+          color: '#FF9800',
+          fontSize: '13px',
+          fontWeight: 600
+        }}
+      >
         <AlertTriangle size={14} />
         Reconnecting...
       </span>
@@ -296,7 +312,9 @@ export const ListenTogetherModal: React.FC<ListenTogetherModalProps> = ({
                 padding: '18px'
               }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <div
+                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}
+              >
                 <span style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '1px', color: '#9CA3AF' }}>
                   Room Code
                 </span>
@@ -304,7 +322,15 @@ export const ListenTogetherModal: React.FC<ListenTogetherModalProps> = ({
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '28px', fontWeight: '900', letterSpacing: '2px', color: '#C8FF00', fontFamily: 'monospace' }}>
+                <span
+                  style={{
+                    fontSize: '28px',
+                    fontWeight: '900',
+                    letterSpacing: '2px',
+                    color: '#C8FF00',
+                    fontFamily: 'monospace'
+                  }}
+                >
                   {room.roomCode}
                 </span>
                 <div style={{ display: 'flex', gap: '8px' }}>
@@ -367,10 +393,27 @@ export const ListenTogetherModal: React.FC<ListenTogetherModalProps> = ({
                   </div>
                 )}
                 <div style={{ flex: 1, overflow: 'hidden' }}>
-                  <div style={{ fontSize: '14px', fontWeight: 600, color: '#FFF', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  <div
+                    style={{
+                      fontSize: '14px',
+                      fontWeight: 600,
+                      color: '#FFF',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis'
+                    }}
+                  >
                     {room.playbackState.song.title}
                   </div>
-                  <div style={{ fontSize: '12px', color: '#9CA3AF', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  <div
+                    style={{
+                      fontSize: '12px',
+                      color: '#9CA3AF',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis'
+                    }}
+                  >
                     {room.playbackState.song.artist}
                   </div>
                 </div>
@@ -443,8 +486,19 @@ export const ListenTogetherModal: React.FC<ListenTogetherModalProps> = ({
 
             {/* Connected Devices (Max 3) */}
             <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                <span style={{ fontSize: '13px', fontWeight: 600, color: '#D1D5DB', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div
+                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}
+              >
+                <span
+                  style={{
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    color: '#D1D5DB',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                >
                   <Users size={16} /> Connected Devices ({connectedList.length}/3)
                 </span>
               </div>
@@ -535,9 +589,7 @@ export const ListenTogetherModal: React.FC<ListenTogetherModalProps> = ({
                 textAlign: 'center'
               }}
             >
-              <h3 style={{ margin: '0 0 6px 0', fontSize: '16px', fontWeight: 600 }}>
-                Start a Listening Room
-              </h3>
+              <h3 style={{ margin: '0 0 6px 0', fontSize: '16px', fontWeight: 600 }}>Start a Listening Room</h3>
               <p style={{ margin: '0 0 16px 0', fontSize: '12px', color: '#9CA3AF' }}>
                 Create a private room and sync music with friends across phones and browsers.
               </p>
@@ -569,9 +621,7 @@ export const ListenTogetherModal: React.FC<ListenTogetherModalProps> = ({
 
             {/* Join Room Form */}
             <form onSubmit={handleJoinRoom} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <label style={{ fontSize: '13px', fontWeight: 600, color: '#D1D5DB' }}>
-                Enter Room Code
-              </label>
+              <label style={{ fontSize: '13px', fontWeight: 600, color: '#D1D5DB' }}>Enter Room Code</label>
               <div style={{ display: 'flex', gap: '10px' }}>
                 <input
                   type="text"

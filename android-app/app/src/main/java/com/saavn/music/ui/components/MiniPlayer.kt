@@ -47,12 +47,15 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.saavn.music.ui.theme.*
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import com.saavn.music.util.RelevanceEngine
 import com.saavn.music.ui.MainViewModel
 import com.saavn.music.data.model.YouTubeSong
 import com.saavn.music.ui.theme.DarkBackground
@@ -76,42 +79,61 @@ fun MiniPlayer(
     val positionSecLocal by viewModel.ytPlayerController.currentPositionSec.collectAsState()
     val durationSecLocal by viewModel.ytPlayerController.durationSec.collectAsState()
     val favorites by viewModel.favorites.collectAsState()
+    val currentRoom by viewModel.listenTogetherManager.currentRoom.collectAsState()
+    val inRoom = currentRoom != null
+    val isListenTogetherListener = inRoom && !viewModel.listenTogetherManager.isHost()
+    val roomHostName = currentRoom?.hostDeviceName ?: "Host"
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     val syncState by viewModel.isaiConnectManager.playbackState.collectAsState()
     val isSeparateMode by viewModel.isMultiDevicePlaybackSeparate.collectAsState()
     val isMyDeviceActive = if (isSeparateMode) true else viewModel.isaiConnectManager.isMyDeviceActive()
-    val isRemoteActive = !isSeparateMode && !isMyDeviceActive && syncState != null && 
+    val isRemoteActive = !inRoom && !isSeparateMode && !isMyDeviceActive && syncState != null && 
         syncState!!.currentDeviceId.isNotBlank() && 
         !syncState!!.currentTitle.isNullOrBlank() && 
         (syncState!!.isPlaying || Math.abs(System.currentTimeMillis() - syncState!!.updatedAt) < 15 * 60_000L)
 
-    val activeSong = if (isRemoteActive && !syncState?.currentTitle.isNullOrBlank()) {
+    val roomSong = currentRoom?.playbackState?.song?.takeIf { it.title.isNotBlank() }?.let { rs ->
         YouTubeSong(
-            videoId = syncState?.currentSongId ?: "",
-            title = syncState?.currentTitle ?: "Remote Track",
-            channelTitle = syncState?.currentArtist ?: "ISAI Connect",
-            thumbnailUrl = syncState?.currentArtwork ?: "",
-            audioUrl = syncState?.currentAudioUrl?.ifBlank { null }
+            videoId = rs.videoId,
+            title = rs.title,
+            channelTitle = rs.artist,
+            thumbnailUrl = rs.artwork,
+            audioUrl = rs.audioUrl.ifBlank { null }
         )
-    } else {
-        currentSongLocal
     }
 
-    val isPlaying = if (isRemoteActive) (syncState?.isPlaying == true) else isPlayingLocal
-    val positionSec = if (isRemoteActive) ((syncState?.positionMs ?: 0L) / 1000f) else positionSecLocal
-    val durationSec = if (isRemoteActive) ((syncState?.durationMs ?: 210000L) / 1000f) else durationSecLocal
+    val activeSong = when {
+        inRoom -> currentSongLocal ?: roomSong
+        isRemoteActive && !syncState?.currentTitle.isNullOrBlank() -> {
+            YouTubeSong(
+                videoId = syncState?.currentSongId ?: "",
+                title = syncState?.currentTitle ?: "Remote Track",
+                channelTitle = syncState?.currentArtist ?: "ISAI Connect",
+                thumbnailUrl = syncState?.currentArtwork ?: "",
+                audioUrl = syncState?.currentAudioUrl?.ifBlank { null }
+            )
+        }
+        else -> currentSongLocal
+    }
 
-    // Smooth vinyl rotation when playing
-    val infiniteTransition = rememberInfiniteTransition(label = "MiniVinylSpin")
-    val rotationAngle by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 12000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "miniRotation"
-    )
+    val isPlaying = when {
+        inRoom -> isPlayingLocal || (currentRoom?.playbackState?.state == "PLAYING")
+        isRemoteActive -> (syncState?.isPlaying == true)
+        else -> isPlayingLocal
+    }
+    val positionSec = when {
+        inRoom && positionSecLocal > 0f -> positionSecLocal
+        inRoom -> (viewModel.listenTogetherManager.getExpectedPosition() / 1000f)
+        isRemoteActive -> ((syncState?.positionMs ?: 0L) / 1000f)
+        else -> positionSecLocal
+    }
+    val durationSec = when {
+        inRoom && durationSecLocal > 0f -> durationSecLocal
+        inRoom -> ((currentRoom?.playbackState?.song?.durationMs ?: 0L) / 1000f).takeIf { it > 0f } ?: durationSecLocal
+        isRemoteActive -> ((syncState?.durationMs ?: 210000L) / 1000f)
+        else -> durationSecLocal
+    }
 
     AnimatedVisibility(
         visible = activeSong != null,
@@ -178,7 +200,11 @@ fun MiniPlayer(
                         contentAlignment = Alignment.Center
                     ) {
                         AsyncImage(
-                            model = song.thumbnailUrl,
+                            model = ImageRequest.Builder(LocalContext.current)
+                                .data(RelevanceEngine.getSafeThumbnailUrl(song.thumbnailUrl, song.videoId))
+                                .crossfade(true)
+                                .error(com.saavn.music.R.drawable.app_logo)
+                                .build(),
                             contentDescription = song.title,
                             modifier = Modifier
                                 .fillMaxSize()
@@ -231,8 +257,15 @@ fun MiniPlayer(
                                 modifier = Modifier.weight(1f, fill = false)
                             )
 
-                            val isMyDeviceActive = viewModel.isaiConnectManager.isMyDeviceActive()
-                            if (!isMyDeviceActive) {
+                            if (isListenTogetherListener) {
+                                Text(
+                                    text = "• 👑 Host: $roomHostName",
+                                    color = Color(0xFF4ADE80),
+                                    fontSize = 9.5.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    letterSpacing = 0.5.sp
+                                )
+                            } else if (!isMyDeviceActive) {
                                 Text(
                                     text = "• 📱 Connected",
                                     color = com.saavn.music.ui.theme.IsaiLime,
@@ -277,16 +310,26 @@ fun MiniPlayer(
                             .shadow(
                                 elevation = 10.dp,
                                 shape = CircleShape,
-                                spotColor = NeonCyan.copy(alpha = 0.5f)
+                                spotColor = if (isListenTogetherListener) Color(0xFF22C55E).copy(alpha = 0.4f) else NeonCyan.copy(alpha = 0.5f)
                             )
                             .clip(CircleShape)
                             .background(
-                                Brush.linearGradient(
-                                    colors = listOf(NeonCyan, NeonPurple, NeonPink)
-                                )
+                                if (isListenTogetherListener) {
+                                    Brush.linearGradient(
+                                        colors = listOf(Color(0xFF16A34A), Color(0xFF0D9488))
+                                    )
+                                } else {
+                                    Brush.linearGradient(
+                                        colors = listOf(NeonCyan, NeonPurple, NeonPink)
+                                    )
+                                }
                             )
                             .clickable {
-                                viewModel.togglePlayPause()
+                                if (isListenTogetherListener) {
+                                    android.widget.Toast.makeText(context, "👑 Play/Pause is controlled by Host ($roomHostName)", android.widget.Toast.LENGTH_SHORT).show()
+                                } else {
+                                    viewModel.togglePlayPause()
+                                }
                             },
                         contentAlignment = Alignment.Center
                     ) {
@@ -310,13 +353,19 @@ fun MiniPlayer(
 
                     // Next button
                     IconButton(
-                        onClick = { viewModel.playNext() },
+                        onClick = {
+                            if (isListenTogetherListener) {
+                                android.widget.Toast.makeText(context, "👑 Only Host ($roomHostName) can skip songs", android.widget.Toast.LENGTH_SHORT).show()
+                            } else {
+                                viewModel.playNext()
+                            }
+                        },
                         modifier = Modifier.size(36.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.SkipNext,
                             contentDescription = "Next",
-                            tint = TextPrimary.copy(alpha = 0.9f),
+                            tint = if (isListenTogetherListener) TextMuted.copy(alpha = 0.4f) else TextPrimary.copy(alpha = 0.9f),
                             modifier = Modifier.size(22.dp)
                         )
                     }

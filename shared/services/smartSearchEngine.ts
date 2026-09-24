@@ -1,5 +1,21 @@
 import { detectSongLanguage } from '../api/music-api'
-import { MASTER_KEYWORD_DICTIONARY, CAT_LANGUAGE, CAT_ARTIST, CAT_MOOD, CAT_LOVE_ROMANCE, CAT_SAD_EMOTIONAL, CAT_GENRE, CAT_TAMIL_GENRE, CAT_ACTIVITY, CAT_SITUATION, CAT_WEATHER, CAT_YEAR_ERA, CAT_RELEASE, CAT_CLASSIC, CAT_DEVOTIONAL } from '../constants/keywordDictionary'
+import {
+  MASTER_KEYWORD_DICTIONARY,
+  CAT_LANGUAGE,
+  CAT_ARTIST,
+  CAT_MOOD,
+  CAT_LOVE_ROMANCE,
+  CAT_SAD_EMOTIONAL,
+  CAT_GENRE,
+  CAT_TAMIL_GENRE,
+  CAT_ACTIVITY,
+  CAT_SITUATION,
+  CAT_WEATHER,
+  CAT_YEAR_ERA,
+  CAT_RELEASE,
+  CAT_CLASSIC,
+  CAT_DEVOTIONAL
+} from '../constants/keywordDictionary'
 import type { Song } from '../models/song'
 import { isSongInLanguage } from '../utils/relevance'
 
@@ -156,7 +172,12 @@ export class SmartSearchEngine {
         if (normalized.includes(pNorm)) {
           if (entry.category === CAT_LANGUAGE && !detectedLang) detectedLang = entry.keyword
           if (entry.category === CAT_ARTIST && !detectedArtist) detectedArtist = entry.keyword
-          if ((entry.category === CAT_MOOD || entry.category === CAT_LOVE_ROMANCE || entry.category === CAT_SAD_EMOTIONAL) && !detectedMood) {
+          if (
+            (entry.category === CAT_MOOD ||
+              entry.category === CAT_LOVE_ROMANCE ||
+              entry.category === CAT_SAD_EMOTIONAL) &&
+            !detectedMood
+          ) {
             detectedMood = entry.keyword
           }
           if ((entry.category === CAT_GENRE || entry.category === CAT_TAMIL_GENRE) && !detectedGenre) {
@@ -176,20 +197,38 @@ export class SmartSearchEngine {
       }
     }
 
-    const stopWords = new Set(['song', 'songs', 'track', 'music', 'for', 'in', 'the', 'a', 'an', 'paatu', 'paadal', 'movie', 'film'])
+    const stopWords = new Set([
+      'song',
+      'songs',
+      'track',
+      'music',
+      'for',
+      'in',
+      'the',
+      'a',
+      'an',
+      'paatu',
+      'paadal',
+      'movie',
+      'film'
+    ])
     const unmatched = tokens.filter((t) => !matchedTokens.has(t) && !stopWords.has(t))
 
     const primaryLang = (userPreferredLanguages[0] || 'tamil').toLowerCase()
     const effectiveLang = detectedLang || primaryLang
 
     let optimized = ''
-    const formattedArtist = detectedArtist ? (
-      detectedArtist === 'anirudh' ? 'Anirudh Ravichander' :
-      detectedArtist === 'ar rahman' ? 'A.R. Rahman' :
-      detectedArtist === 'ilaiyaraaja' ? 'Ilaiyaraaja' :
-      detectedArtist === 'yuvan' ? 'Yuvan Shankar Raja' :
-      detectedArtist.charAt(0).toUpperCase() + detectedArtist.slice(1)
-    ) : undefined
+    const formattedArtist = detectedArtist
+      ? detectedArtist === 'anirudh'
+        ? 'Anirudh Ravichander'
+        : detectedArtist === 'ar rahman'
+          ? 'A.R. Rahman'
+          : detectedArtist === 'ilaiyaraaja'
+            ? 'Ilaiyaraaja'
+            : detectedArtist === 'yuvan'
+              ? 'Yuvan Shankar Raja'
+              : detectedArtist.charAt(0).toUpperCase() + detectedArtist.slice(1)
+      : undefined
 
     if (unmatched.length > 0) {
       // Specific song or movie search (e.g. "Ghilli", "Leo", "Master", "Arabic Kuthu", "Kannazhaga")
@@ -307,7 +346,10 @@ export class SmartSearchEngine {
       }
     }
 
-    if (intent.detectedMood && (text.includes(intent.detectedMood) || text.includes('love') || text.includes('romantic'))) {
+    if (
+      intent.detectedMood &&
+      (text.includes(intent.detectedMood) || text.includes('love') || text.includes('romantic'))
+    ) {
       score += 20
     }
     if (intent.detectedGenre && text.includes(intent.detectedGenre)) score += 25

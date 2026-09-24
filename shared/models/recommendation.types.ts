@@ -26,11 +26,11 @@ export interface UserPreferenceProfile {
   userId: string
   totalMeaningfulPlays: number
   artistAffinityMap: Record<string, number> // artistName -> score
-  genreAffinityMap: Record<string, number>  // genre -> score
+  genreAffinityMap: Record<string, number> // genre -> score
   languageAffinityMap: Record<string, number> // language -> score
-  skippedArtistsMap: Record<string, number>  // artistName -> skipCount
-  trackPlayCounts: Record<string, number>    // trackId -> count
-  recentTrackIds: string[]                   // chronological
+  skippedArtistsMap: Record<string, number> // artistName -> skipCount
+  trackPlayCounts: Record<string, number> // trackId -> count
+  recentTrackIds: string[] // chronological
   favoriteTrackIds: string[]
   topArtistNames: string[]
   lastUpdated: number

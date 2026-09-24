@@ -13,16 +13,16 @@ export const RECOMMENDATION_CONFIG = {
 
   // Meaningful Listen Thresholds (whichever reached first)
   MEANINGFUL_PLAY_SECONDS: 30,
-  MEANINGFUL_PLAY_PERCENT: 0.50,
+  MEANINGFUL_PLAY_PERCENT: 0.5,
 
   // Skip Penalty Threshold (skipping before this duration is a negative signal)
   SKIP_PENALTY_THRESHOLD_SECONDS: 10,
 
   // Diversity & Content Distribution Ratios
   DIVERSITY_RATIOS: {
-    FAMILIAR_CONTENT_PERCENT: 0.70, // 70% familiar / favorite artists
-    RELATED_CONTENT_PERCENT: 0.20,   // 20% similar / collaborator artists
-    DISCOVERY_CONTENT_PERCENT: 0.10  // 10% fresh discovery tracks
+    FAMILIAR_CONTENT_PERCENT: 0.7, // 70% familiar / favorite artists
+    RELATED_CONTENT_PERCENT: 0.2, // 20% similar / collaborator artists
+    DISCOVERY_CONTENT_PERCENT: 0.1 // 10% fresh discovery tracks
   },
 
   // Per-Artist Repetition Cap in Recommendation Mix
@@ -30,12 +30,12 @@ export const RECOMMENDATION_CONFIG = {
 
   // Recommendation Scoring Signal Weights (Must sum to 1.0)
   SCORING_WEIGHTS: {
-    userPreferenceScore: 0.30,
-    recentListeningScore: 0.20,
+    userPreferenceScore: 0.3,
+    recentListeningScore: 0.2,
     artistAffinityScore: 0.15,
-    genreAffinityScore: 0.10,
-    popularityScore: 0.10,
-    freshnessScore: 0.10,
+    genreAffinityScore: 0.1,
+    popularityScore: 0.1,
+    freshnessScore: 0.1,
     languageMatchScore: 0.05
   },
 

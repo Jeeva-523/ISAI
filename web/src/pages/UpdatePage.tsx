@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 
 export const UpdatePage: React.FC = () => {
   const [status, setStatus] = useState<'idle' | 'downloading' | 'completed' | 'error'>('downloading')
@@ -46,16 +46,16 @@ export const UpdatePage: React.FC = () => {
       const link = document.createElement('a')
       link.href = blobUrl
       link.download = 'isai.apk'
-      document.body.appendChild(link)
+      document.body.append(link)
       link.click()
-      document.body.removeChild(link)
+      link.remove()
       setTimeout(() => URL.revokeObjectURL(blobUrl), 30000)
 
       setProgress(100)
       setDownloadedMb(totalInMb)
       setStatus('completed')
-    } catch (err) {
-      console.error('Download error:', err)
+    } catch (error) {
+      console.error('Download error:', error)
       setStatus('error')
     }
   }
@@ -124,16 +124,16 @@ export const UpdatePage: React.FC = () => {
           {status === 'downloading'
             ? 'Downloading ISAI Update... 🚀'
             : status === 'completed'
-            ? 'Update Download Complete! 🎉'
-            : 'Download ISAI Update'}
+              ? 'Update Download Complete! 🎉'
+              : 'Download ISAI Update'}
         </h1>
 
         <p style={{ fontSize: '14px', color: '#9CA3AF', margin: '0 0 24px', lineHeight: '1.5' }}>
           {status === 'downloading'
             ? 'Downloading latest APK directly to your device:'
             : status === 'completed'
-            ? 'APK download complete. Tap the file to install the update.'
-            : 'Click below to download the latest ISAI APK:'}
+              ? 'APK download complete. Tap the file to install the update.'
+              : 'Click below to download the latest ISAI APK:'}
         </p>
 
         {/* Progress Bar */}
@@ -167,8 +167,18 @@ export const UpdatePage: React.FC = () => {
                 }}
               />
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#A78BFA', fontWeight: 600 }}>
-              <span>{downloadedMb} MB / {totalMb} MB</span>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                fontSize: '13px',
+                color: '#A78BFA',
+                fontWeight: 600
+              }}
+            >
+              <span>
+                {downloadedMb} MB / {totalMb} MB
+              </span>
               <span>{Math.min(progress, 100)}%</span>
             </div>
           </div>
@@ -242,10 +252,7 @@ export const UpdatePage: React.FC = () => {
         ) : null}
 
         <div>
-          <a
-            href="/"
-            style={{ color: '#6B7280', fontSize: '13px', textDecoration: 'none' }}
-          >
+          <a href="/" style={{ color: '#6B7280', fontSize: '13px', textDecoration: 'none' }}>
             ← Back to Web Player
           </a>
         </div>

@@ -1,16 +1,16 @@
-import { musicApi, detectSongLanguage } from '@shared/api/music-api'
+import { detectSongLanguage, musicApi } from '@shared/api/music-api'
+import { RECOMMENDATION_CONFIG } from '@shared/constants/recommendation-config'
 import { storageService } from '@shared/services/storageService'
-import type { Song } from '@shared/models/song'
+import { doc, setDoc } from 'firebase/firestore'
+import { firestore } from '../firebase'
 import type {
   ListeningEvent,
-  UserPreferenceProfile,
-  ScoredSong,
   PersonalizedHomeFeed,
-  PlayEventSource
+  PlayEventSource,
+  ScoredSong,
+  UserPreferenceProfile
 } from '@shared/models/recommendation.types'
-import { RECOMMENDATION_CONFIG } from '@shared/constants/recommendation-config'
-import { firestore } from '../firebase'
-import { doc, setDoc } from 'firebase/firestore'
+import type { Song } from '@shared/models/song'
 
 const STORAGE_PREFIX = 'isai_rec_profile_'
 
@@ -31,6 +31,7 @@ export class RecommendationService {
    * Load or initialize a user's recommendation preference profile
    */
   async getProfile(userId: string, preferredLanguages: string[] = ['tamil']): Promise<UserPreferenceProfile> {
+    await Promise.resolve()
     if (this.profileCache.has(userId)) {
       return this.profileCache.get(userId)!
     }
@@ -44,15 +45,15 @@ export class RecommendationService {
           this.profileCache.set(userId, parsed)
           return parsed
         }
-      } catch (e) {
-        console.warn('[RecommendationService] Failed reading local rec profile:', e)
+      } catch (error) {
+        console.warn('[RecommendationService] Failed reading local rec profile:', error)
       }
     }
 
     // 2. Default initial profile
     const langMap: Record<string, number> = {}
     for (const l of preferredLanguages) {
-      langMap[l.toLowerCase()] = 1.0
+      langMap[l.toLowerCase()] = 1
     }
 
     const defaultProfile: UserPreferenceProfile = {
@@ -78,29 +79,34 @@ export class RecommendationService {
    * Persist user profile locally and asynchronously to Firestore
    */
   async saveProfile(profile: UserPreferenceProfile): Promise<void> {
+    await Promise.resolve()
     profile.lastUpdated = Date.now()
     this.profileCache.set(profile.userId, profile)
 
     if (typeof window !== 'undefined' && window.localStorage) {
       try {
         localStorage.setItem(`${STORAGE_PREFIX}${profile.userId}`, JSON.stringify(profile))
-      } catch (e) {
-        console.warn('[RecommendationService] Failed saving local profile:', e)
+      } catch (error) {
+        console.warn('[RecommendationService] Failed saving local profile:', error)
       }
     }
 
     // Firestore async sync
     if (profile.userId && !profile.userId.startsWith('guest_')) {
       try {
-        setDoc(doc(firestore, 'users', profile.userId), {
-          totalMeaningfulPlays: profile.totalMeaningfulPlays,
-          artistAffinityMap: profile.artistAffinityMap,
-          genreAffinityMap: profile.genreAffinityMap,
-          languageAffinityMap: profile.languageAffinityMap,
-          skippedArtistsMap: profile.skippedArtistsMap,
-          topArtistNames: profile.topArtistNames,
-          lastUpdated: profile.lastUpdated
-        }, { merge: true }).catch(() => {})
+        setDoc(
+          doc(firestore, 'users', profile.userId),
+          {
+            totalMeaningfulPlays: profile.totalMeaningfulPlays,
+            artistAffinityMap: profile.artistAffinityMap,
+            genreAffinityMap: profile.genreAffinityMap,
+            languageAffinityMap: profile.languageAffinityMap,
+            skippedArtistsMap: profile.skippedArtistsMap,
+            topArtistNames: profile.topArtistNames,
+            lastUpdated: profile.lastUpdated
+          },
+          { merge: true }
+        ).catch(() => {})
       } catch {}
     }
   }
@@ -119,7 +125,7 @@ export class RecommendationService {
 
     const profile = await this.getProfile(userId)
     const dur = totalDurationSeconds > 0 ? totalDurationSeconds : 210
-    const completionPercentage = Math.min(1.0, playedSeconds / dur)
+    const completionPercentage = Math.min(1, playedSeconds / dur)
 
     const isMeaningful =
       playedSeconds >= RECOMMENDATION_CONFIG.MEANINGFUL_PLAY_SECONDS ||
@@ -149,31 +155,35 @@ export class RecommendationService {
     const genreKey = (song.genre || '').toLowerCase().trim()
 
     // Update play counts & recents
-    profile.recentTrackIds = [song.videoId, ...profile.recentTrackIds.filter(id => id !== song.videoId)].slice(0, 50)
+    profile.recentTrackIds = [song.videoId, ...profile.recentTrackIds.filter((id) => id !== song.videoId)].slice(0, 50)
     profile.trackPlayCounts[song.videoId] = (profile.trackPlayCounts[song.videoId] || 0) + 1
 
     if (isMeaningful) {
       profile.totalMeaningfulPlays = (profile.totalMeaningfulPlays || 0) + 1
 
       if (artistKey) {
-        profile.artistAffinityMap[artistKey] = (profile.artistAffinityMap[artistKey] || 0) + RECOMMENDATION_CONFIG.SIGNAL_VALUES.MEANINGFUL_PLAY_BOOST
+        profile.artistAffinityMap[artistKey] =
+          (profile.artistAffinityMap[artistKey] || 0) + RECOMMENDATION_CONFIG.SIGNAL_VALUES.MEANINGFUL_PLAY_BOOST
       }
       if (langKey) {
-        profile.languageAffinityMap[langKey] = (profile.languageAffinityMap[langKey] || 0) + 1.0
+        profile.languageAffinityMap[langKey] = (profile.languageAffinityMap[langKey] || 0) + 1
       }
       if (genreKey) {
-        profile.genreAffinityMap[genreKey] = (profile.genreAffinityMap[genreKey] || 0) + 1.0
+        profile.genreAffinityMap[genreKey] = (profile.genreAffinityMap[genreKey] || 0) + 1
       }
 
       // Recompute top artists
       profile.topArtistNames = Object.entries(profile.artistAffinityMap)
         .sort((a, b) => b[1] - a[1])
         .slice(0, 5)
-        .map(entry => entry[0])
+        .map((entry) => entry[0])
     } else if (isSkippedEarly && artistKey) {
       profile.skippedArtistsMap[artistKey] = (profile.skippedArtistsMap[artistKey] || 0) + 1
       if (profile.artistAffinityMap[artistKey]) {
-        profile.artistAffinityMap[artistKey] = Math.max(0, profile.artistAffinityMap[artistKey] + RECOMMENDATION_CONFIG.SIGNAL_VALUES.SKIP_PENALTY)
+        profile.artistAffinityMap[artistKey] = Math.max(
+          0,
+          profile.artistAffinityMap[artistKey] + RECOMMENDATION_CONFIG.SIGNAL_VALUES.SKIP_PENALTY
+        )
       }
     }
 
@@ -190,8 +200,8 @@ export class RecommendationService {
 
     // 1. Language Match Score
     let languageMatchScore = 0
-    if (preferredLanguages.map(l => l.toLowerCase()).includes(songLang)) {
-      languageMatchScore = 1.0
+    if (preferredLanguages.map((l) => l.toLowerCase()).includes(songLang)) {
+      languageMatchScore = 1
     } else if (profile.languageAffinityMap[songLang] && profile.languageAffinityMap[songLang] > 2) {
       languageMatchScore = 0.8
     } else {
@@ -201,20 +211,20 @@ export class RecommendationService {
     // 2. Artist Affinity Score
     let artistAffinityScore = 0
     if (artistKey && profile.artistAffinityMap[artistKey]) {
-      artistAffinityScore = Math.min(1.0, profile.artistAffinityMap[artistKey] / 10.0)
+      artistAffinityScore = Math.min(1, profile.artistAffinityMap[artistKey] / 10)
     }
 
     // 3. Genre Affinity Score
     let genreAffinityScore = 0
     if (genreKey && profile.genreAffinityMap[genreKey]) {
-      genreAffinityScore = Math.min(1.0, profile.genreAffinityMap[genreKey] / 8.0)
+      genreAffinityScore = Math.min(1, profile.genreAffinityMap[genreKey] / 8)
     }
 
     // 4. Freshness / Recency Score (tracks within 30 days score 1.0)
     let freshnessScore = 0.3
     if (song.releaseTimestamp) {
       const ageDays = (Date.now() - song.releaseTimestamp) / 86400000
-      if (ageDays <= RECOMMENDATION_CONFIG.NEW_RELEASE_DAYS) freshnessScore = 1.0
+      if (ageDays <= RECOMMENDATION_CONFIG.NEW_RELEASE_DAYS) freshnessScore = 1
       else if (ageDays <= 90) freshnessScore = 0.75
       else if (ageDays <= 365) freshnessScore = 0.5
       else freshnessScore = 0.25
@@ -223,18 +233,18 @@ export class RecommendationService {
     // 5. Popularity Score
     let popularityScore = 0.5
     if (song.playCountNumber && song.playCountNumber > 0) {
-      popularityScore = Math.min(1.0, Math.log10(song.playCountNumber) / 8.0)
+      popularityScore = Math.min(1, Math.log10(song.playCountNumber) / 8)
     }
 
     // 6. Recent Listening & Repeat Count Score
     let recentListeningScore = 0
     const repeatPlays = profile.trackPlayCounts[song.videoId] || 0
     if (repeatPlays > 0) {
-      recentListeningScore = Math.min(1.0, repeatPlays / 5.0)
+      recentListeningScore = Math.min(1, repeatPlays / 5)
     }
 
     // 7. General User Preference composite
-    const userPreferenceScore = (artistAffinityScore * 0.6) + (genreAffinityScore * 0.4)
+    const userPreferenceScore = artistAffinityScore * 0.6 + genreAffinityScore * 0.4
 
     // Compute weighted score using weights
     const weights = RECOMMENDATION_CONFIG.SCORING_WEIGHTS
@@ -296,12 +306,15 @@ export class RecommendationService {
     if (combinedHistory.length > 0) {
       const artistCounts: Record<string, number> = {}
       combinedHistory.forEach((s) => {
-        const rawArtist = (s.channelTitle || '').replace(/\s*-\s*Topic/gi, '').replace(/\s*Official/gi, '').trim()
+        const rawArtist = (s.channelTitle || '')
+          .replaceAll(/\s*-\s*Topic/gi, '')
+          .replaceAll(/\s*Official/gi, '')
+          .trim()
         const clean = rawArtist.split(',')[0].split('&')[0].trim()
         if (clean && clean !== 'Tamil Artist' && clean !== 'Tamil Music' && clean !== 'ISAI Artist') {
           const playCount = profile.trackPlayCounts[s.videoId] || 1
-          const isFav = favSongs.some(f => f.videoId === s.videoId)
-          const weight = (playCount * 3) + (isFav ? 6 : 0)
+          const isFav = favSongs.some((f) => f.videoId === s.videoId)
+          const weight = playCount * 3 + (isFav ? 6 : 0)
           artistCounts[clean] = (artistCounts[clean] || 0) + weight
         }
       })
@@ -311,7 +324,8 @@ export class RecommendationService {
       }
     }
 
-    const topArtistAnchor = derivedTopArtist || (trending[0]?.channelTitle?.split(',')[0]?.trim() || 'Anirudh Ravichander')
+    const topArtistAnchor =
+      derivedTopArtist || trending[0]?.channelTitle?.split(',')[0]?.trim() || 'Anirudh Ravichander'
 
     // Dynamically search targeted songs for top artist (matches Android app behavior)
     let targetedArtistSongs: Song[] = []
@@ -319,21 +333,28 @@ export class RecommendationService {
       try {
         const hits = await musicApi.searchSongs(`${derivedTopArtist} Tamil songs`, 15)
         if (hits && hits.length > 0) {
-          targetedArtistSongs = hits.filter(h => !combinedHistory.some(c => c.videoId === h.videoId))
+          targetedArtistSongs = hits.filter((h) => !combinedHistory.some((c) => c.videoId === h.videoId))
           if (targetedArtistSongs.length === 0) targetedArtistSongs = hits
         }
-      } catch (err) {
-        console.warn('[RecommendationService] Artist songs search warning:', err)
+      } catch (error) {
+        console.warn('[RecommendationService] Artist songs search warning:', error)
       }
     }
 
-    const becauseYouListenSection = (derivedTopArtist && targetedArtistSongs.length > 0) ? {
-      artistName: derivedTopArtist,
-      songs: targetedArtistSongs.slice(0, 12)
-    } : (derivedTopArtist ? {
-      artistName: derivedTopArtist,
-      songs: trending.filter(s => (s.channelTitle || '').toLowerCase().includes(derivedTopArtist.toLowerCase())).slice(0, 10)
-    } : undefined)
+    const becauseYouListenSection =
+      derivedTopArtist && targetedArtistSongs.length > 0
+        ? {
+            artistName: derivedTopArtist,
+            songs: targetedArtistSongs.slice(0, 12)
+          }
+        : derivedTopArtist
+          ? {
+              artistName: derivedTopArtist,
+              songs: trending
+                .filter((s) => (s.channelTitle || '').toLowerCase().includes(derivedTopArtist.toLowerCase()))
+                .slice(0, 10)
+            }
+          : undefined
 
     // Cold Start (< 10 meaningful plays)
     if (isColdStart) {
@@ -350,9 +371,24 @@ export class RecommendationService {
           newReleases30Days: newReleases.slice(0, 15),
           trendingInLanguage: sortedByPlays.slice(0, 20),
           popularArtists: [
-            { id: '1', name: 'Anirudh Ravichander', imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d1/Anirudh_Ravichander_at_Audi_Ritz_Style_Awards_2015.jpg/440px-Anirudh_Ravichander_at_Audi_Ritz_Style_Awards_2015.jpg' },
-            { id: '2', name: 'A.R. Rahman', imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/ad/A._R._Rahman_at_the_Global_Indian_Music_Awards_2012.jpg/440px-A._R._Rahman_at_the_Global_Indian_Music_Awards_2012.jpg' },
-            { id: '3', name: 'Yuvan Shankar Raja', imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/be/Yuvan_Shankar_Raja_at_Pyaar_Prema_Kaadhal_Press_Meet.jpg/440px-Yuvan_Shankar_Raja_at_Pyaar_Prema_Kaadhal_Press_Meet.jpg' }
+            {
+              id: '1',
+              name: 'Anirudh Ravichander',
+              imageUrl:
+                'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d1/Anirudh_Ravichander_at_Audi_Ritz_Style_Awards_2015.jpg/440px-Anirudh_Ravichander_at_Audi_Ritz_Style_Awards_2015.jpg'
+            },
+            {
+              id: '2',
+              name: 'A.R. Rahman',
+              imageUrl:
+                'https://upload.wikimedia.org/wikipedia/commons/thumb/a/ad/A._R._Rahman_at_the_Global_Indian_Music_Awards_2012.jpg/440px-A._R._Rahman_at_the_Global_Indian_Music_Awards_2012.jpg'
+            },
+            {
+              id: '3',
+              name: 'Yuvan Shankar Raja',
+              imageUrl:
+                'https://upload.wikimedia.org/wikipedia/commons/thumb/b/be/Yuvan_Shankar_Raja_at_Pyaar_Prema_Kaadhal_Press_Meet.jpg/440px-Yuvan_Shankar_Raja_at_Pyaar_Prema_Kaadhal_Press_Meet.jpg'
+            }
           ],
           discoverSomethingNew: trending.slice(15, 30)
         }
@@ -361,8 +397,8 @@ export class RecommendationService {
 
     // Returning User (>= 10 plays):
     const candidatePool = [...newReleases, ...trending]
-    const uniquePool = Array.from(new Map(candidatePool.map(s => [s.videoId, s])).values())
-    const scoredList = uniquePool.map(s => this.scoreSong(s, profile, activeLangs))
+    const uniquePool = Array.from(new Map(candidatePool.map((s) => [s.videoId, s])).values())
+    const scoredList = uniquePool.map((s) => this.scoreSong(s, profile, activeLangs))
     scoredList.sort((a, b) => b.score - a.score)
 
     // 70% familiar, 20% related, 10% discovery
@@ -371,12 +407,21 @@ export class RecommendationService {
     const countRelated = Math.round(targetCount * RECOMMENDATION_CONFIG.DIVERSITY_RATIOS.RELATED_CONTENT_PERCENT)
     const countDiscovery = targetCount - countFamiliar - countRelated
 
-    const familiar = scoredList.filter(s => s.category === 'familiar').slice(0, countFamiliar).map(s => s.song)
-    const related = scoredList.filter(s => s.category === 'related').slice(0, countRelated).map(s => s.song)
-    const discovery = scoredList.filter(s => s.category === 'discovery').slice(0, countDiscovery).map(s => s.song)
+    const familiar = scoredList
+      .filter((s) => s.category === 'familiar')
+      .slice(0, countFamiliar)
+      .map((s) => s.song)
+    const related = scoredList
+      .filter((s) => s.category === 'related')
+      .slice(0, countRelated)
+      .map((s) => s.song)
+    const discovery = scoredList
+      .filter((s) => s.category === 'discovery')
+      .slice(0, countDiscovery)
+      .map((s) => s.song)
 
     const mixedMadeForYou = [...familiar, ...related, ...discovery]
-    const finalMadeForYou = mixedMadeForYou.length >= 8 ? mixedMadeForYou : scoredList.slice(0, 15).map(s => s.song)
+    const finalMadeForYou = mixedMadeForYou.length >= 8 ? mixedMadeForYou : scoredList.slice(0, 15).map((s) => s.song)
 
     return {
       isColdStart: false,
@@ -389,9 +434,24 @@ export class RecommendationService {
         newReleases30Days: newReleases.slice(0, 15),
         trendingInLanguage: trending.slice(0, 20),
         popularArtists: [
-          { id: '1', name: 'Anirudh Ravichander', imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d1/Anirudh_Ravichander_at_Audi_Ritz_Style_Awards_2015.jpg/440px-Anirudh_Ravichander_at_Audi_Ritz_Style_Awards_2015.jpg' },
-          { id: '2', name: 'A.R. Rahman', imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/ad/A._R._Rahman_at_the_Global_Indian_Music_Awards_2012.jpg/440px-A._R._Rahman_at_the_Global_Indian_Music_Awards_2012.jpg' },
-          { id: '3', name: 'Yuvan Shankar Raja', imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/be/Yuvan_Shankar_Raja_at_Pyaar_Prema_Kaadhal_Press_Meet.jpg/440px-Yuvan_Shankar_Raja_at_Pyaar_Prema_Kaadhal_Press_Meet.jpg' }
+          {
+            id: '1',
+            name: 'Anirudh Ravichander',
+            imageUrl:
+              'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d1/Anirudh_Ravichander_at_Audi_Ritz_Style_Awards_2015.jpg/440px-Anirudh_Ravichander_at_Audi_Ritz_Style_Awards_2015.jpg'
+          },
+          {
+            id: '2',
+            name: 'A.R. Rahman',
+            imageUrl:
+              'https://upload.wikimedia.org/wikipedia/commons/thumb/a/ad/A._R._Rahman_at_the_Global_Indian_Music_Awards_2012.jpg/440px-A._R._Rahman_at_the_Global_Indian_Music_Awards_2012.jpg'
+          },
+          {
+            id: '3',
+            name: 'Yuvan Shankar Raja',
+            imageUrl:
+              'https://upload.wikimedia.org/wikipedia/commons/thumb/b/be/Yuvan_Shankar_Raja_at_Pyaar_Prema_Kaadhal_Press_Meet.jpg/440px-Yuvan_Shankar_Raja_at_Pyaar_Prema_Kaadhal_Press_Meet.jpg'
+          }
         ],
         discoverSomethingNew: discovery.length > 0 ? discovery : trending.slice(15, 30)
       }

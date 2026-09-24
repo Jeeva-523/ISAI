@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react'
-import type { Song } from '@shared/models/song'
 import { musicApi } from '@shared/api/music-api'
+import { ArrowLeft, Clock, Heart, Music, Pause, Play, Plus, RefreshCw, Shuffle, Sparkles } from 'lucide-react'
+import React, { useEffect, useState } from 'react'
 import { SongListItem } from '../components/SongListItem'
-import { Play, Pause, Shuffle, ArrowLeft, Music, Clock, Sparkles, Plus, RefreshCw, Heart } from 'lucide-react'
+import type { Song } from '@shared/models/song'
 
 interface PlaylistDetailPageProps {
   title: string
@@ -49,7 +49,7 @@ export const PlaylistDetailPage: React.FC<PlaylistDetailPageProps> = ({
     setPlaylistSongs(initialSongs)
   }, [initialSongs])
 
-  const isPlaylistActive = currentSong && playlistSongs.some(s => s.videoId === currentSong.videoId)
+  const isPlaylistActive = currentSong && playlistSongs.some((s) => s.videoId === currentSong.videoId)
   const totalDurationMin = Math.round(playlistSongs.reduce((acc, s) => acc + (s.durationMs || 210000), 0) / 60000)
 
   // Fetch Spotify-style smart recommendations for this playlist
@@ -61,23 +61,25 @@ export const PlaylistDetailPage: React.FC<PlaylistDetailPageProps> = ({
       const sampleArtist = playlistSongs[0]?.channelTitle?.split(/[•,&|-]/)[0]?.trim() || ''
       const query = sampleArtist
         ? `${sampleArtist} ${primaryLang} hit songs`
-        : `${title.replace(/mix|playlist|daily/gi, '').trim() || primaryLang} songs`
+        : `${title.replaceAll(/mix|playlist|daily/gi, '').trim() || primaryLang} songs`
 
       const hits = await musicApi.searchSongs(query)
-      const currentIds = new Set(playlistSongs.map(s => s.videoId))
-      const cleanNorm = (t: string) => t.toLowerCase().replace(/[^a-z0-9]/g, '')
-      const currentTitles = new Set(playlistSongs.map(s => cleanNorm(s.title).slice(0, 15)))
+      const currentIds = new Set(playlistSongs.map((s) => s.videoId))
+      const cleanNorm = (t: string) => t.toLowerCase().replaceAll(/[^a-z0-9]/g, '')
+      const currentTitles = new Set(playlistSongs.map((s) => cleanNorm(s.title).slice(0, 15)))
 
-      const uniqueRecs = (hits || []).filter(h => {
-        if (!h || !h.videoId || currentIds.has(h.videoId)) return false
-        const t = cleanNorm(h.title).slice(0, 15)
-        if (currentTitles.has(t)) return false
-        return true
-      }).slice(0, 6)
+      const uniqueRecs = (hits || [])
+        .filter((h) => {
+          if (!h || !h.videoId || currentIds.has(h.videoId)) return false
+          const t = cleanNorm(h.title).slice(0, 15)
+          if (currentTitles.has(t)) return false
+          return true
+        })
+        .slice(0, 6)
 
       setRecommendedSongs(uniqueRecs)
-    } catch (e) {
-      console.warn('[PlaylistDetail] Recommendations fetch error:', e)
+    } catch (error) {
+      console.warn('[PlaylistDetail] Recommendations fetch error:', error)
     } finally {
       setIsLoadingRecs(false)
     }
@@ -88,8 +90,8 @@ export const PlaylistDetailPage: React.FC<PlaylistDetailPageProps> = ({
   }, [title, userPreferredLanguages])
 
   const handleAddRecommendedSong = (song: Song) => {
-    setPlaylistSongs(prev => [...prev, song])
-    setAddedIds(prev => new Set(prev).add(song.videoId))
+    setPlaylistSongs((prev) => [...prev, song])
+    setAddedIds((prev) => new Set(prev).add(song.videoId))
     onAddToPlaylist(song)
   }
 
@@ -153,20 +155,43 @@ export const PlaylistDetailPage: React.FC<PlaylistDetailPageProps> = ({
           ) : (
             <div style={{ textAlign: 'center', color: '#fff' }}>
               <Music size={64} color="#fff" style={{ opacity: 0.9 }} />
-              <div style={{ fontSize: '13px', fontWeight: 800, marginTop: '8px', letterSpacing: '0.1em' }}>ISAI MIX</div>
+              <div style={{ fontSize: '13px', fontWeight: 800, marginTop: '8px', letterSpacing: '0.1em' }}>
+                ISAI MIX
+              </div>
             </div>
           )}
         </div>
 
         <div style={{ flex: 1, minWidth: '280px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-            <span style={{ fontSize: '11px', fontWeight: 900, background: 'rgba(29, 185, 84, 0.2)', color: '#1db954', border: '1px solid rgba(29, 185, 84, 0.35)', padding: '3px 10px', borderRadius: '12px', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+            <span
+              style={{
+                fontSize: '11px',
+                fontWeight: 900,
+                background: 'rgba(29, 185, 84, 0.2)',
+                color: '#1db954',
+                border: '1px solid rgba(29, 185, 84, 0.35)',
+                padding: '3px 10px',
+                borderRadius: '12px',
+                letterSpacing: '0.1em',
+                textTransform: 'uppercase'
+              }}
+            >
               SPOTIFY MIX
             </span>
             <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>• Public Playlist</span>
           </div>
 
-          <h1 style={{ fontSize: '42px', fontWeight: 900, color: '#fff', margin: '4px 0 10px', letterSpacing: '-0.02em', lineHeight: 1.15 }}>
+          <h1
+            style={{
+              fontSize: '42px',
+              fontWeight: 900,
+              color: '#fff',
+              margin: '4px 0 10px',
+              letterSpacing: '-0.02em',
+              lineHeight: 1.15
+            }}
+          >
             {title}
           </h1>
 
@@ -174,7 +199,16 @@ export const PlaylistDetailPage: React.FC<PlaylistDetailPageProps> = ({
             {subtitle}
           </p>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'var(--text-primary)', marginBottom: '22px' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              fontSize: '13px',
+              color: 'var(--text-primary)',
+              marginBottom: '22px'
+            }}
+          >
             <span style={{ fontWeight: 800, color: 'var(--isai-purple-light)' }}>ISAI ⚡</span>
             <span style={{ color: 'var(--text-muted)' }}>•</span>
             <span style={{ fontWeight: 700 }}>{playlistSongs.length} songs</span>
@@ -233,22 +267,26 @@ export const PlaylistDetailPage: React.FC<PlaylistDetailPageProps> = ({
 
       {/* Playlist Track List Table */}
       <div style={{ marginBottom: '48px' }}>
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: '40px 52px 1fr 140px 80px 100px',
-          gap: '14px',
-          padding: '0 16px 12px',
-          fontSize: '12px',
-          fontWeight: 800,
-          color: 'var(--text-muted)',
-          borderBottom: '1px solid var(--border-subtle)',
-          marginBottom: '10px'
-        }}>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '40px 52px 1fr 140px 80px 100px',
+            gap: '14px',
+            padding: '0 16px 12px',
+            fontSize: '12px',
+            fontWeight: 800,
+            color: 'var(--text-muted)',
+            borderBottom: '1px solid var(--border-subtle)',
+            marginBottom: '10px'
+          }}
+        >
           <div style={{ textAlign: 'center' }}>#</div>
           <div>ART</div>
           <div>TITLE</div>
           <div>ALBUM</div>
-          <div><Clock size={14} /></div>
+          <div>
+            <Clock size={14} />
+          </div>
           <div style={{ textAlign: 'right' }}>ACTIONS</div>
         </div>
 
@@ -271,20 +309,29 @@ export const PlaylistDetailPage: React.FC<PlaylistDetailPageProps> = ({
       </div>
 
       {/* Spotify Signature: Recommended Songs Section */}
-      <div style={{
-        marginTop: '32px',
-        padding: '28px',
-        background: 'var(--surface-card)',
-        borderRadius: 'var(--radius-xl)',
-        border: '1px solid var(--border-subtle)'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px', flexWrap: 'wrap', gap: '12px' }}>
+      <div
+        style={{
+          marginTop: '32px',
+          padding: '28px',
+          background: 'var(--surface-card)',
+          borderRadius: 'var(--radius-xl)',
+          border: '1px solid var(--border-subtle)'
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: '18px',
+            flexWrap: 'wrap',
+            gap: '12px'
+          }}
+        >
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Sparkles size={18} color="#1db954" />
-              <h2 style={{ fontSize: '20px', fontWeight: 800, color: '#fff', margin: 0 }}>
-                Recommended
-              </h2>
+              <h2 style={{ fontSize: '20px', fontWeight: 800, color: '#fff', margin: 0 }}>Recommended</h2>
             </div>
             <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: '4px 0 0 0' }}>
               Based on what's in this playlist and your language taste
@@ -330,10 +377,27 @@ export const PlaylistDetailPage: React.FC<PlaylistDetailPageProps> = ({
                       style={{ width: '44px', height: '44px', borderRadius: '6px', objectFit: 'cover' }}
                     />
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <div
+                        style={{
+                          fontSize: '14px',
+                          fontWeight: 700,
+                          color: 'var(--text-primary)',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap'
+                        }}
+                      >
                         {recSong.title}
                       </div>
-                      <div style={{ fontSize: '12px', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <div
+                        style={{
+                          fontSize: '12px',
+                          color: 'var(--text-secondary)',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap'
+                        }}
+                      >
                         {recSong.channelTitle}
                       </div>
                     </div>
@@ -365,7 +429,13 @@ export const PlaylistDetailPage: React.FC<PlaylistDetailPageProps> = ({
                         fontWeight: 800
                       }}
                     >
-                      {isAdded ? 'Added ✓' : <><Plus size={14} /> Add</>}
+                      {isAdded ? (
+                        'Added ✓'
+                      ) : (
+                        <>
+                          <Plus size={14} /> Add
+                        </>
+                      )}
                     </button>
                   </div>
                 </div>

@@ -93,7 +93,7 @@ fun SearchScreen(
     val effectiveIsPlaying = if (isRemoteActive) (syncState?.isPlaying == true) else isPlaying
 
     val preferredLanguages by viewModel.preferredLanguages.collectAsState()
-    val activeLang = preferredLanguages.firstOrNull()?.replaceFirstChar { it.uppercase() } ?: "Tamil"
+    val activeLang = com.saavn.music.util.RelevanceEngine.formatLanguageDisplayName(preferredLanguages.firstOrNull())
 
     val languages = listOf("All", "Tamil", "Hindi", "English", "Telugu", "Malayalam", "Punjabi", "Kannada")
 
@@ -412,12 +412,12 @@ fun SearchScreen(
                             song = song,
                             isCurrent = isThisPlaying,
                             isPlaying = isThisPlaying && effectiveIsPlaying,
-                            onClick = { viewModel.playSong(song) },
+                            onClick = { viewModel.playSong(song, null) },
                             onPlayPauseClick = {
                                 if (isThisPlaying) {
                                     viewModel.togglePlayPause()
                                 } else {
-                                    viewModel.playSong(song)
+                                    viewModel.playSong(song, null)
                                 }
                             },
                             isFav = isFav,

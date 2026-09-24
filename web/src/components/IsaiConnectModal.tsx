@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react'
-import type { Song } from '@shared/models/song'
 import { storageService } from '@shared/services/storageService'
-import { IsaiConnectService, DeviceInfo, PlaybackStateSync } from '../services/IsaiConnectService'
+import React, { useEffect, useState } from 'react'
+import { IsaiConnectService, type DeviceInfo, type PlaybackStateSync } from '../services/IsaiConnectService'
+import type { Song } from '@shared/models/song'
 
 interface IsaiConnectModalProps {
   isOpen: boolean
@@ -48,12 +48,18 @@ export const IsaiConnectModal: React.FC<IsaiConnectModalProps> = ({
 
   const getPlatformIcon = (platform: string) => {
     switch (platform) {
-      case 'android': return '📱'
-      case 'ios': return '📱'
-      case 'windows': return '💻'
-      case 'mac': return '💻'
-      case 'tablet': return '📱'
-      default: return '🖥️'
+      case 'android':
+        return '📱'
+      case 'ios':
+        return '📱'
+      case 'windows':
+        return '💻'
+      case 'mac':
+        return '💻'
+      case 'tablet':
+        return '📱'
+      default:
+        return '🖥️'
     }
   }
 
@@ -70,18 +76,24 @@ export const IsaiConnectModal: React.FC<IsaiConnectModalProps> = ({
       onTransferToLocal?.()
     } else {
       // Transfer to Remote Device (e.g. Phone):
-      const activeSong = currentSong || (playbackState?.currentSongId ? {
-        videoId: playbackState.currentSongId,
-        title: playbackState.currentTitle,
-        channelTitle: playbackState.currentArtist,
-        thumbnailUrl: playbackState.currentArtwork,
-        audioUrl: playbackState.currentAudioUrl,
-        durationFormatted: '3:30',
-        durationMs: playbackState.durationMs || 210000,
-        viewCountFormatted: ''
-      } : null)
+      const activeSong =
+        currentSong ||
+        (playbackState?.currentSongId
+          ? {
+              videoId: playbackState.currentSongId,
+              title: playbackState.currentTitle,
+              channelTitle: playbackState.currentArtist,
+              thumbnailUrl: playbackState.currentArtwork,
+              audioUrl: playbackState.currentAudioUrl,
+              durationFormatted: '3:30',
+              durationMs: playbackState.durationMs || 210000,
+              viewCountFormatted: ''
+            }
+          : null)
 
-      const posMs = Math.round((currentTime || (playbackState?.positionMs ? playbackState.positionMs / 1000 : 0)) * 1000)
+      const posMs = Math.round(
+        (currentTime || (playbackState?.positionMs ? playbackState.positionMs / 1000 : 0)) * 1000
+      )
 
       if (activeSong) {
         // 1. Send PLAY_SONG command targeted specifically to the phone/remote device
@@ -101,69 +113,87 @@ export const IsaiConnectModal: React.FC<IsaiConnectModalProps> = ({
     }
   }
 
-  const firstRemoteDevice = devices.find(d => d.deviceId !== myDeviceId && IsaiConnectService.isDeviceAvailable(d))
+  const firstRemoteDevice = devices.find((d) => d.deviceId !== myDeviceId && IsaiConnectService.isDeviceAvailable(d))
 
   return (
-    <div style={{
-      position: 'fixed',
-      top: 0, left: 0, right: 0, bottom: 0,
-      backgroundColor: 'rgba(0,0,0,0.85)',
-      backdropFilter: 'blur(8px)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 9999,
-      animation: 'fadeIn 0.2s ease-out'
-    }} onClick={onClose}>
-      <div style={{
-        backgroundColor: '#15151C',
-        border: '1px solid rgba(200, 255, 0, 0.25)',
-        borderRadius: '20px',
-        padding: '28px',
-        width: '90%',
-        maxWidth: '460px',
-        color: '#FFFFFF',
-        boxShadow: '0 20px 50px rgba(0, 0, 0, 0.8)',
-        maxHeight: '80vh',
-        overflowY: 'auto'
-      }} onClick={e => e.stopPropagation()}>
-        
+    <div
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0,0,0,0.85)',
+        backdropFilter: 'blur(8px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 9999,
+        animation: 'fadeIn 0.2s ease-out'
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          backgroundColor: '#15151C',
+          border: '1px solid rgba(200, 255, 0, 0.25)',
+          borderRadius: '20px',
+          padding: '28px',
+          width: '90%',
+          maxWidth: '460px',
+          color: '#FFFFFF',
+          boxShadow: '0 20px 50px rgba(0, 0, 0, 0.8)',
+          maxHeight: '80vh',
+          overflowY: 'auto'
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <span style={{ fontSize: '24px' }}>🎧</span>
             <div>
               <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 'bold', color: '#FFFFFF' }}>ISAI Connect</h2>
-              <p style={{ margin: 0, fontSize: '12px', color: '#C8FF00' }}>⚡ Syncing account: <b>{IsaiConnectService.getUserEmail() || 'kongujeeva523@gmail.com'}</b></p>
+              <p style={{ margin: 0, fontSize: '12px', color: '#C8FF00' }}>
+                ⚡ Syncing account: <b>{IsaiConnectService.getUserEmail() || 'Guest'}</b>
+              </p>
             </div>
           </div>
-          <button onClick={onClose} style={{
-            background: 'none',
-            border: 'none',
-            color: '#A5A5AE',
-            fontSize: '24px',
-            cursor: 'pointer',
-            padding: '4px'
-          }}>✕</button>
+          <button
+            onClick={onClose}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#A5A5AE',
+              fontSize: '24px',
+              cursor: 'pointer',
+              padding: '4px'
+            }}
+          >
+            ✕
+          </button>
         </div>
 
         {/* Multi-Device Playback Mode Toggle Switch */}
-        <div style={{
-          backgroundColor: '#0B0B0F',
-          borderRadius: '16px',
-          padding: '14px 16px',
-          border: isSeparateMode ? '1px solid rgba(16, 185, 129, 0.5)' : '1px solid rgba(6, 182, 212, 0.35)',
-          marginBottom: '16px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          cursor: 'pointer'
-        }} onClick={() => {
-          const next = !isSeparateMode
-          setIsSeparateMode(next)
-          storageService.setMultiDevicePlaybackSeparate(next)
-          IsaiConnectService.setMultiDevicePlaybackSeparate(next)
-        }}>
+        <div
+          style={{
+            backgroundColor: '#0B0B0F',
+            borderRadius: '16px',
+            padding: '14px 16px',
+            border: isSeparateMode ? '1px solid rgba(16, 185, 129, 0.5)' : '1px solid rgba(6, 182, 212, 0.35)',
+            marginBottom: '16px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            cursor: 'pointer'
+          }}
+          onClick={() => {
+            const next = !isSeparateMode
+            setIsSeparateMode(next)
+            storageService.setMultiDevicePlaybackSeparate(next)
+            IsaiConnectService.setMultiDevicePlaybackSeparate(next)
+          }}
+        >
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <span style={{ fontSize: '20px' }}>🎧</span>
             <div>
@@ -204,20 +234,30 @@ export const IsaiConnectModal: React.FC<IsaiConnectModalProps> = ({
         </div>
 
         {/* Current Active Device Status Banner */}
-        <div style={{
-          backgroundColor: '#0B0B0F',
-          borderRadius: '16px',
-          padding: '16px',
-          border: '1px solid rgba(200, 255, 0, 0.3)',
-          marginBottom: '24px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '12px'
-        }}>
+        <div
+          style={{
+            backgroundColor: '#0B0B0F',
+            borderRadius: '16px',
+            padding: '16px',
+            border: '1px solid rgba(200, 255, 0, 0.3)',
+            marginBottom: '24px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px'
+          }}
+        >
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <span style={{ fontSize: '20px', animation: 'pulse 1.5s infinite' }}>⚡</span>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '1px', color: '#C8FF00', fontWeight: 'bold' }}>
+              <div
+                style={{
+                  fontSize: '11px',
+                  textTransform: 'uppercase',
+                  letterSpacing: '1px',
+                  color: '#C8FF00',
+                  fontWeight: 'bold'
+                }}
+              >
                 Current Audio Output
               </div>
               <div style={{ fontSize: '14px', fontWeight: '600', color: '#FFFFFF', marginTop: '2px' }}>
@@ -279,10 +319,18 @@ export const IsaiConnectModal: React.FC<IsaiConnectModalProps> = ({
 
         {/* Section: This Device */}
         <div style={{ marginBottom: '20px' }}>
-          <div style={{ fontSize: '12px', textTransform: 'uppercase', color: '#A5A5AE', fontWeight: 'bold', marginBottom: '10px' }}>
+          <div
+            style={{
+              fontSize: '12px',
+              textTransform: 'uppercase',
+              color: '#A5A5AE',
+              fontWeight: 'bold',
+              marginBottom: '10px'
+            }}
+          >
             This Device
           </div>
-          <div 
+          <div
             onClick={() => handleSelectDevice(myDeviceId)}
             style={{
               display: 'flex',
@@ -302,17 +350,34 @@ export const IsaiConnectModal: React.FC<IsaiConnectModalProps> = ({
                 <div style={{ fontWeight: '600', color: currentActiveDeviceId === myDeviceId ? '#C8FF00' : '#FFFFFF' }}>
                   {IsaiConnectService.getMyDeviceName()}
                 </div>
-                <div style={{ fontSize: '12px', color: '#A5A5AE', marginTop: '2px' }}>
-                  This Web Browser
-                </div>
+                <div style={{ fontSize: '12px', color: '#A5A5AE', marginTop: '2px' }}>This Web Browser</div>
               </div>
             </div>
             {currentActiveDeviceId === myDeviceId ? (
-              <span style={{ backgroundColor: '#C8FF00', color: '#0B0B0F', fontSize: '12px', fontWeight: 'bold', padding: '4px 10px', borderRadius: '20px' }}>
+              <span
+                style={{
+                  backgroundColor: '#C8FF00',
+                  color: '#0B0B0F',
+                  fontSize: '12px',
+                  fontWeight: 'bold',
+                  padding: '4px 10px',
+                  borderRadius: '20px'
+                }}
+              >
                 Active Player
               </span>
             ) : (
-              <span style={{ backgroundColor: 'rgba(6, 182, 212, 0.15)', color: '#06B6D4', border: '1px solid rgba(6, 182, 212, 0.3)', fontSize: '12px', fontWeight: 'bold', padding: '4px 12px', borderRadius: '14px' }}>
+              <span
+                style={{
+                  backgroundColor: 'rgba(6, 182, 212, 0.15)',
+                  color: '#06B6D4',
+                  border: '1px solid rgba(6, 182, 212, 0.3)',
+                  fontSize: '12px',
+                  fontWeight: 'bold',
+                  padding: '4px 12px',
+                  borderRadius: '14px'
+                }}
+              >
                 Switch Here
               </span>
             )}
@@ -322,22 +387,34 @@ export const IsaiConnectModal: React.FC<IsaiConnectModalProps> = ({
         {/* Section: Available Devices */}
         <div>
           {(() => {
-            const availableDevices = devices.filter(d => d.deviceId !== myDeviceId && IsaiConnectService.isDeviceAvailable(d))
+            const availableDevices = devices.filter(
+              (d) => d.deviceId !== myDeviceId && IsaiConnectService.isDeviceAvailable(d)
+            )
             return (
               <>
-                <div style={{ fontSize: '12px', textTransform: 'uppercase', color: '#A5A5AE', fontWeight: 'bold', marginBottom: '10px' }}>
+                <div
+                  style={{
+                    fontSize: '12px',
+                    textTransform: 'uppercase',
+                    color: '#A5A5AE',
+                    fontWeight: 'bold',
+                    marginBottom: '10px'
+                  }}
+                >
                   Available Devices ({availableDevices.length})
                 </div>
 
                 {availableDevices.length === 0 ? (
-                  <div style={{
-                    textAlign: 'center',
-                    padding: '24px',
-                    backgroundColor: '#1C1C26',
-                    borderRadius: '14px',
-                    color: '#A5A5AE',
-                    fontSize: '13px'
-                  }}>
+                  <div
+                    style={{
+                      textAlign: 'center',
+                      padding: '24px',
+                      backgroundColor: '#1C1C26',
+                      borderRadius: '14px',
+                      color: '#A5A5AE',
+                      fontSize: '13px'
+                    }}
+                  >
                     Log into your ISAI account on Android or another browser to switch playback seamlessly!
                   </div>
                 ) : (
@@ -372,11 +449,30 @@ export const IsaiConnectModal: React.FC<IsaiConnectModalProps> = ({
                             </div>
                           </div>
                           {isSelected ? (
-                            <span style={{ backgroundColor: '#C8FF00', color: '#0B0B0F', fontSize: '12px', fontWeight: 'bold', padding: '4px 10px', borderRadius: '20px' }}>
+                            <span
+                              style={{
+                                backgroundColor: '#C8FF00',
+                                color: '#0B0B0F',
+                                fontSize: '12px',
+                                fontWeight: 'bold',
+                                padding: '4px 10px',
+                                borderRadius: '20px'
+                              }}
+                            >
                               Active Player
                             </span>
                           ) : (
-                            <span style={{ backgroundColor: 'rgba(6, 182, 212, 0.15)', color: '#06B6D4', border: '1px solid rgba(6, 182, 212, 0.3)', fontSize: '12px', fontWeight: 'bold', padding: '4px 12px', borderRadius: '14px' }}>
+                            <span
+                              style={{
+                                backgroundColor: 'rgba(6, 182, 212, 0.15)',
+                                color: '#06B6D4',
+                                border: '1px solid rgba(6, 182, 212, 0.3)',
+                                fontSize: '12px',
+                                fontWeight: 'bold',
+                                padding: '4px 12px',
+                                borderRadius: '14px'
+                              }}
+                            >
                               Switch
                             </span>
                           )}
@@ -389,7 +485,6 @@ export const IsaiConnectModal: React.FC<IsaiConnectModalProps> = ({
             )
           })()}
         </div>
-
       </div>
     </div>
   )

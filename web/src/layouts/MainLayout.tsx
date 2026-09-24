@@ -1,7 +1,7 @@
+import { Bell, Cast, Compass, Heart, Home, Library, Menu, Music, Plus, Search, User } from 'lucide-react'
 import React, { useState } from 'react'
-import type { UserPlaylist } from '@shared/models/song'
 import { SearchBar } from '../components/SearchBar'
-import { Home, Compass, Library, Plus, Music, Heart, User, Bell, Menu, Cast, Search } from 'lucide-react'
+import type { UserPlaylist } from '@shared/models/song'
 
 export type PageTab = 'home' | 'search' | 'library' | 'profile' | 'login' | 'artist-detail' | 'playlist-detail'
 
@@ -19,6 +19,7 @@ interface MainLayoutProps {
   onSelectPlaylist?: (pl: UserPlaylist) => void
   hasPlayer?: boolean
   isLoggedIn?: boolean
+  onOpenConnect?: () => void
   children: React.ReactNode
 }
 
@@ -28,14 +29,14 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
   searchQuery,
   onSearchChange,
   onSearchClear,
-  onOpenLogin: _onOpenLogin,
-  userName = 'JEEVA ⚡',
-  userAvatar = 'J',
+  userName = 'ISAI Listener',
+  userAvatar = 'I',
   userPlaylists = [],
   onCreatePlaylist,
   onSelectPlaylist,
   hasPlayer = false,
   isLoggedIn = true,
+  onOpenConnect,
   children
 }) => {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
@@ -77,7 +78,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
         </div>
 
         <div className="ytm-header-right">
-          <button className="control-btn" title="Cast to device">
+          <button className="control-btn" title="ISAI Connect (Cast & Multi-Device Sync)" onClick={onOpenConnect}>
             <Cast size={20} />
           </button>
           <button className="control-btn" title="Notifications">
@@ -135,11 +136,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
 
         {/* User Playlists List */}
         <div className="ytm-playlists-container">
-          <div
-            className="ytm-playlist-item"
-            onClick={() => onSelectTab('library')}
-            style={{ cursor: 'pointer' }}
-          >
+          <div className="ytm-playlist-item" onClick={() => onSelectTab('library')} style={{ cursor: 'pointer' }}>
             <div className="ytm-pl-icon" style={{ background: 'rgba(236, 72, 153, 0.15)' }}>
               <Heart size={16} color="var(--isai-pink)" fill="var(--isai-pink)" />
             </div>
@@ -180,25 +177,19 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
         >
           <div className="ytm-user-avatar">{userAvatar}</div>
           <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <span style={{ fontSize: '13px', fontWeight: 700 }}>{userName}</span>
-            <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>⚙️ Settings</span>
+            <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>{userName}</span>
+            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 500 }}>⚙️ Settings</span>
           </div>
         </div>
       </aside>
 
       {/* 3. Main Content Viewport */}
       <div className={`main-content ${hasPlayer ? 'has-player' : ''}`}>
-
-        <main className="ytm-page-wrapper">
-          {children}
-        </main>
+        <main className="ytm-page-wrapper">{children}</main>
 
         {/* 3. Mobile Tab Navigation Bar */}
         <nav className="mobile-nav">
-          <button
-            className={`nav-link ${currentTab === 'home' ? 'active' : ''}`}
-            onClick={() => onSelectTab('home')}
-          >
+          <button className={`nav-link ${currentTab === 'home' ? 'active' : ''}`} onClick={() => onSelectTab('home')}>
             <Home size={20} />
             <span style={{ fontSize: '11px', fontWeight: 600 }}>Home</span>
           </button>

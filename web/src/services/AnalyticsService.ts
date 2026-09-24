@@ -16,7 +16,7 @@ class AnalyticsService {
 
   trackEvent(songId: string, title: string, artist: string, eventType: 'play' | 'like' | 'playlist_add' | 'search') {
     const event: PlayEvent = {
-      eventId: Math.random().toString(36).substring(2),
+      eventId: Math.random().toString(36).slice(2),
       songId,
       songTitle: title,
       artistName: artist,

@@ -1,28 +1,27 @@
-import React, { useState } from 'react'
-import type { UserProfile } from '../components/LoginModal'
-import { IsaiConnectModal } from '../components/IsaiConnectModal'
-import { logoutFirebaseUser } from '../firebase'
+import { storageService } from '@shared/services/storageService'
 import {
   ArrowLeft,
-  User,
-  Pencil,
-  Mail,
-  ShieldCheck,
-  Headphones,
-  Sliders,
-  Globe,
-  HardDrive,
-  Laptop,
-  RefreshCw,
-  Heart,
-  ListMusic,
-  Info,
-  LogOut,
-  LogIn,
   CheckCircle2,
+  Globe,
+  Headphones,
+  Heart,
+  Info,
+  Laptop,
+  ListMusic,
+  LogIn,
+  LogOut,
+  Mail,
+  Palette,
+  Pencil,
+  RefreshCw,
   Star,
+  User,
   X
 } from 'lucide-react'
+import React, { useState } from 'react'
+import { IsaiConnectModal } from '../components/IsaiConnectModal'
+import { logoutFirebaseUser } from '../firebase'
+import type { UserProfile } from '../components/LoginModal'
 
 interface ProfilePageProps {
   user: UserProfile
@@ -34,6 +33,8 @@ interface ProfilePageProps {
   onNavigateHome: () => void
   onOpenLanguageModal?: () => void
   onOpenPlanModal?: () => void
+  onOpenThemeModal?: () => void
+  currentTheme?: string
 }
 
 export const ProfilePage: React.FC<ProfilePageProps> = ({
@@ -44,16 +45,19 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
   onNavigateToLogin,
   onLogout,
   onNavigateHome,
-  onOpenLanguageModal
+  onOpenLanguageModal,
+  onOpenThemeModal,
+  currentTheme = 'dark'
 }) => {
   const [showEditModal, setShowEditModal] = useState(false)
   const [editNameInput, setEditNameInput] = useState(user.name || 'ISAI Listener')
   const [isSavedNotice, setIsSavedNotice] = useState(false)
   const [isConnectModalOpen, setIsConnectModalOpen] = useState(false)
+  const [isSeparatePlayback, setIsSeparatePlayback] = useState(() => storageService.isMultiDevicePlaybackSeparate())
 
   const isEmailVerified = Boolean(user.isLoggedIn)
-  const currentDisplayName = user.isLoggedIn ? (user.name || 'ISAI Listener') : 'Guest Listener'
-  const currentEmail = user.isLoggedIn ? (user.email || 'user@isaimusic.com') : 'Not signed in'
+  const currentDisplayName = user.isLoggedIn ? user.name || 'ISAI Listener' : 'Guest Listener'
+  const currentEmail = user.isLoggedIn ? user.email || 'user@isaimusic.com' : 'Not signed in'
 
   const handleSaveName = (e: React.FormEvent) => {
     e.preventDefault()
@@ -92,7 +96,15 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
           <ArrowLeft size={20} />
         </button>
         <div>
-          <h1 style={{ margin: 0, fontSize: '24px', fontWeight: 900, color: 'var(--text-primary)', letterSpacing: '-0.4px' }}>
+          <h1
+            style={{
+              margin: 0,
+              fontSize: '24px',
+              fontWeight: 900,
+              color: 'var(--text-primary)',
+              letterSpacing: '-0.4px'
+            }}
+          >
             Settings &amp; Profile
           </h1>
           <p style={{ margin: '2px 0 0', fontSize: '13px', color: 'var(--text-secondary)' }}>
@@ -147,7 +159,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
               width: '100%',
               height: '100%',
               borderRadius: '50%',
-              background: 'var(--surface-dark)',
+              background: '#131926',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -161,8 +173,19 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
         </div>
 
         {/* Display Name with Edit Button */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '4px' }}>
-          <h2 style={{ fontSize: '24px', fontWeight: 900, color: 'var(--text-primary)', margin: 0, letterSpacing: '-0.3px' }}>
+        <div
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '6px' }}
+        >
+          <h2
+            style={{
+              fontSize: '24px',
+              fontWeight: 900,
+              color: '#FFFFFF',
+              margin: 0,
+              letterSpacing: '-0.3px',
+              textShadow: '0 2px 8px rgba(0, 0, 0, 0.4)'
+            }}
+          >
             {currentDisplayName}
           </h2>
           <button
@@ -171,17 +194,18 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
               setShowEditModal(true)
             }}
             style={{
-              background: 'rgba(6, 182, 212, 0.12)',
-              border: '1px solid rgba(6, 182, 212, 0.3)',
-              color: '#06B6D4',
-              width: '28px',
-              height: '28px',
+              background: 'rgba(6, 182, 212, 0.2)',
+              border: '1px solid rgba(6, 182, 212, 0.45)',
+              color: '#22D3EE',
+              width: '30px',
+              height: '30px',
               borderRadius: '50%',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               cursor: 'pointer',
-              transition: 'all 0.2s ease'
+              transition: 'all 0.2s ease',
+              boxShadow: '0 2px 8px rgba(6, 182, 212, 0.25)'
             }}
             title="Edit Display Name"
           >
@@ -190,7 +214,15 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
         </div>
 
         {/* Email Address */}
-        <p style={{ fontSize: '14px', color: 'var(--text-secondary)', margin: '0 0 18px', fontWeight: 500 }}>
+        <p
+          style={{
+            fontSize: '14px',
+            color: '#E2E8F0',
+            margin: '0 0 20px',
+            fontWeight: 500,
+            letterSpacing: '0.2px'
+          }}
+        >
           {currentEmail}
         </p>
 
@@ -204,9 +236,9 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
               gap: '6px',
               padding: '6px 14px',
               borderRadius: '20px',
-              background: isEmailVerified ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)',
-              border: `1px solid ${isEmailVerified ? '#10B981' : '#F59E0B'}`,
-              color: isEmailVerified ? '#10B981' : '#F59E0B',
+              background: isEmailVerified ? 'rgba(16, 185, 129, 0.2)' : 'rgba(245, 158, 11, 0.2)',
+              border: `1.5px solid ${isEmailVerified ? '#10B981' : '#F59E0B'}`,
+              color: isEmailVerified ? '#34D399' : '#FBBF24',
               fontSize: '12px',
               fontWeight: 800
             }}
@@ -224,44 +256,78 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
               padding: '6px 14px',
               borderRadius: '20px',
               background: user.isPremium
-                ? 'linear-gradient(90deg, rgba(139, 92, 246, 0.25), rgba(6, 182, 212, 0.25))'
-                : 'rgba(255, 255, 255, 0.08)',
-              border: user.isPremium ? '1px solid rgba(6, 182, 212, 0.6)' : '1px solid rgba(255, 255, 255, 0.16)',
-              color: user.isPremium ? '#06B6D4' : '#E2E8F0',
+                ? 'linear-gradient(90deg, rgba(139, 92, 246, 0.3), rgba(6, 182, 212, 0.3))'
+                : 'rgba(255, 255, 255, 0.12)',
+              border: user.isPremium ? '1.5px solid rgba(6, 182, 212, 0.7)' : '1.5px solid rgba(255, 255, 255, 0.25)',
+              color: user.isPremium ? '#22D3EE' : '#FFFFFF',
               fontSize: '12px',
               fontWeight: 800
             }}
           >
-            {user.isPremium ? <Star size={14} fill="#06B6D4" /> : <span>🆓</span>}
+            {user.isPremium ? <Star size={14} fill="#22D3EE" /> : <span>🆓</span>}
             <span>{user.isPremium ? '💎 ISAI Premium' : '🆓 ISAI Free'}</span>
           </div>
         </div>
       </div>
 
       {/* 3. Section: Personal & Account Details */}
-      <div style={{ marginBottom: '22px', background: 'var(--surface-card)', border: '1px solid var(--border-subtle)', borderRadius: '20px', padding: '20px 22px' }}>
-        <h3 style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1.2px', marginBottom: '14px' }}>
+      <div
+        style={{
+          marginBottom: '22px',
+          background: 'var(--surface-card)',
+          border: '1px solid var(--border-subtle)',
+          borderRadius: '20px',
+          padding: '20px 22px'
+        }}
+      >
+        <h3
+          style={{
+            fontSize: '12px',
+            color: 'var(--isai-purple, #7C3AED)',
+            fontWeight: 800,
+            textTransform: 'uppercase',
+            letterSpacing: '1.2px',
+            marginBottom: '16px'
+          }}
+        >
           ACCOUNT DETAILS
         </h3>
-        
+
         <div
           onClick={() => {
             setEditNameInput(currentDisplayName)
             setShowEditModal(true)
           }}
-          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid var(--divider)', cursor: 'pointer' }}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '12px 0',
+            borderBottom: '1px solid var(--divider)',
+            cursor: 'pointer'
+          }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', color: 'var(--text-secondary)' }}>
             <User size={18} color="#06B6D4" />
             <span style={{ fontSize: '14px', fontWeight: 600 }}>Display Name</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ color: 'var(--text-primary)', fontSize: '14px', fontWeight: 700 }}>{currentDisplayName}</span>
+            <span style={{ color: 'var(--text-primary)', fontSize: '14px', fontWeight: 700 }}>
+              {currentDisplayName}
+            </span>
             <Pencil size={14} color="var(--text-muted)" />
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid var(--divider)' }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '12px 0',
+            borderBottom: '1px solid var(--divider)'
+          }}
+        >
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', color: 'var(--text-secondary)' }}>
             <Mail size={18} color="#06B6D4" />
             <span style={{ fontSize: '14px', fontWeight: 600 }}>Email Address</span>
@@ -275,8 +341,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            padding: '12px 0',
-            borderBottom: '1px solid var(--divider)'
+            padding: '12px 0'
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', color: 'var(--text-secondary)' }}>
@@ -286,50 +351,43 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span
               style={{
-                color: user.isPremium ? '#06B6D4' : '#E2E8F0',
+                color: user.isPremium ? '#06B6D4' : 'var(--text-primary)',
                 fontSize: '13px',
                 fontWeight: 800,
-                background: user.isPremium ? 'rgba(6, 182, 212, 0.12)' : 'rgba(255, 255, 255, 0.08)',
+                background: user.isPremium ? 'rgba(6, 182, 212, 0.12)' : 'var(--surface-card-hover)',
                 padding: '4px 10px',
                 borderRadius: '8px',
-                border: user.isPremium ? '1px solid rgba(6, 182, 212, 0.3)' : '1px solid rgba(255, 255, 255, 0.12)'
+                border: user.isPremium ? '1px solid rgba(6, 182, 212, 0.35)' : '1px solid var(--border-subtle)'
               }}
             >
               {user.isPremium ? '💎 ISAI Premium' : '🆓 ISAI Free'}
             </span>
           </div>
         </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', color: 'var(--text-secondary)' }}>
-            <ShieldCheck size={18} color="#10B981" />
-            <span style={{ fontSize: '14px', fontWeight: 600 }}>Security Status</span>
-          </div>
-          <span style={{ color: '#10B981', fontSize: '14px', fontWeight: 800 }}>Email Verified ✓</span>
-        </div>
       </div>
 
-      {/* 4. Section: Audio & Streaming Preferences */}
-      <div style={{ marginBottom: '22px', background: 'var(--surface-card)', border: '1px solid var(--border-subtle)', borderRadius: '20px', padding: '20px 22px' }}>
-        <h3 style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1.2px', marginBottom: '14px' }}>
-          AUDIO &amp; PLAYBACK QUALITY
+      {/* 4. Section: Preferences & Theme */}
+      <div
+        style={{
+          marginBottom: '22px',
+          background: 'var(--surface-card)',
+          border: '1px solid var(--border-subtle)',
+          borderRadius: '20px',
+          padding: '20px 22px'
+        }}
+      >
+        <h3
+          style={{
+            fontSize: '12px',
+            color: 'var(--isai-purple, #7C3AED)',
+            fontWeight: 800,
+            textTransform: 'uppercase',
+            letterSpacing: '1.2px',
+            marginBottom: '16px'
+          }}
+        >
+          PREFERENCES &amp; THEME
         </h3>
-
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid var(--divider)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', color: 'var(--text-secondary)' }}>
-            <Headphones size={18} color="#8B5CF6" />
-            <span style={{ fontSize: '14px', fontWeight: 600 }}>Streaming Quality</span>
-          </div>
-          <span style={{ color: 'var(--text-primary)', fontSize: '14px', fontWeight: 700 }}>320 kbps Ultra HD</span>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid var(--divider)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', color: 'var(--text-secondary)' }}>
-            <Sliders size={18} color="#8B5CF6" />
-            <span style={{ fontSize: '14px', fontWeight: 600 }}>Audio Engine</span>
-          </div>
-          <span style={{ color: 'var(--text-primary)', fontSize: '14px', fontWeight: 700 }}>WebAudio Spatial 3D Equalizer Active</span>
-        </div>
 
         <div
           onClick={onOpenLanguageModal}
@@ -347,35 +405,110 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
             <span style={{ fontSize: '14px', fontWeight: 600 }}>Music Language</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ color: 'var(--text-primary)', fontSize: '14px', fontWeight: 700, textTransform: 'capitalize' }}>
+            <span
+              style={{ color: 'var(--text-primary)', fontSize: '14px', fontWeight: 700, textTransform: 'capitalize' }}
+            >
               {user.preferredLanguages && user.preferredLanguages.length > 0
-                ? user.preferredLanguages.join(', ')
+                ? user.preferredLanguages
+                    .map((l) => (l.toLowerCase() === 'ta' || l.toLowerCase() === 'tam' ? 'Tamil' : l))
+                    .join(', ')
                 : 'Tamil'}
             </span>
             {onOpenLanguageModal && (
-              <span style={{ fontSize: '12px', color: '#8B5CF6', fontWeight: 700, background: 'rgba(139, 92, 246, 0.12)', padding: '2px 8px', borderRadius: '10px' }}>
+              <span
+                style={{
+                  fontSize: '12px',
+                  color: 'var(--isai-purple, #7C3AED)',
+                  fontWeight: 700,
+                  background: 'rgba(124, 58, 237, 0.1)',
+                  padding: '3px 10px',
+                  borderRadius: '10px',
+                  border: '1px solid rgba(124, 58, 237, 0.25)'
+                }}
+              >
                 Edit
               </span>
             )}
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0' }}>
+        <div
+          onClick={onOpenThemeModal}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '12px 0',
+            cursor: onOpenThemeModal ? 'pointer' : 'default'
+          }}
+        >
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', color: 'var(--text-secondary)' }}>
-            <HardDrive size={18} color="#8B5CF6" />
-            <span style={{ fontSize: '14px', fontWeight: 600 }}>Offline Storage</span>
+            <Palette size={18} color="#8B5CF6" />
+            <span style={{ fontSize: '14px', fontWeight: 600 }}>App Theme</span>
           </div>
-          <span style={{ color: 'var(--text-primary)', fontSize: '14px', fontWeight: 700 }}>Extreme High Quality Cache</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span
+              style={{ color: 'var(--text-primary)', fontSize: '14px', fontWeight: 700, textTransform: 'capitalize' }}
+            >
+              {currentTheme === 'light'
+                ? 'Clean Snow ☀️'
+                : currentTheme === 'amoled'
+                  ? 'AMOLED Black 🖤'
+                  : currentTheme === 'cyberpunk'
+                    ? 'Cyberpunk Neon 🔮'
+                    : 'Midnight Dark 🌙'}
+            </span>
+            {onOpenThemeModal && (
+              <span
+                style={{
+                  fontSize: '12px',
+                  color: 'var(--isai-purple, #7C3AED)',
+                  fontWeight: 700,
+                  background: 'rgba(124, 58, 237, 0.1)',
+                  padding: '3px 10px',
+                  borderRadius: '10px',
+                  border: '1px solid rgba(124, 58, 237, 0.25)'
+                }}
+              >
+                Change
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
       {/* 5. Section: Device & App Info */}
-      <div style={{ marginBottom: '24px', background: 'var(--surface-card)', border: '1px solid var(--border-subtle)', borderRadius: '20px', padding: '20px 22px' }}>
-        <h3 style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1.2px', marginBottom: '14px' }}>
+      <div
+        style={{
+          marginBottom: '24px',
+          background: 'var(--surface-card)',
+          border: '1px solid var(--border-subtle)',
+          borderRadius: '20px',
+          padding: '20px 22px'
+        }}
+      >
+        <h3
+          style={{
+            fontSize: '12px',
+            color: 'var(--isai-purple, #7C3AED)',
+            fontWeight: 800,
+            textTransform: 'uppercase',
+            letterSpacing: '1.2px',
+            marginBottom: '16px'
+          }}
+        >
           DEVICE &amp; APP INFO
         </h3>
 
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid var(--divider)' }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '12px 0',
+            borderBottom: '1px solid var(--divider)'
+          }}
+        >
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', color: 'var(--text-secondary)' }}>
             <Laptop size={18} color="#EC4899" />
             <span style={{ fontSize: '14px', fontWeight: 600 }}>Active Device</span>
@@ -383,33 +516,133 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
           <span style={{ color: 'var(--text-primary)', fontSize: '14px', fontWeight: 700 }}>Web Browser (Current)</span>
         </div>
 
+        {/* Multi-Device Playback Mode Switch */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '14px 0',
+            borderBottom: '1px solid var(--divider)'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', color: 'var(--text-secondary)' }}>
+            <Headphones size={18} color="#8B5CF6" />
+            <div>
+              <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                Multi-Device Playback
+              </div>
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px', fontWeight: 500 }}>
+                {isSeparatePlayback
+                  ? 'Separate: Play on 2+ devices simultaneously 🎧'
+                  : 'Sync Mode: Single device (Spotify Connect) ⚡'}
+              </div>
+            </div>
+          </div>
+          <label
+            style={{ position: 'relative', display: 'inline-block', width: '48px', height: '26px', cursor: 'pointer' }}
+          >
+            <input
+              type="checkbox"
+              checked={isSeparatePlayback}
+              onChange={(e) => {
+                const checked = e.target.checked
+                setIsSeparatePlayback(checked)
+                storageService.setMultiDevicePlaybackSeparate(checked)
+              }}
+              style={{ opacity: 0, width: 0, height: 0 }}
+            />
+            <span
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: isSeparatePlayback ? '#8B5CF6' : 'rgba(255, 255, 255, 0.2)',
+                borderRadius: '34px',
+                transition: '0.3s'
+              }}
+            >
+              <span
+                style={{
+                  position: 'absolute',
+                  height: '20px',
+                  width: '20px',
+                  left: isSeparatePlayback ? '24px' : '4px',
+                  bottom: '3px',
+                  backgroundColor: 'white',
+                  borderRadius: '50%',
+                  transition: '0.3s'
+                }}
+              />
+            </span>
+          </label>
+        </div>
+
         <div
           onClick={() => setIsConnectModalOpen(true)}
-          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid var(--divider)', cursor: 'pointer' }}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '12px 0',
+            borderBottom: '1px solid var(--divider)',
+            cursor: 'pointer'
+          }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', color: 'var(--text-secondary)' }}>
             <RefreshCw size={18} color="#06B6D4" />
             <span style={{ fontSize: '14px', fontWeight: 600 }}>ISAI Connect</span>
           </div>
-          <span style={{ color: '#06B6D4', fontSize: '14px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span
+            style={{
+              color: '#06B6D4',
+              fontSize: '14px',
+              fontWeight: 800,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+          >
             Device Sync Ready 📱
           </span>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid var(--divider)' }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '12px 0',
+            borderBottom: '1px solid var(--divider)'
+          }}
+        >
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', color: 'var(--text-secondary)' }}>
             <Heart size={18} color="#EC4899" />
             <span style={{ fontSize: '14px', fontWeight: 600 }}>Favorite Tracks</span>
           </div>
-          <span style={{ color: 'var(--text-primary)', fontSize: '14px', fontWeight: 700 }}>{favoritesCount} Liked Songs</span>
+          <span style={{ color: 'var(--text-primary)', fontSize: '14px', fontWeight: 700 }}>
+            {favoritesCount} Liked Songs
+          </span>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid var(--divider)' }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '12px 0',
+            borderBottom: '1px solid var(--divider)'
+          }}
+        >
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', color: 'var(--text-secondary)' }}>
             <ListMusic size={18} color="#EC4899" />
             <span style={{ fontSize: '14px', fontWeight: 600 }}>Custom Playlists</span>
           </div>
-          <span style={{ color: 'var(--text-primary)', fontSize: '14px', fontWeight: 700 }}>{playlistsCount} Playlists</span>
+          <span style={{ color: 'var(--text-primary)', fontSize: '14px', fontWeight: 700 }}>
+            {playlistsCount} Playlists
+          </span>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0' }}>
@@ -417,7 +650,9 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
             <Info size={18} color="var(--text-muted)" />
             <span style={{ fontSize: '14px', fontWeight: 600 }}>App Version</span>
           </div>
-          <span style={{ color: 'var(--text-primary)', fontSize: '14px', fontWeight: 700 }}>ISAI Web v2.4.0 (2026 Build)</span>
+          <span style={{ color: 'var(--text-primary)', fontSize: '14px', fontWeight: 700 }}>
+            ISAI Web v2.4.0 (2026 Build)
+          </span>
         </div>
       </div>
 
@@ -508,10 +743,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
       </div>
 
       {/* ISAI Connect Modal */}
-      <IsaiConnectModal
-        isOpen={isConnectModalOpen}
-        onClose={() => setIsConnectModalOpen(false)}
-      />
+      <IsaiConnectModal isOpen={isConnectModalOpen} onClose={() => setIsConnectModalOpen(false)} />
 
       {/* 7. Edit Display Name Dialog Modal */}
       {showEditModal && (
@@ -541,7 +773,9 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px' }}>
+            <div
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px' }}
+            >
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <Pencil size={20} color="#06B6D4" />
                 <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)' }}>
@@ -558,7 +792,15 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
 
             <form onSubmit={handleSaveName}>
               <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '8px' }}>
+                <label
+                  style={{
+                    display: 'block',
+                    fontSize: '13px',
+                    fontWeight: 700,
+                    color: 'var(--text-secondary)',
+                    marginBottom: '8px'
+                  }}
+                >
                   Your Display Name
                 </label>
                 <input
@@ -572,9 +814,9 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
                     width: '100%',
                     padding: '14px 16px',
                     borderRadius: '12px',
-                    background: 'rgba(255, 255, 255, 0.05)',
+                    background: 'var(--surface-dark)',
                     border: '1px solid var(--border-glass)',
-                    color: '#fff',
+                    color: 'var(--text-primary)',
                     fontSize: '15px',
                     fontWeight: 600,
                     outline: 'none'
@@ -583,7 +825,17 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
               </div>
 
               {isSavedNotice && (
-                <div style={{ color: '#10B981', fontSize: '13px', fontWeight: 700, marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <div
+                  style={{
+                    color: '#10B981',
+                    fontSize: '13px',
+                    fontWeight: 700,
+                    marginBottom: '14px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                >
                   <CheckCircle2 size={16} /> Updated successfully!
                 </div>
               )}

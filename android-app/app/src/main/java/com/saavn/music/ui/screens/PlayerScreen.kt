@@ -13,6 +13,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import com.saavn.music.data.model.AudioQuality
@@ -31,6 +32,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -50,16 +53,18 @@ import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Devices
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -87,7 +92,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
@@ -132,6 +136,12 @@ enum class PlayerVisualMode {
     VIDEO
 }
 
+enum class QueueTab(val label: String) {
+    UP_NEXT("Up Next"),
+    PLAYED("Played"),
+    ALL("All Queue")
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlayerScreen(
@@ -148,10 +158,15 @@ fun PlayerScreen(
     val isRepeat by viewModel.ytPlayerController.isRepeat.collectAsState()
     val userProfile by viewModel.userProfile.collectAsState()
 
+    val currentRoom by viewModel.listenTogetherManager.currentRoom.collectAsState()
+    val inRoom = currentRoom != null
+    val isListenTogetherListener = inRoom && !viewModel.listenTogetherManager.isHost()
+    val roomHostName = currentRoom?.hostDeviceName ?: "Host"
+
     val syncState by viewModel.isaiConnectManager.playbackState.collectAsState()
     val isSeparateMode by viewModel.isMultiDevicePlaybackSeparate.collectAsState()
     val isMyDeviceActive = if (isSeparateMode) true else viewModel.isaiConnectManager.isMyDeviceActive()
-    val isRemoteActive = !isSeparateMode && !isMyDeviceActive && syncState != null &&
+    val isRemoteActive = !inRoom && !isSeparateMode && !isMyDeviceActive && syncState != null &&
         syncState!!.currentDeviceId.isNotBlank() &&
         !syncState!!.currentTitle.isNullOrBlank() &&
         (syncState!!.isPlaying || Math.abs(System.currentTimeMillis() - syncState!!.updatedAt) < 15 * 60_000L)
@@ -188,23 +203,34 @@ fun PlayerScreen(
     var showQueueSheet by remember { mutableStateOf(false) }
     var showConnectSheet by remember { mutableStateOf(false) }
     var showListenTogetherSheet by remember { mutableStateOf(false) }
-    val currentRoom by viewModel.listenTogetherManager.currentRoom.collectAsState()
     var showMoreMenu by remember { mutableStateOf(false) }
     var showLyricsSheet by remember { mutableStateOf(false) }
     var isDraggingSlider by remember { mutableStateOf(false) }
     var dragPositionSec by remember { mutableFloatStateOf(0f) }
     var visualMode by remember { mutableStateOf(PlayerVisualMode.ALBUM_CARD) }
 
-    val currentSong = if (isRemoteActive && !syncState?.currentTitle.isNullOrBlank()) {
+    val roomSong = currentRoom?.playbackState?.song?.takeIf { it.title.isNotBlank() }?.let { rs ->
         com.saavn.music.data.model.YouTubeSong(
-            videoId = syncState?.currentSongId ?: "",
-            title = syncState?.currentTitle ?: "Remote Track",
-            channelTitle = syncState?.currentArtist ?: "ISAI Connect",
-            thumbnailUrl = syncState?.currentArtwork ?: "",
-            audioUrl = syncState?.currentAudioUrl?.ifBlank { null }
+            videoId = rs.videoId,
+            title = rs.title,
+            channelTitle = rs.artist,
+            thumbnailUrl = rs.artwork,
+            audioUrl = rs.audioUrl.ifBlank { null }
         )
-    } else {
-        song
+    }
+
+    val currentSong = when {
+        inRoom -> song ?: roomSong
+        isRemoteActive && !syncState?.currentTitle.isNullOrBlank() -> {
+            com.saavn.music.data.model.YouTubeSong(
+                videoId = syncState?.currentSongId ?: "",
+                title = syncState?.currentTitle ?: "Remote Track",
+                channelTitle = syncState?.currentArtist ?: "ISAI Connect",
+                thumbnailUrl = syncState?.currentArtwork ?: "",
+                audioUrl = syncState?.currentAudioUrl?.ifBlank { null }
+            )
+        }
+        else -> song
     }
 
     if (currentSong == null) {
@@ -225,16 +251,35 @@ fun PlayerScreen(
         }
     }
 
-    val isPlaying = if (isRemoteActive) (syncState?.isPlaying == true) else isPlayingLocal
-    val positionSec = if (isRemoteActive) ((syncState?.positionMs ?: 0L) / 1000f) else positionSecLocal
-    val durationSec = if (isRemoteActive) ((syncState?.durationMs ?: 210000L) / 1000f) else durationSecLocal
+    val isPlaying = when {
+        inRoom -> isPlayingLocal || (currentRoom?.playbackState?.state == "PLAYING")
+        isRemoteActive -> (syncState?.isPlaying == true)
+        else -> isPlayingLocal
+    }
+    val positionSec = when {
+        inRoom && positionSecLocal > 0f -> positionSecLocal
+        inRoom -> (viewModel.listenTogetherManager.getExpectedPosition() / 1000f)
+        isRemoteActive -> ((syncState?.positionMs ?: 0L) / 1000f)
+        else -> positionSecLocal
+    }
+    val durationSec = when {
+        inRoom && durationSecLocal > 0f -> durationSecLocal
+        inRoom -> ((currentRoom?.playbackState?.song?.durationMs ?: 0L) / 1000f).takeIf { it > 0f } ?: durationSecLocal
+        isRemoteActive -> ((syncState?.durationMs ?: 210000L) / 1000f)
+        else -> durationSecLocal
+    }
     val favorites by viewModel.favorites.collectAsState()
     val isFav = favorites.any { it.videoId.trim() == currentSong.videoId.trim() }
     val context = LocalContext.current
     val currentAudioQuality by viewModel.ytPlayerController.audioQuality.collectAsState()
     var showQualityDialog by remember { mutableStateOf(false) }
 
-    // Smooth continuous vinyl rotation
+    // Initial sync of volume when PlayerScreen opens
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        viewModel.syncWithSystemVolume()
+    }
+
+    // Smooth continuous animations for visualizer & aura
     val infiniteTransition = rememberInfiniteTransition(label = "VinylSpin")
     val rotationAngle by infiniteTransition.animateFloat(
         initialValue = 0f,
@@ -245,8 +290,6 @@ fun PlayerScreen(
         ),
         label = "rotation"
     )
-
-    // Pulsing aura scale
     val auraScale by infiniteTransition.animateFloat(
         initialValue = 0.94f,
         targetValue = 1.06f,
@@ -268,14 +311,13 @@ fun PlayerScreen(
                 // Consume clicks on full player background so items on the page behind it are never selected
             }
     ) {
-        // 1. Ambient Blurred Backdrop
+        // 1. Ambient Backdrop (Hardware GPU accelerated, 0 CPU software blur)
         AsyncImage(
             model = currentSong.thumbnailUrl,
             contentDescription = null,
             modifier = Modifier
                 .fillMaxSize()
-                .alpha(0.38f)
-                .blur(radius = 70.dp),
+                .alpha(0.18f),
             contentScale = ContentScale.Crop
         )
 
@@ -300,7 +342,7 @@ fun PlayerScreen(
                 .fillMaxSize()
                 .statusBarsPadding()
                 .navigationBarsPadding()
-                .padding(horizontal = 20.dp, vertical = 6.dp),
+                .padding(start = 20.dp, end = 20.dp, top = 22.dp, bottom = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
@@ -308,19 +350,19 @@ fun PlayerScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(48.dp),
+                    .padding(vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 // Left: Back Button & NOW PLAYING Title
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     IconButton(
                         onClick = { viewModel.closeFullPlayer() },
                         modifier = Modifier
-                            .size(38.dp)
+                            .size(40.dp)
                             .clip(CircleShape)
                             .background(DarkSurfaceGlass)
                             .border(1.dp, GlassBorderSubtle, CircleShape)
@@ -344,7 +386,7 @@ fun PlayerScreen(
                 // Right: Action Buttons (Connected Devices + Listen Together + More Options Menu)
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     val isConnectedToOther = isRemoteActive
 
@@ -352,7 +394,7 @@ fun PlayerScreen(
                     IconButton(
                         onClick = { showConnectSheet = true },
                         modifier = Modifier
-                            .size(36.dp)
+                            .size(40.dp)
                             .clip(CircleShape)
                             .background(
                                 if (isConnectedToOther) com.saavn.music.ui.theme.IsaiLime.copy(alpha = 0.2f)
@@ -369,7 +411,7 @@ fun PlayerScreen(
                             imageVector = Icons.Default.Devices,
                             contentDescription = "Connect Devices",
                             tint = if (isConnectedToOther) com.saavn.music.ui.theme.IsaiLime else TextPrimary,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(20.dp)
                         )
                     }
 
@@ -378,7 +420,7 @@ fun PlayerScreen(
                     IconButton(
                         onClick = { showListenTogetherSheet = true },
                         modifier = Modifier
-                            .size(36.dp)
+                            .size(40.dp)
                             .clip(CircleShape)
                             .background(
                                 if (isRoomActive) com.saavn.music.ui.theme.IsaiLime.copy(alpha = 0.2f)
@@ -395,7 +437,7 @@ fun PlayerScreen(
                             imageVector = Icons.Default.CloudSync,
                             contentDescription = "Listen Together",
                             tint = if (isRoomActive) com.saavn.music.ui.theme.IsaiLime else TextPrimary,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(20.dp)
                         )
                     }
 
@@ -404,7 +446,7 @@ fun PlayerScreen(
                         IconButton(
                             onClick = { showMoreMenu = true },
                             modifier = Modifier
-                                .size(36.dp)
+                                .size(40.dp)
                                 .clip(CircleShape)
                                 .background(DarkSurfaceGlass)
                                 .border(1.dp, GlassBorderSubtle, CircleShape)
@@ -430,13 +472,6 @@ fun PlayerScreen(
                                 }
                             )
                             DropdownMenuItem(
-                                text = { Text("⚙️ Song Quality (${currentAudioQuality.bitrate} kbps)", color = TextPrimary) },
-                                onClick = {
-                                    showMoreMenu = false
-                                    showQualityDialog = true
-                                }
-                            )
-                            DropdownMenuItem(
                                 text = { Text("🔗 Share Track", color = TextPrimary) },
                                 onClick = {
                                     showMoreMenu = false
@@ -452,6 +487,8 @@ fun PlayerScreen(
                     }
                 }
             }
+
+            Spacer(modifier = Modifier.height(18.dp))
 
             if (showQualityDialog) {
                 AlertDialog(
@@ -627,16 +664,27 @@ fun PlayerScreen(
                         .height(220.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    // Pulsing Aura behind Artwork Card
+                    val volumeFactor = (volume.toFloat() / 100f).coerceIn(0f, 1f)
+
+                    // Pulsing Aura behind Artwork Card (hardware GPU scaled dynamically with volume)
                     Box(
                         modifier = Modifier
-                            .size((195 * if (isPlaying) auraScale else 1f).dp)
+                            .size(195.dp)
+                            .graphicsLayer {
+                                val dynamicScale = if (isPlaying && volumeFactor > 0f) {
+                                    1f + (auraScale - 1f) * volumeFactor
+                                } else {
+                                    1f
+                                }
+                                scaleX = dynamicScale
+                                scaleY = dynamicScale
+                            }
                             .clip(RoundedCornerShape(24.dp))
                             .background(
                                 Brush.radialGradient(
                                     colors = listOf(
-                                        com.saavn.music.ui.theme.IsaiLime.copy(alpha = 0.35f),
-                                        NeonPurple.copy(alpha = 0.2f),
+                                        com.saavn.music.ui.theme.IsaiLime.copy(alpha = 0.35f * volumeFactor.coerceAtLeast(0.08f)),
+                                        NeonPurple.copy(alpha = 0.2f * volumeFactor.coerceAtLeast(0.05f)),
                                         Color.Transparent
                                     )
                                 )
@@ -671,72 +719,64 @@ fun PlayerScreen(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // Live Dancing Vibrant Full Rainbow Audio Waveform Visualizer
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(20.dp)
-                        .padding(horizontal = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.Bottom
-                ) {
-                    val barHeights = listOf(
+                // Live Dancing Vibrant Full Rainbow Audio Waveform Visualizer (Hardware-accelerated GPU Canvas, Zero Composable Overhead)
+                val barHeights = remember {
+                    listOf(
                         14, 22, 10, 26, 18, 12, 24, 16, 22, 10,
                         25, 17, 12, 24, 15, 20, 26, 11, 23, 16,
                         19, 25, 12, 21, 14, 24, 18, 10
                     )
-                    val rainbowColors = listOf(
-                        Color(0xFFFF007A), // Neon Pink
-                        Color(0xFFFF3366), // Coral Pink
-                        Color(0xFFFF6600), // Electric Orange
-                        Color(0xFFFFD700), // Bright Gold
-                        Color(0xFFAEEA00), // Neon Lime
-                        Color(0xFF00FF88), // Spring Green
-                        Color(0xFF00E5FF), // Bright Turquoise
-                        Color(0xFF00F0FF), // Neon Cyan
-                        Color(0xFF0088FF), // Electric Blue
-                        Color(0xFF7000FF), // Deep Violet
-                        Color(0xFFB000FF), // Neon Purple
-                        Color(0xFFFF00E5), // Vivid Magenta
-                        Color(0xFFFF007A), // Neon Pink
-                        Color(0xFFFF5722), // Deep Orange
-                        Color(0xFFFFC107), // Gold
-                        Color(0xFF76FF03), // Lime Green
-                        Color(0xFF00E676), // Emerald
-                        Color(0xFF00B0FF), // Sky Blue
-                        Color(0xFF3D5AFE), // Indigo
-                        Color(0xFFD500F9), // Purple Pink
-                        Color(0xFFFF1744), // Crimson
-                        Color(0xFFFFAB00), // Amber
-                        Color(0xFF00E5FF), // Cyan
-                        Color(0xFF651FFF), // Purple
-                        Color(0xFFFF007A), // Pink
-                        Color(0xFF00FF88), // Green
-                        Color(0xFFFFD700), // Yellow Gold
-                        Color(0xFF00F0FF)  // Cyan
+                }
+                val rainbowColors = remember {
+                    listOf(
+                        Color(0xFFFF007A), Color(0xFFFF3366), Color(0xFFFF6600), Color(0xFFFFD700),
+                        Color(0xFFAEEA00), Color(0xFF00FF88), Color(0xFF00E5FF), Color(0xFF00F0FF),
+                        Color(0xFF0088FF), Color(0xFF7000FF), Color(0xFFB000FF), Color(0xFFFF00E5),
+                        Color(0xFFFF007A), Color(0xFFFF5722), Color(0xFFFFC107), Color(0xFF76FF03),
+                        Color(0xFF00E676), Color(0xFF00B0FF), Color(0xFF3D5AFE), Color(0xFFD500F9),
+                        Color(0xFFFF1744), Color(0xFFFFAB00), Color(0xFF00E5FF), Color(0xFF651FFF),
+                        Color(0xFFFF007A), Color(0xFF00FF88), Color(0xFFFFD700), Color(0xFF00F0FF)
                     )
+                }
+
+                androidx.compose.foundation.Canvas(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(20.dp)
+                        .padding(horizontal = 4.dp)
+                ) {
+                    val totalBars = barHeights.size
+                    val availableWidth = size.width
+                    val barWidthPx = 3.2.dp.toPx()
+                    val cornerRadius = androidx.compose.ui.geometry.CornerRadius(3.dp.toPx())
+                    val spaceBetween = if (totalBars > 1) (availableWidth - (totalBars * barWidthPx)) / (totalBars - 1) else 0f
+                    val volumeFactor = (volume.toFloat() / 100f).coerceIn(0.05f, 1f)
 
                     barHeights.forEachIndexed { index, _ ->
-                        val dynamicH = if (isPlaying) {
-                            val factor = (Math.sin(rotationAngle.toDouble() * 0.12 + index * 0.4) + 1) / 2.0
-                            (5 + factor * 15).coerceIn(3.0, 20.0).dp
+                        val dynamicHPx = if (isPlaying && volume > 0) {
+                            val factor = (Math.sin(rotationAngle.toDouble() * (0.07 + 0.05 * (volume.toFloat() / 100f)) + index * 0.4) + 1) / 2.0
+                            val minH = (2.5f + 2.5f * volumeFactor).dp.toPx()
+                            val maxH = (4f + 16f * volumeFactor).dp.toPx()
+                            (minH + factor * (maxH - minH)).toFloat().coerceIn(3.dp.toPx(), 20.dp.toPx())
                         } else {
-                            4.dp
+                            3.dp.toPx()
                         }
+
+                        val x = index * (barWidthPx + spaceBetween)
+                        val y = size.height - dynamicHPx
 
                         val topColor = rainbowColors[index % rainbowColors.size]
                         val bottomColor = rainbowColors[(index + 4) % rainbowColors.size]
 
-                        Box(
-                            modifier = Modifier
-                                .width(3.2.dp)
-                                .height(dynamicH)
-                                .clip(RoundedCornerShape(3.dp))
-                                .background(
-                                    Brush.verticalGradient(
-                                        colors = listOf(topColor, bottomColor)
-                                    )
-                                )
+                        drawRoundRect(
+                            brush = Brush.verticalGradient(
+                                colors = listOf(topColor, bottomColor),
+                                startY = y,
+                                endY = size.height
+                            ),
+                            topLeft = androidx.compose.ui.geometry.Offset(x, y),
+                            size = androidx.compose.ui.geometry.Size(barWidthPx, dynamicHPx),
+                            cornerRadius = cornerRadius
                         )
                     }
                 }
@@ -850,6 +890,34 @@ fun PlayerScreen(
 
                 // Seek Bar & Digital Time Chips
                 Column(modifier = Modifier.fillMaxWidth()) {
+                    if (isListenTogetherListener) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 8.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(Color(0xFF22C55E).copy(alpha = 0.12f))
+                                .border(1.dp, Color(0xFF22C55E).copy(alpha = 0.35f), RoundedCornerShape(10.dp))
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Lock,
+                                contentDescription = null,
+                                tint = Color(0xFF4ADE80),
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "👑 Host Controlled ($roomHostName) • Listener Mode",
+                                color = Color(0xFF4ADE80),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
                     val totalDuration = if (durationSec > 0f) durationSec else 210f
                     val currentSec = if (isDraggingSlider) dragPositionSec else positionSec
                     val sliderValue = if (totalDuration > 0f) {
@@ -859,16 +927,23 @@ fun PlayerScreen(
                     Slider(
                         value = sliderValue,
                         onValueChange = {
-                            isDraggingSlider = true
-                            dragPositionSec = it * totalDuration
+                            if (isListenTogetherListener) {
+                                android.widget.Toast.makeText(context, "👑 Playback position is controlled by Host ($roomHostName)", android.widget.Toast.LENGTH_SHORT).show()
+                            } else {
+                                isDraggingSlider = true
+                                dragPositionSec = it * totalDuration
+                            }
                         },
                         onValueChangeFinished = {
-                            viewModel.seekTo(dragPositionSec)
-                            isDraggingSlider = false
+                            if (!isListenTogetherListener) {
+                                viewModel.seekTo(dragPositionSec)
+                                isDraggingSlider = false
+                            }
                         },
+                        enabled = !isListenTogetherListener,
                         colors = SliderDefaults.colors(
-                            thumbColor = NeonCyan,
-                            activeTrackColor = NeonCyan,
+                            thumbColor = if (isListenTogetherListener) TextMuted.copy(alpha = 0.5f) else NeonCyan,
+                            activeTrackColor = if (isListenTogetherListener) TextMuted.copy(alpha = 0.5f) else NeonCyan,
                             inactiveTrackColor = SliderTrack
                         ),
                         modifier = Modifier.fillMaxWidth()
@@ -918,29 +993,41 @@ fun PlayerScreen(
                 ) {
                     // Shuffle Button
                     IconButton(
-                        onClick = { viewModel.toggleShuffle() },
+                        onClick = {
+                            if (isListenTogetherListener) {
+                                android.widget.Toast.makeText(context, "👑 Shuffle is controlled by Host ($roomHostName)", android.widget.Toast.LENGTH_SHORT).show()
+                            } else {
+                                viewModel.toggleShuffle()
+                            }
+                        },
                         modifier = Modifier
                             .size(40.dp)
                             .clip(CircleShape)
-                            .background(if (isShuffle) NeonCyan.copy(alpha = 0.15f) else Color.Transparent)
+                            .background(if (isShuffle && !isListenTogetherListener) NeonCyan.copy(alpha = 0.15f) else Color.Transparent)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Shuffle,
                             contentDescription = "Shuffle",
-                            tint = if (isShuffle) NeonCyan else TextMuted,
+                            tint = if (isListenTogetherListener) TextMuted.copy(alpha = 0.35f) else if (isShuffle) NeonCyan else TextMuted,
                             modifier = Modifier.size(20.dp)
                         )
                     }
 
                     // Previous
                     IconButton(
-                        onClick = { viewModel.playPrevious() },
+                        onClick = {
+                            if (isListenTogetherListener) {
+                                android.widget.Toast.makeText(context, "👑 Only Host ($roomHostName) can skip songs", android.widget.Toast.LENGTH_SHORT).show()
+                            } else {
+                                viewModel.playPrevious()
+                            }
+                        },
                         modifier = Modifier.size(46.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.SkipPrevious,
                             contentDescription = "Previous",
-                            tint = TextPrimary,
+                            tint = if (isListenTogetherListener) TextMuted.copy(alpha = 0.4f) else TextPrimary,
                             modifier = Modifier.size(28.dp)
                         )
                     }
@@ -952,17 +1039,27 @@ fun PlayerScreen(
                             .shadow(
                                 elevation = 16.dp,
                                 shape = CircleShape,
-                                spotColor = NeonCyan.copy(alpha = 0.6f),
+                                spotColor = if (isListenTogetherListener) Color(0xFF22C55E).copy(alpha = 0.4f) else NeonCyan.copy(alpha = 0.6f),
                                 ambientColor = NeonPurple.copy(alpha = 0.4f)
                             )
                             .clip(CircleShape)
                             .background(
-                                Brush.linearGradient(
-                                    colors = listOf(NeonCyan, NeonPurple, NeonPink)
-                                )
+                                if (isListenTogetherListener) {
+                                    Brush.linearGradient(
+                                        colors = listOf(Color(0xFF16A34A), Color(0xFF0D9488))
+                                    )
+                                } else {
+                                    Brush.linearGradient(
+                                        colors = listOf(NeonCyan, NeonPurple, NeonPink)
+                                    )
+                                }
                             )
                             .clickable {
-                                viewModel.togglePlayPause()
+                                if (isListenTogetherListener) {
+                                    android.widget.Toast.makeText(context, "👑 Play/Pause is controlled by Host ($roomHostName)", android.widget.Toast.LENGTH_SHORT).show()
+                                } else {
+                                    viewModel.togglePlayPause()
+                                }
                             },
                         contentAlignment = Alignment.Center
                     ) {
@@ -984,29 +1081,41 @@ fun PlayerScreen(
 
                     // Next
                     IconButton(
-                        onClick = { viewModel.playNext() },
+                        onClick = {
+                            if (isListenTogetherListener) {
+                                android.widget.Toast.makeText(context, "👑 Only Host ($roomHostName) can skip songs", android.widget.Toast.LENGTH_SHORT).show()
+                            } else {
+                                viewModel.playNext()
+                            }
+                        },
                         modifier = Modifier.size(46.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.SkipNext,
                             contentDescription = "Next",
-                            tint = TextPrimary,
+                            tint = if (isListenTogetherListener) TextMuted.copy(alpha = 0.4f) else TextPrimary,
                             modifier = Modifier.size(28.dp)
                         )
                     }
 
                     // Repeat Button
                     IconButton(
-                        onClick = { viewModel.toggleRepeat() },
+                        onClick = {
+                            if (isListenTogetherListener) {
+                                android.widget.Toast.makeText(context, "👑 Repeat is controlled by Host ($roomHostName)", android.widget.Toast.LENGTH_SHORT).show()
+                            } else {
+                                viewModel.toggleRepeat()
+                            }
+                        },
                         modifier = Modifier
                             .size(40.dp)
                             .clip(CircleShape)
-                            .background(if (isRepeat) NeonPink.copy(alpha = 0.15f) else Color.Transparent)
+                            .background(if (isRepeat && !isListenTogetherListener) NeonPink.copy(alpha = 0.15f) else Color.Transparent)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Repeat,
                             contentDescription = "Repeat",
-                            tint = if (isRepeat) NeonPink else TextMuted,
+                            tint = if (isListenTogetherListener) TextMuted.copy(alpha = 0.35f) else if (isRepeat) NeonPink else TextMuted,
                             modifier = Modifier.size(20.dp)
                         )
                     }
@@ -1025,6 +1134,10 @@ fun PlayerScreen(
                     var previousVol by remember { mutableIntStateOf(80) }
                     IconButton(
                         onClick = {
+                            if (isListenTogetherListener) {
+                                android.widget.Toast.makeText(context, "👑 Sound/Volume is controlled by Host ($roomHostName)", android.widget.Toast.LENGTH_SHORT).show()
+                                return@IconButton
+                            }
                             if (volume > 0) {
                                 previousVol = volume
                                 viewModel.setVolume(0)
@@ -1041,7 +1154,7 @@ fun PlayerScreen(
                                 else -> Icons.AutoMirrored.Filled.VolumeUp
                             },
                             contentDescription = "Volume Toggle",
-                            tint = if (volume > 0) NeonCyan else TextMuted,
+                            tint = if (isListenTogetherListener) TextMuted else if (volume > 0) NeonCyan else TextMuted,
                             modifier = Modifier.size(18.dp)
                         )
                     }
@@ -1050,11 +1163,18 @@ fun PlayerScreen(
 
                     Slider(
                         value = volume.toFloat(),
-                        onValueChange = { viewModel.setVolume(it.toInt()) },
+                        onValueChange = {
+                            if (isListenTogetherListener) {
+                                android.widget.Toast.makeText(context, "👑 Sound/Volume is controlled by Host ($roomHostName)", android.widget.Toast.LENGTH_SHORT).show()
+                            } else {
+                                viewModel.setVolume(it.toInt())
+                            }
+                        },
+                        enabled = !isListenTogetherListener,
                         valueRange = 0f..100f,
                         colors = SliderDefaults.colors(
-                            thumbColor = NeonCyan,
-                            activeTrackColor = NeonCyan,
+                            thumbColor = if (isListenTogetherListener) TextMuted else NeonCyan,
+                            activeTrackColor = if (isListenTogetherListener) TextMuted.copy(alpha = 0.5f) else NeonCyan,
                             inactiveTrackColor = DarkSurfaceVariant
                         ),
                         modifier = Modifier.weight(1f)
@@ -1071,9 +1191,9 @@ fun PlayerScreen(
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     ) {
                         Text(
-                            text = "$volume%",
-                            color = NeonCyan,
-                            fontSize = 10.sp,
+                            text = if (isListenTogetherListener) "👑 $volume%" else "$volume%",
+                            color = if (isListenTogetherListener) Color(0xFF4ADE80) else NeonCyan,
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
@@ -1164,6 +1284,46 @@ fun PlayerScreen(
         // YouTube Music Style Queue & Suggestions Bottom Sheet
         if (showQueueSheet) {
             val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+            var selectedQueueTab by remember { mutableStateOf(QueueTab.UP_NEXT) }
+
+            val safePlayingIndex = if (activePlayingIndex in effectiveDisplayQueue.indices) activePlayingIndex else 0
+            val playedSongsWithIndex = remember(effectiveDisplayQueue, safePlayingIndex) {
+                if (safePlayingIndex > 0 && effectiveDisplayQueue.isNotEmpty()) {
+                    effectiveDisplayQueue.take(safePlayingIndex).mapIndexed { idx, s -> idx to s }
+                } else emptyList()
+            }
+            val currentSongWithIndex = remember(effectiveDisplayQueue, safePlayingIndex) {
+                if (safePlayingIndex in effectiveDisplayQueue.indices) {
+                    safePlayingIndex to effectiveDisplayQueue[safePlayingIndex]
+                } else null
+            }
+            val upNextSongsWithIndex = remember(effectiveDisplayQueue, safePlayingIndex) {
+                if (safePlayingIndex >= 0 && safePlayingIndex < effectiveDisplayQueue.size - 1) {
+                    effectiveDisplayQueue.drop(safePlayingIndex + 1).mapIndexed { offset, s -> (safePlayingIndex + 1 + offset) to s }
+                } else emptyList()
+            }
+
+            val playQueueSong: (Int, com.saavn.music.data.model.YouTubeSong) -> Unit = { origIdx, qSong ->
+                if (isListenTogetherListener) {
+                    android.widget.Toast.makeText(context, "👑 Only Host ($roomHostName) can change songs", android.widget.Toast.LENGTH_SHORT).show()
+                } else if (isRemoteActive && !syncState?.currentDeviceId.isNullOrBlank()) {
+                    viewModel.isaiConnectManager.sendCommand(
+                        action = "PLAY_SONG",
+                        song = qSong,
+                        targetDeviceId = syncState!!.currentDeviceId
+                    )
+                    viewModel.isaiConnectManager.updatePlaybackState(
+                        song = qSong,
+                        isPlaying = true,
+                        positionMs = 0L,
+                        currentDeviceId = syncState!!.currentDeviceId,
+                        queueIndex = origIdx
+                    )
+                } else {
+                    viewModel.playSong(qSong, effectiveDisplayQueue)
+                }
+            }
+
             ModalBottomSheet(
                 onDismissRequest = { showQueueSheet = false },
                 sheetState = sheetState,
@@ -1184,31 +1344,46 @@ fun PlayerScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 24.dp)
+                        .padding(horizontal = 20.dp, vertical = 8.dp)
                 ) {
-                    // Single Header: Playing Queue
+                    // Header with Queue Count and Clear Queue
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 20.dp, vertical = 8.dp),
+                            .padding(bottom = 12.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                Icons.Default.QueueMusic,
-                                contentDescription = null,
-                                tint = NeonCyan,
-                                modifier = Modifier.size(20.dp)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "Queue",
+                                color = TextPrimary,
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.ExtraBold
                             )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Column {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(NeonCyan.copy(alpha = 0.15f))
+                                    .border(1.dp, NeonCyan.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                                    .padding(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
                                 Text(
-                                    text = "PLAYING QUEUE (${effectiveDisplayQueue.size})",
-                                    color = TextPrimary,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    letterSpacing = 1.sp
+                                    text = "${effectiveDisplayQueue.size} songs",
+                                    color = NeonCyan,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            if (uiConfig.queueHeaderSubtitle.isNotEmpty()) {
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "•",
+                                    color = TextMuted,
+                                    fontSize = 10.sp
                                 )
                                 Text(
                                     text = uiConfig.queueHeaderSubtitle,
@@ -1218,7 +1393,7 @@ fun PlayerScreen(
                             }
                         }
 
-                        if (effectiveDisplayQueue.size > 1) {
+                        if (effectiveDisplayQueue.size > 1 && !isListenTogetherListener) {
                             Text(
                                 text = "Clear Queue",
                                 color = NeonPink,
@@ -1233,6 +1408,79 @@ fun PlayerScreen(
                         }
                     }
 
+                    // Modern Tab Selector Pills: Up Next | Played | All Queue
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf(
+                            Triple(QueueTab.UP_NEXT, "Up Next", upNextSongsWithIndex.size),
+                            Triple(QueueTab.PLAYED, "Played", playedSongsWithIndex.size),
+                            Triple(QueueTab.ALL, "All", effectiveDisplayQueue.size)
+                        ).forEach { (tab, title, count) ->
+                            val isSelected = selectedQueueTab == tab
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(
+                                        if (isSelected) NeonCyan.copy(alpha = 0.18f)
+                                        else DarkSurfaceVariant.copy(alpha = 0.5f)
+                                    )
+                                    .border(
+                                        width = 1.dp,
+                                        color = if (isSelected) NeonCyan.copy(alpha = 0.6f) else GlassBorderSubtle,
+                                        shape = RoundedCornerShape(12.dp)
+                                    )
+                                    .clickable { selectedQueueTab = tab }
+                                    .padding(vertical = 8.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    Icon(
+                                        imageVector = when (tab) {
+                                            QueueTab.UP_NEXT -> Icons.Default.SkipNext
+                                            QueueTab.PLAYED -> Icons.Default.History
+                                            QueueTab.ALL -> Icons.Default.QueueMusic
+                                        },
+                                        contentDescription = null,
+                                        tint = if (isSelected) NeonCyan else TextSecondary,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = title,
+                                        color = if (isSelected) NeonCyan else TextSecondary,
+                                        fontSize = 12.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(
+                                                if (isSelected) NeonCyan.copy(alpha = 0.25f)
+                                                else DarkSurfaceGlass
+                                            )
+                                            .padding(horizontal = 5.dp, vertical = 1.dp)
+                                    ) {
+                                        Text(
+                                            text = "$count",
+                                            color = if (isSelected) NeonCyan else TextMuted,
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1240,7 +1488,7 @@ fun PlayerScreen(
                             .background(GlassBorderSubtle)
                     )
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(4.dp))
 
                     if (effectiveDisplayQueue.isEmpty()) {
                         Box(
@@ -1255,290 +1503,209 @@ fun PlayerScreen(
                         LazyColumn(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(420.dp)
+                                .height(440.dp)
                         ) {
-                            itemsIndexed(effectiveDisplayQueue) { idx, qSong ->
-                                val isCurrent = (idx == activePlayingIndex)
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .background(
-                                            if (isCurrent) NeonCyan.copy(alpha = 0.12f) else Color.Transparent
-                                        )
-                                        .clickable {
-                                            if (isRemoteActive && !syncState?.currentDeviceId.isNullOrBlank()) {
-                                                viewModel.isaiConnectManager.sendCommand(
-                                                    action = "PLAY_SONG",
-                                                    song = qSong,
-                                                    targetDeviceId = syncState!!.currentDeviceId
-                                                )
-                                                viewModel.isaiConnectManager.updatePlaybackState(
-                                                    song = qSong,
-                                                    isPlaying = true,
-                                                    positionMs = 0L,
-                                                    currentDeviceId = syncState!!.currentDeviceId,
-                                                    queueIndex = idx
-                                                )
-                                            } else {
-                                                viewModel.playSong(qSong, effectiveDisplayQueue)
-                                            }
-                                        }
-                                        .padding(horizontal = 16.dp, vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    // Rank or Equalizer
-                                    Box(
-                                        modifier = Modifier.width(26.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        if (isCurrent && isPlaying) {
-                                            EqualizerBars(
-                                                isPlaying = true,
-                                                barCount = 3,
-                                                barWidth = 2.5.dp,
-                                                maxHeight = 14.dp,
-                                                activeColor = NeonCyan
-                                            )
-                                        } else {
-                                            Text(
-                                                text = "${idx + 1}",
-                                                color = if (isCurrent) NeonCyan else TextMuted,
-                                                fontSize = 12.sp,
-                                                fontWeight = FontWeight.Bold
+                            when (selectedQueueTab) {
+                                QueueTab.UP_NEXT -> {
+                                    // 1. Now Playing Card
+                                    if (currentSongWithIndex != null) {
+                                        item(key = "now_playing_${currentSongWithIndex.second.videoId}") {
+                                            NowPlayingQueueCard(
+                                                song = currentSongWithIndex.second,
+                                                isPlaying = isPlaying
                                             )
                                         }
                                     }
 
-                                    Spacer(modifier = Modifier.width(8.dp))
-
-                                    // Thumbnail
-                                    Box(
-                                        modifier = Modifier
-                                            .size(44.dp)
-                                            .clip(RoundedCornerShape(8.dp))
-                                    ) {
-                                        AsyncImage(
-                                            model = qSong.thumbnailUrl,
-                                            contentDescription = null,
-                                            modifier = Modifier.fillMaxSize(),
-                                            contentScale = ContentScale.Crop
+                                    // 2. Up Next Section Header
+                                    item(key = "header_upnext") {
+                                        QueueSectionHeader(
+                                            title = "UP NEXT",
+                                            count = upNextSongsWithIndex.size,
+                                            icon = Icons.Default.SkipNext,
+                                            badgeColor = NeonCyan
                                         )
                                     }
 
-                                    Spacer(modifier = Modifier.width(10.dp))
-
-                                    // Details
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text(
-                                                text = qSong.title,
-                                                color = if (isCurrent) NeonCyan else TextPrimary,
-                                                fontSize = 13.sp,
-                                                fontWeight = FontWeight.SemiBold,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis,
-                                                modifier = Modifier.weight(1f, fill = false)
-                                            )
-                                            if (isCurrent) {
-                                                Spacer(modifier = Modifier.width(6.dp))
-                                                Box(
-                                                    modifier = Modifier
-                                                        .clip(RoundedCornerShape(4.dp))
-                                                        .background(NeonCyan.copy(alpha = 0.2f))
-                                                        .padding(horizontal = 5.dp, vertical = 1.dp)
-                                                ) {
-                                                    Text(
-                                                        "PLAYING",
-                                                        color = NeonCyan,
-                                                        fontSize = 8.sp,
-                                                        fontWeight = FontWeight.ExtraBold
-                                                    )
-                                                }
-                                            }
-                                        }
-                                        Text(
-                                            text = qSong.channelTitle,
-                                            color = TextSecondary,
-                                            fontSize = 11.sp,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
-
-                                    Spacer(modifier = Modifier.width(6.dp))
-
-                                    val accentColor = uiConfig.parseAccentColor(NeonCyan)
-                                    val deleteColor = uiConfig.parseDeleteColor(NeonPink)
-                                    val btnSize = uiConfig.capsulePillSize.dp
-
-                                    // Server-Driven Dynamic Queue Actions (Live Configurable via Firebase)
-                                    when (uiConfig.queueActionStyle) {
-                                        "three_dots" -> {
-                                            var showMenu by remember { mutableStateOf(false) }
-                                            Box {
-                                                IconButton(
-                                                    onClick = { showMenu = true },
-                                                    modifier = Modifier.size(btnSize)
-                                                ) {
-                                                    Icon(
-                                                        imageVector = Icons.Default.MoreVert,
-                                                        contentDescription = "Options",
-                                                        tint = TextSecondary,
-                                                        modifier = Modifier.size(20.dp)
-                                                    )
-                                                }
-                                                DropdownMenu(
-                                                    expanded = showMenu,
-                                                    onDismissRequest = { showMenu = false },
-                                                    modifier = Modifier
-                                                        .background(DarkSurfaceElevated)
-                                                        .border(1.dp, GlassBorderSubtle, RoundedCornerShape(12.dp))
-                                                ) {
-                                                    if (uiConfig.enableQueueReorder && idx > 0) {
-                                                        DropdownMenuItem(
-                                                            text = { Text("Move Up", color = TextPrimary) },
-                                                            leadingIcon = { Icon(Icons.Default.KeyboardArrowUp, null, tint = accentColor) },
-                                                            onClick = {
-                                                                showMenu = false
-                                                                viewModel.moveQueueItem(idx, idx - 1)
-                                                            }
-                                                        )
-                                                    }
-                                                    if (uiConfig.enableQueueReorder && idx < effectiveDisplayQueue.size - 1) {
-                                                        DropdownMenuItem(
-                                                            text = { Text("Move Down", color = TextPrimary) },
-                                                            leadingIcon = { Icon(Icons.Default.KeyboardArrowDown, null, tint = accentColor) },
-                                                            onClick = {
-                                                                showMenu = false
-                                                                viewModel.moveQueueItem(idx, idx + 1)
-                                                            }
-                                                        )
-                                                    }
-                                                    if (uiConfig.enableQueueDelete) {
-                                                        DropdownMenuItem(
-                                                            text = { Text("Remove from Queue", color = deleteColor) },
-                                                            leadingIcon = { Icon(Icons.Default.DeleteOutline, null, tint = deleteColor) },
-                                                            onClick = {
-                                                                showMenu = false
-                                                                viewModel.removeFromQueue(idx)
-                                                            }
-                                                        )
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        "minimal_delete" -> {
-                                            if (uiConfig.enableQueueDelete) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(btnSize)
-                                                        .clip(CircleShape)
-                                                        .background(deleteColor.copy(alpha = 0.16f))
-                                                        .border(0.5.dp, deleteColor.copy(alpha = 0.4f), CircleShape)
-                                                        .clickable { viewModel.removeFromQueue(idx) },
-                                                    contentAlignment = Alignment.Center
-                                                ) {
-                                                    Icon(
-                                                        imageVector = Icons.Default.DeleteOutline,
-                                                        contentDescription = "Remove from queue",
-                                                        tint = deleteColor,
-                                                        modifier = Modifier.size(17.dp)
-                                                    )
-                                                }
-                                            }
-                                        }
-                                        else -> {
-                                            // Modern Capsule Pill (default "capsule_pill")
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
+                                    // 3. Up Next Song Items
+                                    if (upNextSongsWithIndex.isEmpty()) {
+                                        item(key = "empty_upnext") {
+                                            Box(
                                                 modifier = Modifier
-                                                    .clip(RoundedCornerShape(20.dp))
-                                                    .background(
-                                                        Brush.horizontalGradient(
-                                                            listOf(
-                                                                Color(0xFF1E172E),
-                                                                Color(0xFF140F22)
-                                                            )
-                                                        )
-                                                    )
-                                                    .border(1.dp, GlassBorderSubtle, RoundedCornerShape(20.dp))
-                                                    .padding(horizontal = 3.dp, vertical = 2.dp)
+                                                    .fillMaxWidth()
+                                                    .padding(vertical = 36.dp, horizontal = 24.dp),
+                                                contentAlignment = Alignment.Center
                                             ) {
-                                                if (uiConfig.enableQueueReorder) {
-                                                    // Move Up button
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .size(btnSize)
-                                                            .clip(CircleShape)
-                                                            .background(if (idx > 0) DarkSurfaceGlass else Color.Transparent)
-                                                            .clickable(enabled = idx > 0) {
-                                                                viewModel.moveQueueItem(idx, idx - 1)
-                                                            },
-                                                        contentAlignment = Alignment.Center
-                                                    ) {
-                                                        Icon(
-                                                            imageVector = Icons.Default.KeyboardArrowUp,
-                                                            contentDescription = "Move Up",
-                                                            tint = if (idx > 0) accentColor else TextMuted.copy(alpha = 0.25f),
-                                                            modifier = Modifier.size(20.dp)
-                                                        )
-                                                    }
-
-                                                    Spacer(modifier = Modifier.width(2.dp))
-
-                                                    // Move Down button
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .size(btnSize)
-                                                            .clip(CircleShape)
-                                                            .background(if (idx < effectiveDisplayQueue.size - 1) DarkSurfaceGlass else Color.Transparent)
-                                                            .clickable(enabled = idx < effectiveDisplayQueue.size - 1) {
-                                                                viewModel.moveQueueItem(idx, idx + 1)
-                                                            },
-                                                        contentAlignment = Alignment.Center
-                                                    ) {
-                                                        Icon(
-                                                            imageVector = Icons.Default.KeyboardArrowDown,
-                                                            contentDescription = "Move Down",
-                                                            tint = if (idx < effectiveDisplayQueue.size - 1) accentColor else TextMuted.copy(alpha = 0.25f),
-                                                            modifier = Modifier.size(20.dp)
-                                                        )
-                                                    }
-                                                }
-
-                                                if (uiConfig.enableQueueReorder && uiConfig.enableQueueDelete) {
-                                                    // Subtle vertical divider inside capsule
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .padding(horizontal = 4.dp)
-                                                            .width(1.dp)
-                                                            .height(18.dp)
-                                                            .background(Color(0x33FFFFFF))
+                                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.SkipNext,
+                                                        contentDescription = null,
+                                                        tint = TextMuted.copy(alpha = 0.5f),
+                                                        modifier = Modifier.size(32.dp)
                                                     )
-                                                }
-
-                                                if (uiConfig.enableQueueDelete) {
-                                                    // Remove (Delete) button
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .size(btnSize)
-                                                            .clip(CircleShape)
-                                                            .background(deleteColor.copy(alpha = 0.16f))
-                                                            .border(0.5.dp, deleteColor.copy(alpha = 0.4f), CircleShape)
-                                                            .clickable {
-                                                                viewModel.removeFromQueue(idx)
-                                                            },
-                                                        contentAlignment = Alignment.Center
-                                                    ) {
-                                                        Icon(
-                                                            imageVector = Icons.Default.DeleteOutline,
-                                                            contentDescription = "Remove from queue",
-                                                            tint = deleteColor,
-                                                            modifier = Modifier.size(17.dp)
-                                                        )
-                                                    }
+                                                    Spacer(modifier = Modifier.height(8.dp))
+                                                    Text("End of upcoming queue", color = TextSecondary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                                    Spacer(modifier = Modifier.height(4.dp))
+                                                    Text("Check Played tab or search songs to add to queue", color = TextMuted, fontSize = 11.sp)
                                                 }
                                             }
+                                        }
+                                    } else {
+                                        items(
+                                            items = upNextSongsWithIndex,
+                                            key = { (origIdx, s) -> "upnext_${origIdx}_${s.videoId}" }
+                                        ) { (origIdx, qSong) ->
+                                            QueueSongRow(
+                                                originalIndex = origIdx,
+                                                qSong = qSong,
+                                                isCurrent = false,
+                                                isPlayed = false,
+                                                isPlaying = false,
+                                                uiConfig = uiConfig,
+                                                totalQueueSize = effectiveDisplayQueue.size,
+                                                onPlay = { playQueueSong(origIdx, qSong) },
+                                                onMoveUp = if (isListenTogetherListener) null else ({ viewModel.moveQueueItem(origIdx, origIdx - 1) }),
+                                                onMoveDown = if (isListenTogetherListener) null else ({ viewModel.moveQueueItem(origIdx, origIdx + 1) }),
+                                                onRemove = if (isListenTogetherListener) null else ({ viewModel.removeFromQueue(origIdx) })
+                                            )
+                                        }
+                                    }
+                                }
+
+                                QueueTab.PLAYED -> {
+                                    // 1. Now Playing Card
+                                    if (currentSongWithIndex != null) {
+                                        item(key = "now_playing_${currentSongWithIndex.second.videoId}") {
+                                            NowPlayingQueueCard(
+                                                song = currentSongWithIndex.second,
+                                                isPlaying = isPlaying
+                                            )
+                                        }
+                                    }
+
+                                    // 2. Played Songs Section Header
+                                    item(key = "header_played") {
+                                        QueueSectionHeader(
+                                            title = "PLAYED SONGS",
+                                            count = playedSongsWithIndex.size,
+                                            icon = Icons.Default.History,
+                                            badgeColor = Color(0xFFA78BFA)
+                                        )
+                                    }
+
+                                    // 3. Played Song Items
+                                    if (playedSongsWithIndex.isEmpty()) {
+                                        item(key = "empty_played") {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(vertical = 36.dp, horizontal = 24.dp),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.History,
+                                                        contentDescription = null,
+                                                        tint = TextMuted.copy(alpha = 0.5f),
+                                                        modifier = Modifier.size(32.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.height(8.dp))
+                                                    Text("No played songs yet", color = TextSecondary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                                    Spacer(modifier = Modifier.height(4.dp))
+                                                    Text("Songs played during this session will appear here", color = TextMuted, fontSize = 11.sp)
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        items(
+                                            items = playedSongsWithIndex,
+                                            key = { (origIdx, s) -> "played_${origIdx}_${s.videoId}" }
+                                        ) { (origIdx, qSong) ->
+                                            QueueSongRow(
+                                                originalIndex = origIdx,
+                                                qSong = qSong,
+                                                isCurrent = false,
+                                                isPlayed = true,
+                                                isPlaying = false,
+                                                uiConfig = uiConfig,
+                                                totalQueueSize = effectiveDisplayQueue.size,
+                                                onPlay = { playQueueSong(origIdx, qSong) },
+                                                onMoveUp = if (isListenTogetherListener) null else ({ viewModel.moveQueueItem(origIdx, origIdx - 1) }),
+                                                onMoveDown = if (isListenTogetherListener) null else ({ viewModel.moveQueueItem(origIdx, origIdx + 1) }),
+                                                onRemove = if (isListenTogetherListener) null else ({ viewModel.removeFromQueue(origIdx) })
+                                            )
+                                        }
+                                    }
+                                }
+
+                                QueueTab.ALL -> {
+                                    // 1. Played Section (if any)
+                                    if (playedSongsWithIndex.isNotEmpty()) {
+                                        item(key = "header_all_played") {
+                                            QueueSectionHeader(
+                                                title = "PLAYED SONGS",
+                                                count = playedSongsWithIndex.size,
+                                                icon = Icons.Default.History,
+                                                badgeColor = Color(0xFFA78BFA)
+                                            )
+                                        }
+                                        items(
+                                            items = playedSongsWithIndex,
+                                            key = { (origIdx, s) -> "all_played_${origIdx}_${s.videoId}" }
+                                        ) { (origIdx, qSong) ->
+                                            QueueSongRow(
+                                                originalIndex = origIdx,
+                                                qSong = qSong,
+                                                isCurrent = false,
+                                                isPlayed = true,
+                                                isPlaying = false,
+                                                uiConfig = uiConfig,
+                                                totalQueueSize = effectiveDisplayQueue.size,
+                                                onPlay = { playQueueSong(origIdx, qSong) },
+                                                onMoveUp = if (isListenTogetherListener) null else ({ viewModel.moveQueueItem(origIdx, origIdx - 1) }),
+                                                onMoveDown = if (isListenTogetherListener) null else ({ viewModel.moveQueueItem(origIdx, origIdx + 1) }),
+                                                onRemove = if (isListenTogetherListener) null else ({ viewModel.removeFromQueue(origIdx) })
+                                            )
+                                        }
+                                    }
+
+                                    // 2. Now Playing Card
+                                    if (currentSongWithIndex != null) {
+                                        item(key = "all_now_playing_${currentSongWithIndex.second.videoId}") {
+                                            NowPlayingQueueCard(
+                                                song = currentSongWithIndex.second,
+                                                isPlaying = isPlaying
+                                            )
+                                        }
+                                    }
+
+                                    // 3. Up Next Section (if any)
+                                    if (upNextSongsWithIndex.isNotEmpty()) {
+                                        item(key = "header_all_upnext") {
+                                            QueueSectionHeader(
+                                                title = "UP NEXT",
+                                                count = upNextSongsWithIndex.size,
+                                                icon = Icons.Default.SkipNext,
+                                                badgeColor = NeonCyan
+                                            )
+                                        }
+                                        items(
+                                            items = upNextSongsWithIndex,
+                                            key = { (origIdx, s) -> "all_upnext_${origIdx}_${s.videoId}" }
+                                        ) { (origIdx, qSong) ->
+                                            QueueSongRow(
+                                                originalIndex = origIdx,
+                                                qSong = qSong,
+                                                isCurrent = false,
+                                                isPlayed = false,
+                                                isPlaying = false,
+                                                uiConfig = uiConfig,
+                                                totalQueueSize = effectiveDisplayQueue.size,
+                                                onPlay = { playQueueSong(origIdx, qSong) },
+                                                onMoveUp = if (isListenTogetherListener) null else ({ viewModel.moveQueueItem(origIdx, origIdx - 1) }),
+                                                onMoveDown = if (isListenTogetherListener) null else ({ viewModel.moveQueueItem(origIdx, origIdx + 1) }),
+                                                onRemove = if (isListenTogetherListener) null else ({ viewModel.removeFromQueue(origIdx) })
+                                            )
                                         }
                                     }
                                 }
@@ -1572,4 +1739,489 @@ private fun formatSeconds(sec: Float): String {
     val minutes = totalSeconds / 60
     val seconds = totalSeconds % 60
     return String.format("%d:%02d", minutes, seconds)
+}
+
+@Composable
+private fun QueueSectionHeader(
+    title: String,
+    count: Int? = null,
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+    badgeColor: Color = NeonCyan
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (icon != null) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = badgeColor,
+                modifier = Modifier.size(14.dp)
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+        }
+        Text(
+            text = title,
+            color = badgeColor,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.ExtraBold,
+            letterSpacing = 1.sp
+        )
+        if (count != null) {
+            Spacer(modifier = Modifier.width(6.dp))
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(badgeColor.copy(alpha = 0.15f))
+                    .padding(horizontal = 6.dp, vertical = 1.dp)
+            ) {
+                Text(
+                    text = "$count",
+                    color = badgeColor,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun NowPlayingQueueCard(
+    song: com.saavn.music.data.model.YouTubeSong,
+    isPlaying: Boolean
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(bottom = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.PlayArrow,
+                contentDescription = null,
+                tint = NeonCyan,
+                modifier = Modifier.size(13.dp)
+            )
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(
+                text = "NOW PLAYING",
+                color = NeonCyan,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = 1.sp
+            )
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(
+                            NeonCyan.copy(alpha = 0.16f),
+                            DarkSurfaceElevated.copy(alpha = 0.85f)
+                        )
+                    )
+                )
+                .border(1.dp, NeonCyan.copy(alpha = 0.45f), RoundedCornerShape(14.dp))
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier.width(26.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                if (isPlaying) {
+                    EqualizerBars(
+                        isPlaying = true,
+                        barCount = 3,
+                        barWidth = 2.5.dp,
+                        maxHeight = 14.dp,
+                        activeColor = NeonCyan
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.Pause,
+                        contentDescription = null,
+                        tint = NeonCyan,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            Box(
+                modifier = Modifier
+                    .size(46.dp)
+                    .clip(RoundedCornerShape(8.dp))
+            ) {
+                AsyncImage(
+                    model = song.thumbnailUrl,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            }
+
+            Spacer(modifier = Modifier.width(10.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = song.title,
+                    color = NeonCyan,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = song.channelTitle,
+                    color = TextSecondary,
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(NeonCyan.copy(alpha = 0.22f))
+                    .border(0.5.dp, NeonCyan.copy(alpha = 0.5f), RoundedCornerShape(6.dp))
+                    .padding(horizontal = 6.dp, vertical = 2.dp)
+            ) {
+                Text(
+                    text = if (isPlaying) "PLAYING" else "PAUSED",
+                    color = NeonCyan,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.ExtraBold
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun QueueSongRow(
+    originalIndex: Int,
+    qSong: com.saavn.music.data.model.YouTubeSong,
+    isCurrent: Boolean,
+    isPlayed: Boolean,
+    isPlaying: Boolean,
+    uiConfig: com.saavn.music.data.model.DynamicUiConfig,
+    totalQueueSize: Int,
+    onPlay: () -> Unit,
+    onMoveUp: (() -> Unit)? = null,
+    onMoveDown: (() -> Unit)? = null,
+    onRemove: (() -> Unit)? = null
+) {
+    val accentColor = uiConfig.parseAccentColor(NeonCyan)
+    val deleteColor = uiConfig.parseDeleteColor(NeonPink)
+    val btnSize = uiConfig.capsulePillSize.dp
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                if (isCurrent) NeonCyan.copy(alpha = 0.10f) else Color.Transparent
+            )
+            .clickable { onPlay() }
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Leading indicator
+        Box(
+            modifier = Modifier.width(26.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            if (isCurrent && isPlaying) {
+                EqualizerBars(
+                    isPlaying = true,
+                    barCount = 3,
+                    barWidth = 2.5.dp,
+                    maxHeight = 14.dp,
+                    activeColor = NeonCyan
+                )
+            } else if (isPlayed) {
+                Icon(
+                    imageVector = Icons.Default.History,
+                    contentDescription = "Played",
+                    tint = TextMuted.copy(alpha = 0.7f),
+                    modifier = Modifier.size(15.dp)
+                )
+            } else {
+                Text(
+                    text = "${originalIndex + 1}",
+                    color = if (isCurrent) NeonCyan else TextMuted,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        // Thumbnail
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .clip(RoundedCornerShape(8.dp))
+        ) {
+            AsyncImage(
+                model = qSong.thumbnailUrl,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+        }
+
+        Spacer(modifier = Modifier.width(10.dp))
+
+        // Details
+        Column(modifier = Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = qSong.title,
+                    color = if (isCurrent) NeonCyan else if (isPlayed) TextPrimary.copy(alpha = 0.75f) else TextPrimary,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                if (isCurrent) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(NeonCyan.copy(alpha = 0.2f))
+                            .padding(horizontal = 5.dp, vertical = 1.dp)
+                    ) {
+                        Text(
+                            "PLAYING",
+                            color = NeonCyan,
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                    }
+                }
+            }
+            Text(
+                text = qSong.channelTitle,
+                color = if (isPlayed) TextMuted.copy(alpha = 0.8f) else TextSecondary,
+                fontSize = 11.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+
+        Spacer(modifier = Modifier.width(6.dp))
+
+        if (isPlayed) {
+            // Replay Button for Played Songs
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(NeonCyan.copy(alpha = 0.12f))
+                    .border(0.5.dp, NeonCyan.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
+                    .clickable { onPlay() }
+                    .padding(horizontal = 9.dp, vertical = 4.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Replay,
+                        contentDescription = "Replay",
+                        tint = NeonCyan,
+                        modifier = Modifier.size(13.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "Replay",
+                        color = NeonCyan,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        } else if (onMoveUp != null || onMoveDown != null || onRemove != null) {
+            // Server-Driven Dynamic Queue Actions (Live Configurable via Firebase)
+            when (uiConfig.queueActionStyle) {
+                "three_dots" -> {
+                    var showMenu by remember { mutableStateOf(false) }
+                    Box {
+                        IconButton(
+                            onClick = { showMenu = true },
+                            modifier = Modifier.size(btnSize)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = "Options",
+                                tint = TextSecondary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = showMenu,
+                            onDismissRequest = { showMenu = false },
+                            modifier = Modifier
+                                .background(DarkSurfaceElevated)
+                                .border(1.dp, GlassBorderSubtle, RoundedCornerShape(12.dp))
+                        ) {
+                            if (uiConfig.enableQueueReorder && onMoveUp != null && originalIndex > 0) {
+                                DropdownMenuItem(
+                                    text = { Text("Move Up", color = TextPrimary) },
+                                    leadingIcon = { Icon(Icons.Default.KeyboardArrowUp, null, tint = accentColor) },
+                                    onClick = {
+                                        showMenu = false
+                                        onMoveUp()
+                                    }
+                                )
+                            }
+                            if (uiConfig.enableQueueReorder && onMoveDown != null && originalIndex < totalQueueSize - 1) {
+                                DropdownMenuItem(
+                                    text = { Text("Move Down", color = TextPrimary) },
+                                    leadingIcon = { Icon(Icons.Default.KeyboardArrowDown, null, tint = accentColor) },
+                                    onClick = {
+                                        showMenu = false
+                                        onMoveDown()
+                                    }
+                                )
+                            }
+                            if (uiConfig.enableQueueDelete && onRemove != null) {
+                                DropdownMenuItem(
+                                    text = { Text("Remove from Queue", color = deleteColor) },
+                                    leadingIcon = { Icon(Icons.Default.DeleteOutline, null, tint = deleteColor) },
+                                    onClick = {
+                                        showMenu = false
+                                        onRemove()
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+                "minimal_delete" -> {
+                    if (uiConfig.enableQueueDelete && onRemove != null) {
+                        Box(
+                            modifier = Modifier
+                                .size(btnSize)
+                                .clip(CircleShape)
+                                .background(deleteColor.copy(alpha = 0.16f))
+                                .border(0.5.dp, deleteColor.copy(alpha = 0.4f), CircleShape)
+                                .clickable { onRemove() },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.DeleteOutline,
+                                contentDescription = "Remove from queue",
+                                tint = deleteColor,
+                                modifier = Modifier.size(17.dp)
+                            )
+                        }
+                    }
+                }
+                else -> {
+                    // Modern Capsule Pill (default "capsule_pill")
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(
+                                Brush.horizontalGradient(
+                                    listOf(
+                                        Color(0xFF1E172E),
+                                        Color(0xFF140F22)
+                                    )
+                                )
+                            )
+                            .border(1.dp, GlassBorderSubtle, RoundedCornerShape(20.dp))
+                            .padding(horizontal = 3.dp, vertical = 2.dp)
+                    ) {
+                        if (uiConfig.enableQueueReorder && (onMoveUp != null || onMoveDown != null)) {
+                            val canUp = onMoveUp != null && originalIndex > 0
+                            val canDown = onMoveDown != null && originalIndex < totalQueueSize - 1
+
+                            // Move Up button
+                            Box(
+                                modifier = Modifier
+                                    .size(btnSize)
+                                    .clip(CircleShape)
+                                    .background(if (canUp) DarkSurfaceGlass else Color.Transparent)
+                                    .clickable(enabled = canUp) { onMoveUp?.invoke() },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.KeyboardArrowUp,
+                                    contentDescription = "Move Up",
+                                    tint = if (canUp) accentColor else TextMuted.copy(alpha = 0.25f),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.width(2.dp))
+
+                            // Move Down button
+                            Box(
+                                modifier = Modifier
+                                    .size(btnSize)
+                                    .clip(CircleShape)
+                                    .background(if (canDown) DarkSurfaceGlass else Color.Transparent)
+                                    .clickable(enabled = canDown) { onMoveDown?.invoke() },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.KeyboardArrowDown,
+                                    contentDescription = "Move Down",
+                                    tint = if (canDown) accentColor else TextMuted.copy(alpha = 0.25f),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+
+                        if (uiConfig.enableQueueReorder && uiConfig.enableQueueDelete && onRemove != null && (onMoveUp != null || onMoveDown != null)) {
+                            Box(
+                                modifier = Modifier
+                                    .padding(horizontal = 4.dp)
+                                    .width(1.dp)
+                                    .height(18.dp)
+                                    .background(Color(0x33FFFFFF))
+                            )
+                        }
+
+                        if (uiConfig.enableQueueDelete && onRemove != null) {
+                            // Remove (Delete) button
+                            Box(
+                                modifier = Modifier
+                                    .size(btnSize)
+                                    .clip(CircleShape)
+                                    .background(deleteColor.copy(alpha = 0.16f))
+                                    .border(0.5.dp, deleteColor.copy(alpha = 0.4f), CircleShape)
+                                    .clickable { onRemove() },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.DeleteOutline,
+                                    contentDescription = "Remove from queue",
+                                    tint = deleteColor,
+                                    modifier = Modifier.size(17.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

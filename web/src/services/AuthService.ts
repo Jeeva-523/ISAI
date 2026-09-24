@@ -1,14 +1,14 @@
-import { auth, firestore, googleProvider } from '../firebase'
 import {
-  signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
-  signOut,
-  sendPasswordResetEmail,
-  signInWithPopup,
   onAuthStateChanged,
-  User
+  sendPasswordResetEmail,
+  signInWithEmailAndPassword,
+  signInWithPopup,
+  signOut,
+  type User
 } from 'firebase/auth'
-import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore'
+import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
+import { auth, firestore, googleProvider } from '../firebase'
 
 export interface UserProfile {
   userId: string
@@ -38,7 +38,7 @@ class AuthService {
   }
 
   getCurrentUserId(): string {
-    return this.getCurrentUser()?.uid || 'user_jeeva_123'
+    return this.getCurrentUser()?.uid || 'user_guest'
   }
 
   async login(email: string, pass: string) {
@@ -71,12 +71,12 @@ class AuthService {
     try {
       const userRef = doc(firestore, 'profiles', user.uid)
       const snap = await getDoc(userRef)
-      const name = customDisplayName || user.displayName || 'Jeeva ⚡'
-      
+      const name = customDisplayName || user.displayName || user.email?.split('@')[0] || 'ISAI Listener'
+
       if (!snap.exists()) {
         await setDoc(userRef, {
           userId: user.uid,
-          username: user.email?.split('@')[0] || 'jeeva',
+          username: user.email?.split('@')[0] || 'listener',
           displayName: name,
           email: user.email || '',
           avatarUrl: user.photoURL || '',
@@ -85,15 +85,19 @@ class AuthService {
           updatedAt: serverTimestamp()
         })
       } else {
-        await setDoc(userRef, {
-          displayName: name,
-          email: user.email || '',
-          avatarUrl: user.photoURL || snap.data()?.avatarUrl || '',
-          updatedAt: serverTimestamp()
-        }, { merge: true })
+        await setDoc(
+          userRef,
+          {
+            displayName: name,
+            email: user.email || '',
+            avatarUrl: user.photoURL || snap.data()?.avatarUrl || '',
+            updatedAt: serverTimestamp()
+          },
+          { merge: true }
+        )
       }
-    } catch (err) {
-      console.warn('[AuthService] Profile sync fallback:', err)
+    } catch (error) {
+      console.warn('[AuthService] Profile sync fallback:', error)
     }
   }
 

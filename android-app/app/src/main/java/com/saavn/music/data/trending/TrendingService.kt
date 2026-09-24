@@ -130,21 +130,23 @@ class TrendingService private constructor(private val context: Context) {
                 playCount = 45000
             )
         )
+        private val TAMIL_ARTISTS = listOf(
+            TopArtistData(name = "Anirudh Ravichander", role = "Rockstar", imageUrl = "https://c.saavncdn.com/artists/Anirudh_Ravichander_003_20260121134149_500x500.jpg", playCount = 98500),
+            TopArtistData(name = "A. R. Rahman", role = "Isai Puyal", imageUrl = "https://c.saavncdn.com/artists/AR_Rahman_002_20210120084455_500x500.jpg", playCount = 94200),
+            TopArtistData(name = "Yuvan Shankar Raja", role = "Youth Icon", imageUrl = "https://c.saavncdn.com/artists/Yuvan_Shankar_Raja_002_20180802174245_500x500.jpg", playCount = 89100),
+            TopArtistData(name = "Harris Jayaraj", role = "Melody King", imageUrl = "https://c.saavncdn.com/artists/Harris_Jayaraj_002_20230718071330_500x500.jpg", playCount = 81400),
+            TopArtistData(name = "Sid Sriram", role = "Soulful Singer", imageUrl = "https://c.saavncdn.com/artists/Sid_Sriram_005_20240425180600_500x500.jpg", playCount = 76300),
+            TopArtistData(name = "G. V. Prakash Kumar", role = "Composer & Singer", imageUrl = "https://c.saavncdn.com/artists/G_V__Prakash_Kumar_003_20251113063655_500x500.jpg", playCount = 72000),
+            TopArtistData(name = "Santhosh Narayanan", role = "SaNa", imageUrl = "https://c.saavncdn.com/artists/Santhosh_Narayanan_002_20250527101718_500x500.jpg", playCount = 68900),
+            TopArtistData(name = "Shreya Ghoshal", role = "Melody Queen", imageUrl = "https://c.saavncdn.com/artists/Shreya_Ghoshal_007_20241101074144_500x500.jpg", playCount = 61200),
+            TopArtistData(name = "Ilaiyaraaja", role = "Isaignani", imageUrl = "https://c.saavncdn.com/artists/Ilaiyaraaja_001_20251020081419_500x500.jpg", playCount = 55100),
+            TopArtistData(name = "S. P. Balasubrahmanyam", role = "Legend SPB", imageUrl = "https://c.saavncdn.com/artists/S_P_Balasubrahmanyam_500x500.jpg", playCount = 53000),
+            TopArtistData(name = "Dhee", role = "Indie Icon", imageUrl = "https://c.saavncdn.com/artists/Dhee_20180510121326_500x500.jpg", playCount = 51000),
+            TopArtistData(name = "Jonita Gandhi", role = "Playback Singer", imageUrl = "https://c.saavncdn.com/artists/Jonita_Gandhi_003_20180507091741_500x500.jpg", playCount = 49000)
+        )
         val CURATED_ARTISTS_BY_LANG: Map<String, List<TopArtistData>> = mapOf(
-            "tamil" to listOf(
-                TopArtistData(name = "Anirudh Ravichander", role = "Rockstar", imageUrl = "https://c.saavncdn.com/artists/Anirudh_Ravichander_003_20260121134149_500x500.jpg", playCount = 98500),
-                TopArtistData(name = "A. R. Rahman", role = "Isai Puyal", imageUrl = "https://c.saavncdn.com/artists/AR_Rahman_002_20210120084455_500x500.jpg", playCount = 94200),
-                TopArtistData(name = "Yuvan Shankar Raja", role = "Youth Icon", imageUrl = "https://c.saavncdn.com/artists/Yuvan_Shankar_Raja_002_20180802174245_500x500.jpg", playCount = 89100),
-                TopArtistData(name = "Harris Jayaraj", role = "Melody King", imageUrl = "https://c.saavncdn.com/artists/Harris_Jayaraj_002_20230718071330_500x500.jpg", playCount = 81400),
-                TopArtistData(name = "Sid Sriram", role = "Soulful Singer", imageUrl = "https://c.saavncdn.com/artists/Sid_Sriram_005_20240425180600_500x500.jpg", playCount = 76300),
-                TopArtistData(name = "G. V. Prakash Kumar", role = "Composer & Singer", imageUrl = "https://c.saavncdn.com/artists/G_V__Prakash_Kumar_003_20251113063655_500x500.jpg", playCount = 72000),
-                TopArtistData(name = "Santhosh Narayanan", role = "SaNa", imageUrl = "https://c.saavncdn.com/artists/Santhosh_Narayanan_002_20250527101718_500x500.jpg", playCount = 68900),
-                TopArtistData(name = "Shreya Ghoshal", role = "Melody Queen", imageUrl = "https://c.saavncdn.com/artists/Shreya_Ghoshal_007_20241101074144_500x500.jpg", playCount = 61200),
-                TopArtistData(name = "Ilaiyaraaja", role = "Isaignani", imageUrl = "https://c.saavncdn.com/artists/Ilaiyaraaja_001_20251020081419_500x500.jpg", playCount = 55100),
-                TopArtistData(name = "S. P. Balasubrahmanyam", role = "Legend SPB", imageUrl = "https://c.saavncdn.com/artists/S_P_Balasubrahmanyam_500x500.jpg", playCount = 53000),
-                TopArtistData(name = "Dhee", role = "Indie Icon", imageUrl = "https://c.saavncdn.com/artists/Dhee_20180510121326_500x500.jpg", playCount = 51000),
-                TopArtistData(name = "Jonita Gandhi", role = "Playback Singer", imageUrl = "https://c.saavncdn.com/artists/Jonita_Gandhi_003_20180507091741_500x500.jpg", playCount = 49000)
-            ),
+            "tamil" to TAMIL_ARTISTS,
+            "ta" to TAMIL_ARTISTS,
             "telugu" to listOf(
                 TopArtistData(name = "Devi Sri Prasad", role = "Rockstar DSP", imageUrl = "https://c.saavncdn.com/artists/Devi_Sri_Prasad_500x500.jpg", playCount = 95000),
                 TopArtistData(name = "Thaman S", role = "Musical Storm", imageUrl = "https://c.saavncdn.com/artists/Thaman_S_500x500.jpg", playCount = 92000),
@@ -204,7 +206,7 @@ class TrendingService private constructor(private val context: Context) {
         limit: Int = 12
     ): List<TopArtistData> {
         val baseList = mutableListOf<TopArtistData>()
-        val activeLangs = preferredLanguages.map { it.lowercase().trim() }.ifEmpty { listOf("tamil") }
+        val activeLangs = preferredLanguages.map { com.saavn.music.util.RelevanceEngine.normalizeLanguage(it) }.ifEmpty { listOf("tamil") }
 
         for (lang in activeLangs) {
             val artists = CURATED_ARTISTS_BY_LANG[lang]

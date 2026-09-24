@@ -1,12 +1,12 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import './firebase'
 import { App } from './App'
+import { ErrorBoundary } from './components/ErrorBoundary'
+import './firebase'
+
 import './styles/index.css'
 
-import { ErrorBoundary } from './components/ErrorBoundary'
-
-ReactDOM.createRoot(document.getElementById('root')!).render(
+ReactDOM.createRoot(document.querySelector('#root')!).render(
   <React.StrictMode>
     <ErrorBoundary>
       <App />

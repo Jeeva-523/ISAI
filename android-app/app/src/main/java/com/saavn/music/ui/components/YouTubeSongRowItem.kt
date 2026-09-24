@@ -38,11 +38,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import com.saavn.music.util.RelevanceEngine
 import com.saavn.music.data.model.YouTubeSong
 import com.saavn.music.ui.components.EqualizerBars
 import com.saavn.music.ui.theme.BronzeRank
@@ -147,7 +150,11 @@ fun YouTubeSongRowItem(
                 )
         ) {
             AsyncImage(
-                model = song.thumbnailUrl,
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(RelevanceEngine.getSafeThumbnailUrl(song.thumbnailUrl, song.videoId))
+                    .crossfade(true)
+                    .error(com.saavn.music.R.drawable.app_logo)
+                    .build(),
                 contentDescription = song.title,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop

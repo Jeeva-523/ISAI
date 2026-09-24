@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Headset
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Shield
@@ -108,13 +109,12 @@ fun ProfileScreen(
         ?: authService.getCurrentUser()?.email?.takeIf { it.isNotBlank() }
         ?: ""
 
-    val currentDisplayName = userProfile?.displayName?.takeIf { it.isNotBlank() }
-        ?: authService.getCurrentUser()?.displayName?.takeIf { it.isNotBlank() }
+    val currentDisplayName = userProfile?.displayName?.trim()?.takeIf { it.isNotBlank() && !it.equals("JEEVA ⚡", ignoreCase = true) }
+        ?: authService.getCurrentUser()?.displayName?.trim()?.takeIf { it.isNotBlank() && !it.equals("JEEVA ⚡", ignoreCase = true) }
         ?: "ISAI Listener"
 
-
     var showEditNameDialog by remember { mutableStateOf(false) }
-    var editNameInput by remember { mutableStateOf(currentDisplayName) }
+    var editNameInput by remember(currentDisplayName) { mutableStateOf(if (currentDisplayName == "ISAI Listener") "" else currentDisplayName) }
     var showConnectSheet by remember { mutableStateOf(false) }
     var showPremiumSheet by remember { mutableStateOf(false) }
     var showCancelSubDialog by remember { mutableStateOf(false) }
@@ -386,12 +386,6 @@ fun ProfileScreen(
                         label = "Email Address",
                         value = currentEmail
                     )
-                    HorizontalDivider(color = GlassBorderSubtle, thickness = 1.dp)
-                    ProfileDetailRow(
-                        icon = Icons.Default.Verified,
-                        label = "Security Status",
-                        value = if (isEmailVerified) "Email Verified ✓" else "Verification Pending ⚠️"
-                    )
                 }
             }
 
@@ -480,6 +474,7 @@ fun ProfileScreen(
                         ) {
                             val displayLangs = if (chosenLangs.isNotEmpty()) chosenLangs else listOf("tamil")
                             displayLangs.forEach { lang ->
+                                val formattedLang = com.saavn.music.util.RelevanceEngine.formatLanguageDisplayName(lang)
                                 Box(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(12.dp))
@@ -488,7 +483,7 @@ fun ProfileScreen(
                                         .padding(horizontal = 12.dp, vertical = 6.dp)
                                 ) {
                                     Text(
-                                        text = "🎵 ${lang.replaceFirstChar { it.uppercase() }}",
+                                        text = "🎵 $formattedLang",
                                         color = Color.White,
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.SemiBold
@@ -500,36 +495,16 @@ fun ProfileScreen(
                 }
             }
 
-            // 4. Section: Audio & Streaming Preferences
+            // 4. Section: Appearance & Theme
             item {
-                ProfileSectionContainer(title = "Audio & Playback Quality") {
+                val currentTheme by viewModel.appThemeMode.collectAsState()
+                ProfileSectionContainer(title = "Appearance & Theme 🎨") {
                     ProfileDetailRow(
-                        icon = Icons.Default.Headset,
-                        label = "Streaming Quality",
-                        value = "320 kbps Ultra HD"
-                    )
-                    HorizontalDivider(color = GlassBorderSubtle, thickness = 1.dp)
-                    ProfileDetailRow(
-                        icon = Icons.Default.GraphicEq,
-                        label = "Audio Engine",
-                        value = "ExoPlayer 3D Equalizer Active"
-                    )
-                    val chosenLangs by viewModel.preferredLanguages.collectAsState()
-                    val langText = if (chosenLangs.isNotEmpty()) {
-                        chosenLangs.joinToString(", ") { it.replaceFirstChar { c -> c.uppercase() } }
-                    } else "Tamil"
-                    ProfileDetailRow(
-                        icon = Icons.Default.Language,
-                        label = "Music Language",
-                        value = langText,
-                        onRowClick = { viewModel.openLanguageDialog() }
-                    )
-                    HorizontalDivider(color = GlassBorderSubtle, thickness = 1.dp)
-                    ProfileDetailRow(
-                        icon = Icons.Default.MusicNote,
-                        label = "Offline Storage",
-                        value = "Extreme High Quality Cache",
-                        onRowClick = { showPremiumSheet = true }
+                        icon = Icons.Default.Palette,
+                        label = "App Theme",
+                        value = "${currentTheme.iconEmoji} ${currentTheme.title}",
+                        onRowClick = { viewModel.openThemeDialog() },
+                        actionLabel = "Change"
                     )
                 }
             }
@@ -923,7 +898,8 @@ private fun ProfileDetailRow(
     icon: ImageVector,
     label: String,
     value: String,
-    onRowClick: (() -> Unit)? = null
+    onRowClick: (() -> Unit)? = null,
+    actionLabel: String? = null
 ) {
     Row(
         modifier = Modifier
@@ -976,7 +952,7 @@ private fun ProfileDetailRow(
                 overflow = TextOverflow.Ellipsis,
                 textAlign = androidx.compose.ui.text.style.TextAlign.End
             )
-            if (onRowClick != null) {
+            if (!actionLabel.isNullOrBlank()) {
                 Spacer(modifier = Modifier.width(8.dp))
                 Box(
                     modifier = Modifier
@@ -986,7 +962,7 @@ private fun ProfileDetailRow(
                         .padding(horizontal = 7.dp, vertical = 2.dp)
                 ) {
                     Text(
-                        text = "Edit",
+                        text = actionLabel,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFFA78BFA)

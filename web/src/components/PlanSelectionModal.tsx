@@ -1,5 +1,5 @@
+import { Check, Sparkles, X } from 'lucide-react'
 import React, { useState } from 'react'
-import { Check, X, Sparkles } from 'lucide-react'
 
 interface PlanSelectionModalProps {
   isOpen: boolean
@@ -77,9 +77,7 @@ export const PlanSelectionModal: React.FC<PlanSelectionModalProps> = ({
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
           <div>
-            <h2 style={{ margin: 0, fontSize: '22px', fontWeight: 900, color: '#FFFFFF' }}>
-              Choose Your Plan
-            </h2>
+            <h2 style={{ margin: 0, fontSize: '22px', fontWeight: 900, color: '#FFFFFF' }}>Choose Your Plan</h2>
             <p style={{ margin: 0, fontSize: '13px', color: '#9CA3AF' }}>
               Select your preferred music streaming experience
             </p>
@@ -117,7 +115,9 @@ export const PlanSelectionModal: React.FC<PlanSelectionModalProps> = ({
               transition: 'all 0.2s'
             }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <div
+              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}
+            >
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <span style={{ fontSize: '24px' }}>🆓</span>
                 <div>
@@ -143,7 +143,10 @@ export const PlanSelectionModal: React.FC<PlanSelectionModalProps> = ({
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               {freeFeatures.map((f, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#D1D5DB' }}>
+                <div
+                  key={i}
+                  style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#D1D5DB' }}
+                >
                   <span>{f.emoji}</span>
                   <span>{f.text}</span>
                 </div>
@@ -157,16 +160,19 @@ export const PlanSelectionModal: React.FC<PlanSelectionModalProps> = ({
             style={{
               borderRadius: '18px',
               padding: '18px',
-              background: selectedPlan === 'PREMIUM'
-                ? 'linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(139, 92, 246, 0.15) 100%)'
-                : 'rgba(255, 255, 255, 0.03)',
+              background:
+                selectedPlan === 'PREMIUM'
+                  ? 'linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(139, 92, 246, 0.15) 100%)'
+                  : 'rgba(255, 255, 255, 0.03)',
               border: selectedPlan === 'PREMIUM' ? '2px solid #F59E0B' : '1px solid rgba(255, 255, 255, 0.1)',
               cursor: 'pointer',
               transition: 'all 0.2s',
               boxShadow: selectedPlan === 'PREMIUM' ? '0 8px 25px rgba(245, 158, 11, 0.2)' : 'none'
             }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <div
+              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}
+            >
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <span style={{ fontSize: '24px' }}>💎</span>
                 <div>
@@ -206,7 +212,10 @@ export const PlanSelectionModal: React.FC<PlanSelectionModalProps> = ({
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               {premiumFeatures.map((f, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#D1D5DB' }}>
+                <div
+                  key={i}
+                  style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#D1D5DB' }}
+                >
                   <span>{f.emoji}</span>
                   <span>{f.text}</span>
                 </div>
@@ -235,7 +244,8 @@ export const PlanSelectionModal: React.FC<PlanSelectionModalProps> = ({
             alignItems: 'center',
             justifyContent: 'center',
             gap: '8px',
-            boxShadow: selectedPlan === 'PREMIUM' ? '0 4px 18px rgba(245, 158, 11, 0.35)' : '0 4px 18px rgba(200, 255, 0, 0.35)'
+            boxShadow:
+              selectedPlan === 'PREMIUM' ? '0 4px 18px rgba(245, 158, 11, 0.35)' : '0 4px 18px rgba(200, 255, 0, 0.35)'
           }}
         >
           <Sparkles size={18} />

@@ -1,5 +1,5 @@
-import { analyticsService } from './AnalyticsService'
 import type { Song } from '../../../shared/models/song'
+import { analyticsService } from './AnalyticsService'
 
 export type TrendingTimeWindow = 'today' | 'week' | 'month'
 
@@ -30,7 +30,7 @@ export class TrendingService {
     const artistPlayMap: Record<string, number> = {}
 
     songs.forEach((song) => {
-      const artist = (song.channelTitle || '').replace(/ - Topic| Official/gi, '').trim()
+      const artist = (song.channelTitle || '').replaceAll(/ - Topic| Official/gi, '').trim()
       if (artist && artist !== 'Tamil Artist') {
         const plays = analyticsService.getEventCount(song.videoId, 'play', 30 * 24 * 3600 * 1000)
         artistPlayMap[artist] = (artistPlayMap[artist] || 0) + (plays > 0 ? plays : 1)
@@ -46,11 +46,11 @@ export class TrendingService {
   /**
    * Alias for backward compatibility with existing components
    */
-  rankTrendingSongs(songs: Song[], _timeWindow?: string): Song[] {
+  rankTrendingSongs(songs: Song[]): Song[] {
     return this.getMostPlayedSongs(songs)
   }
 
-  getTrendingRecentReleases(songs: Song[], _maxReleaseDays: number = 30): Song[] {
+  getTrendingRecentReleases(songs: Song[]): Song[] {
     return this.getMostPlayedSongs(songs)
   }
 

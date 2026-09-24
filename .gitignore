@@ -113,7 +113,9 @@ android-app/local.properties
 android-app/.idea/
 .idea/
 *.iml
+*.jks
 .firebase/
 web/public/*.bin
 web/public/*.dat
+scratch/
 

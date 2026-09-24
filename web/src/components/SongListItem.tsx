@@ -1,6 +1,6 @@
+import { Heart, ListPlus, ListStart, Plus, Share2 } from 'lucide-react'
 import React from 'react'
 import type { Song } from '@shared/models/song'
-import { Heart, Plus, Share2, ListPlus, ListStart } from 'lucide-react'
 
 interface SongListItemProps {
   song: Song
@@ -28,10 +28,7 @@ export const SongListItem: React.FC<SongListItemProps> = ({
   onShare
 }) => {
   return (
-    <div
-      className={`song-list-row ${isPlaying ? 'active-playing' : ''}`}
-      onClick={() => onPlay?.(song)}
-    >
+    <div className={`song-list-row ${isPlaying ? 'active-playing' : ''}`} onClick={() => onPlay?.(song)}>
       {/* Index number or Equalizer animation */}
       <div className="song-row-num">
         {isPlaying ? (
@@ -67,9 +64,7 @@ export const SongListItem: React.FC<SongListItemProps> = ({
       </div>
 
       {/* Views / Category Tag */}
-      <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-        {song.viewCountFormatted || 'Tamil Hit'}
-      </div>
+      <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{song.viewCountFormatted || 'Tamil Hit'}</div>
 
       {/* Duration */}
       <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)' }}>

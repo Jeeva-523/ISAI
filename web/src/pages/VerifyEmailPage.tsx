@@ -21,8 +21,8 @@ export const VerifyEmailPage: React.FC<VerifyEmailPageProps> = ({ onNavigateHome
           setSuccess(true)
           setLoading(false)
         })
-        .catch((err) => {
-          setErrorMsg(err?.message || 'The verification link is invalid or has expired.')
+        .catch((error) => {
+          setErrorMsg(error?.message || 'The verification link is invalid or has expired.')
           setLoading(false)
         })
     } else {
@@ -58,7 +58,9 @@ export const VerifyEmailPage: React.FC<VerifyEmailPageProps> = ({ onNavigateHome
         }}
       >
         {/* Brand Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', marginBottom: '24px' }}>
+        <div
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', marginBottom: '24px' }}
+        >
           <img src="/logo.png" alt="ISAI Logo" style={{ width: '40px', height: '40px', objectFit: 'contain' }} />
           <span style={{ fontSize: '24px', fontWeight: 900, letterSpacing: '2px', color: '#00F0FF' }}>ISAI</span>
           <span style={{ fontSize: '20px', fontWeight: 700, color: '#FFF' }}>Music</span>
@@ -78,7 +80,9 @@ export const VerifyEmailPage: React.FC<VerifyEmailPageProps> = ({ onNavigateHome
               }}
             />
             <h2 style={{ fontSize: '18px', fontWeight: 800 }}>Verifying Your Email...</h2>
-            <p style={{ color: '#aaa', fontSize: '13px', marginTop: '8px' }}>Please wait while we connect with Firebase Authentication.</p>
+            <p style={{ color: '#aaa', fontSize: '13px', marginTop: '8px' }}>
+              Please wait while we connect with Firebase Authentication.
+            </p>
           </div>
         ) : success ? (
           <div>

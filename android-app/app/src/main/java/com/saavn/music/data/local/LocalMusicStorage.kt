@@ -11,12 +11,22 @@ import kotlinx.coroutines.flow.asStateFlow
 import java.util.UUID
 
 import com.saavn.music.data.model.UserProfile
+import com.saavn.music.ui.theme.AppThemeMode
 
 data class UserPlaylist(
     val id: String = UUID.randomUUID().toString(),
     val name: String,
     val songs: List<YouTubeSong> = emptyList(),
     val createdAt: Long = System.currentTimeMillis()
+)
+
+data class LastPlaybackSession(
+    val song: YouTubeSong,
+    val queue: List<YouTubeSong> = emptyList(),
+    val queueIndex: Int = 0,
+    val positionSec: Float = 0f,
+    val wasPlaying: Boolean = true,
+    val timestamp: Long = System.currentTimeMillis()
 )
 
 class LocalMusicStorage(context: Context) {
@@ -46,6 +56,9 @@ class LocalMusicStorage(context: Context) {
     private val _localDeviceSongs = MutableStateFlow<List<YouTubeSong>>(emptyList())
     val localDeviceSongs: StateFlow<List<YouTubeSong>> = _localDeviceSongs.asStateFlow()
 
+    private val _lastPlaybackSession = MutableStateFlow<LastPlaybackSession?>(null)
+    val lastPlaybackSession: StateFlow<LastPlaybackSession?> = _lastPlaybackSession.asStateFlow()
+
     private val _isMultiDevicePlaybackSeparate = MutableStateFlow<Boolean>(
         prefs.getBoolean(KEY_MULTI_DEVICE_SEPARATE, false)
     )
@@ -54,6 +67,21 @@ class LocalMusicStorage(context: Context) {
     fun setMultiDevicePlaybackSeparate(enabled: Boolean) {
         _isMultiDevicePlaybackSeparate.value = enabled
         prefs.edit().putBoolean(KEY_MULTI_DEVICE_SEPARATE, enabled).apply()
+    }
+
+    private val _appThemeMode = MutableStateFlow<AppThemeMode>(
+        try {
+            val savedName = prefs.getString(KEY_APP_THEME, AppThemeMode.DARK.name)
+            AppThemeMode.valueOf(savedName ?: AppThemeMode.DARK.name)
+        } catch (e: Exception) {
+            AppThemeMode.DARK
+        }
+    )
+    val appThemeMode: StateFlow<AppThemeMode> = _appThemeMode.asStateFlow()
+
+    fun setAppThemeMode(mode: AppThemeMode) {
+        _appThemeMode.value = mode
+        prefs.edit().putString(KEY_APP_THEME, mode.name).apply()
     }
 
     init {
@@ -98,7 +126,18 @@ class LocalMusicStorage(context: Context) {
         val userJson = prefs.getString(KEY_USER_PROFILE, null)
         if (!userJson.isNullOrBlank()) {
             try {
-                _userProfile.value = gson.fromJson(userJson, UserProfile::class.java)
+                val profile = gson.fromJson(userJson, UserProfile::class.java)
+                if (profile != null) {
+                    val name = profile.displayName.trim()
+                    if (name.equals("JEEVA ⚡", ignoreCase = true) || (name.equals("Jeeva", ignoreCase = true) && profile.email.contains("jeeva"))) {
+                        _userProfile.value = null
+                        prefs.edit().remove(KEY_USER_PROFILE).apply()
+                    } else {
+                        _userProfile.value = profile
+                    }
+                } else {
+                    _userProfile.value = null
+                }
             } catch (e: Exception) {
                 _userProfile.value = null
             }
@@ -119,6 +158,14 @@ class LocalMusicStorage(context: Context) {
             try {
                 val type = object : TypeToken<Map<String, Int>>() {}.type
                 _artistPlayCounts.value = gson.fromJson(artistPlayJson, type) ?: emptyMap()
+            } catch (_: Exception) {}
+        }
+
+        // 7. Last Playback Session
+        val lastSessionJson = prefs.getString(KEY_LAST_PLAYBACK_SESSION, null)
+        if (!lastSessionJson.isNullOrBlank()) {
+            try {
+                _lastPlaybackSession.value = gson.fromJson(lastSessionJson, LastPlaybackSession::class.java)
             } catch (_: Exception) {}
         }
     }
@@ -243,6 +290,26 @@ class LocalMusicStorage(context: Context) {
         prefs.edit().putString(KEY_PLAYLISTS, gson.toJson(current)).apply()
     }
 
+    // --- Playback Session Persistence ---
+    fun savePlaybackSession(
+        song: YouTubeSong,
+        queue: List<YouTubeSong>,
+        queueIndex: Int,
+        positionSec: Float,
+        wasPlaying: Boolean
+    ) {
+        val session = LastPlaybackSession(
+            song = song,
+            queue = queue.take(50),
+            queueIndex = queueIndex.coerceAtLeast(0),
+            positionSec = positionSec.coerceAtLeast(0f),
+            wasPlaying = wasPlaying,
+            timestamp = System.currentTimeMillis()
+        )
+        _lastPlaybackSession.value = session
+        prefs.edit().putString(KEY_LAST_PLAYBACK_SESSION, gson.toJson(session)).apply()
+    }
+
     companion object {
         private const val KEY_FAVORITES = "isai_fav_songs"
         private const val KEY_PLAYLISTS = "isai_user_playlists"
@@ -251,5 +318,7 @@ class LocalMusicStorage(context: Context) {
         private const val KEY_MULTI_DEVICE_SEPARATE = "isai_multi_device_separate"
         private const val KEY_SONG_PLAY_COUNTS = "isai_song_play_counts"
         private const val KEY_ARTIST_PLAY_COUNTS = "isai_artist_play_counts"
+        private const val KEY_APP_THEME = "isai_app_theme_mode"
+        private const val KEY_LAST_PLAYBACK_SESSION = "isai_last_playback_session"
     }
 }

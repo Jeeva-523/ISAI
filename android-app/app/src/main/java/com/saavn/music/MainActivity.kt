@@ -116,7 +116,8 @@ class MainActivity : ComponentActivity(), com.razorpay.PaymentResultWithDataList
         }
 
         setContent {
-            SaavnMusicTheme {
+            val currentTheme by mainViewModel.appThemeMode.collectAsState()
+            SaavnMusicTheme(themeMode = currentTheme) {
                 IsaiApp(mainViewModel)
             }
         }
@@ -134,7 +135,23 @@ class MainActivity : ComponentActivity(), com.razorpay.PaymentResultWithDataList
         mainViewModel.handlePaymentError(errorCode, response, paymentData)
     }
 
+    override fun onResume() {
+        super.onResume()
+        mainViewModel.syncWithSystemVolume()
+    }
+
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        // Listen Together: If device is a listener in a room, hardware volume keys are controlled by Host
+        if (mainViewModel.listenTogetherManager.currentRoom.value != null && !mainViewModel.listenTogetherManager.isHost()) {
+            if (keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN || keyCode == KeyEvent.KEYCODE_VOLUME_MUTE) {
+                if (event?.repeatCount == 0) {
+                    val hostName = mainViewModel.listenTogetherManager.currentRoom.value?.hostDeviceName ?: "Host"
+                    android.widget.Toast.makeText(this, "👑 Sound/Volume is controlled by Host ($hostName)", android.widget.Toast.LENGTH_SHORT).show()
+                }
+                return true
+            }
+        }
+
         val isSeparateMode = mainViewModel.isMultiDevicePlaybackSeparate.value
         val syncState = mainViewModel.isaiConnectManager.playbackState.value
         val isRemoteActive = !isSeparateMode && syncState != null && 
@@ -154,14 +171,26 @@ class MainActivity : ComponentActivity(), com.razorpay.PaymentResultWithDataList
                 return true
             }
         }
-        return super.onKeyDown(keyCode, event)
+        val handled = super.onKeyDown(keyCode, event)
+        if (keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+            mainViewModel.syncWithSystemVolume()
+        }
+        return handled
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        val isStillPlaying = mainViewModel.ytPlayerController.isPlaying.value
-        if (!isStillPlaying) {
-            mainViewModel.isaiConnectManager.disconnect()
+        if (isFinishing) {
+            try {
+                mainViewModel.ytPlayerController.pause()
+            } catch (e: Exception) {
+                android.util.Log.w("MainActivity", "Error stopping playback on destroy: ${e.message}")
+            }
+            try {
+                com.saavn.music.service.MusicPlaybackService.stop(this)
+            } catch (e: Exception) {
+                // ignore
+            }
         }
     }
 }
@@ -175,6 +204,8 @@ fun IsaiApp(viewModel: MainViewModel = viewModel()) {
     val showPlanSelectionDialog by viewModel.showPlanSelectionDialog.collectAsState()
     val userProfile by viewModel.userProfile.collectAsState()
     val showLanguageDialog by viewModel.showLanguageDialog.collectAsState()
+    val showThemeDialog by viewModel.showThemeDialog.collectAsState()
+    val currentTheme by viewModel.appThemeMode.collectAsState()
     val preferredLanguages by viewModel.preferredLanguages.collectAsState()
     val appUpdateInfo by viewModel.appUpdateInfo.collectAsState()
     val updateDownloadState by viewModel.updateDownloadState.collectAsState()
@@ -231,8 +262,7 @@ fun IsaiApp(viewModel: MainViewModel = viewModel()) {
                     viewModel.saveUserProfile(systemAcc)
                     android.widget.Toast.makeText(context, "Welcome, ${systemAcc.displayName}!", android.widget.Toast.LENGTH_SHORT).show()
                 } else {
-                    viewModel.quickSignInGoogleAccount("JEEVA ⚡", "jeeva@isaimusic.com")
-                    android.widget.Toast.makeText(context, "Signed in with Google Account", android.widget.Toast.LENGTH_SHORT).show()
+                    android.widget.Toast.makeText(context, "Sign in cancelled or unavailable", android.widget.Toast.LENGTH_SHORT).show()
                 }
             }
         } catch (e: Exception) {
@@ -242,8 +272,7 @@ fun IsaiApp(viewModel: MainViewModel = viewModel()) {
                 viewModel.saveUserProfile(systemAcc)
                 android.widget.Toast.makeText(context, "Welcome, ${systemAcc.displayName}!", android.widget.Toast.LENGTH_SHORT).show()
             } else {
-                viewModel.quickSignInGoogleAccount("JEEVA ⚡", "jeeva@isaimusic.com")
-                android.widget.Toast.makeText(context, "Signed in with Google Account", android.widget.Toast.LENGTH_SHORT).show()
+                android.widget.Toast.makeText(context, "Google Sign-in failed: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -371,7 +400,7 @@ fun IsaiApp(viewModel: MainViewModel = viewModel()) {
                     try {
                         googleSignInLauncher.launch(viewModel.googleAuthHelper.getSignInIntent())
                     } catch (e: Exception) {
-                        viewModel.quickSignInGoogleAccount("JEEVA ⚡", "jeeva.google@gmail.com")
+                        android.widget.Toast.makeText(context, "Google Sign-in failed: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
                     }
                 },
                 onQuickSignIn = { name, email ->
@@ -421,6 +450,17 @@ fun IsaiApp(viewModel: MainViewModel = viewModel()) {
                     viewModel.setPreferredLanguages(langs)
                 },
                 onDismiss = if (preferredLanguages.isNotEmpty()) { { viewModel.closeLanguageDialog() } } else null
+            )
+        }
+
+        // Theme Selection Dialog (Appearance & Dark/Light/AMOLED/Cyberpunk Mode)
+        if (showThemeDialog) {
+            com.saavn.music.ui.components.ThemeSelectionDialog(
+                currentTheme = currentTheme,
+                onSelectTheme = { mode ->
+                    viewModel.setAppTheme(mode)
+                },
+                onDismiss = { viewModel.closeThemeDialog() }
             )
         }
     }

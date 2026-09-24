@@ -1,6 +1,6 @@
+import { Heart, ListPlus, ListStart, Play, Plus } from 'lucide-react'
 import React from 'react'
 import type { Song } from '@shared/models/song'
-import { Play, Heart, Plus, ListPlus, ListStart } from 'lucide-react'
 
 interface SongCardProps {
   song: Song
@@ -47,9 +47,7 @@ export const SongCard: React.FC<SongCardProps> = ({
           }}
         />
         <div className="discovery-badge">ISAI</div>
-        {song.durationFormatted && (
-          <div className="duration-badge">{song.durationFormatted}</div>
-        )}
+        {song.durationFormatted && <div className="duration-badge">{song.durationFormatted}</div>}
 
         {/* Hover / Active Play Button Overlay */}
         <div className="play-hover-overlay" style={{ opacity: isPlaying ? 1 : undefined }}>

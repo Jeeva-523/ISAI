@@ -23,8 +23,8 @@ android {
         applicationId = "com.company.isai"
         minSdk = 26
         targetSdk = 34
-        versionCode = 7
-        versionName = "1.3.3"
+        versionCode = 10
+        versionName = "1.3.6"
 
         buildConfigField("String", "YOUTUBE_API_KEY", "\"$youtubeApiKey\"")
 
@@ -42,6 +42,7 @@ android {
             keyPassword = "android"
             enableV1Signing = true
             enableV2Signing = true
+            enableV3Signing = true
         }
     }
 
@@ -97,6 +98,7 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:1.4.0")
     implementation("androidx.media3:media3-session:1.4.0")
     implementation("androidx.media3:media3-ui:1.4.0")
+    implementation("androidx.media3:media3-datasource:1.4.0")
 
     // Image loading
     implementation("io.coil-kt:coil-compose:2.7.0")

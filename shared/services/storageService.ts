@@ -27,7 +27,22 @@ export class LocalMusicStorageService {
     }
     try {
       const data = localStorage.getItem(USER_KEY)
-      return data ? JSON.parse(data) : {
+      if (data) {
+        const parsed = JSON.parse(data)
+        const name = (parsed.name || '').trim().toLowerCase()
+        if (name === 'jeeva ⚡' || (name === 'jeeva' && parsed.email?.includes('jeeva'))) {
+          localStorage.removeItem(USER_KEY)
+          return {
+            isLoggedIn: false,
+            name: 'ISAI Listener',
+            email: '',
+            avatar: 'I',
+            isPremium: true
+          }
+        }
+        return parsed
+      }
+      return {
         isLoggedIn: false,
         name: 'ISAI Listener',
         email: '',
@@ -49,8 +64,8 @@ export class LocalMusicStorageService {
     if (typeof window === 'undefined' || !window.localStorage) return
     try {
       localStorage.setItem(USER_KEY, JSON.stringify(user))
-    } catch (e) {
-      console.error('Failed to save user profile', e)
+    } catch (error) {
+      console.error('Failed to save user profile', error)
     }
   }
 
@@ -68,20 +83,20 @@ export class LocalMusicStorageService {
     if (typeof window === 'undefined' || !window.localStorage) return
     try {
       localStorage.setItem(FAVORITES_KEY, JSON.stringify(songs))
-    } catch (e) {
-      console.error('Failed to save favorites', e)
+    } catch (error) {
+      console.error('Failed to save favorites', error)
     }
   }
 
   isFavorite(videoId: string): boolean {
     const favs = this.getFavorites()
-    return favs.some(s => s.videoId === videoId)
+    return favs.some((s) => s.videoId === videoId)
   }
 
   toggleFavorite(song: Song): boolean {
     if (typeof window === 'undefined' || !window.localStorage) return false
     const favs = this.getFavorites()
-    const index = favs.findIndex(s => s.videoId === song.videoId)
+    const index = favs.findIndex((s) => s.videoId === song.videoId)
     let isFavNow: boolean
 
     if (index >= 0) {
@@ -94,8 +109,8 @@ export class LocalMusicStorageService {
 
     try {
       localStorage.setItem(FAVORITES_KEY, JSON.stringify(favs))
-    } catch (e) {
-      console.error('Failed to save favorites', e)
+    } catch (error) {
+      console.error('Failed to save favorites', error)
     }
 
     return isFavNow
@@ -122,8 +137,8 @@ export class LocalMusicStorageService {
     playlists.push(newPlaylist)
     try {
       localStorage.setItem(PLAYLISTS_KEY, JSON.stringify(playlists))
-    } catch (e) {
-      console.error('Failed to save playlists', e)
+    } catch (error) {
+      console.error('Failed to save playlists', error)
     }
     return newPlaylist
   }
@@ -140,13 +155,13 @@ export class LocalMusicStorageService {
 
   addRecentlyPlayed(song: Song) {
     if (typeof window === 'undefined' || !window.localStorage) return
-    const recents = this.getRecentlyPlayed().filter(s => s.videoId !== song.videoId)
+    const recents = this.getRecentlyPlayed().filter((s) => s.videoId !== song.videoId)
     recents.unshift(song)
     const trimmed = recents.slice(0, 20)
     try {
       localStorage.setItem('isai_recently_played', JSON.stringify(trimmed))
-    } catch (e) {
-      console.error('Failed to save recently played song', e)
+    } catch (error) {
+      console.error('Failed to save recently played song', error)
     }
   }
 
@@ -155,22 +170,31 @@ export class LocalMusicStorageService {
     const trimmed = songs.slice(0, 20)
     try {
       localStorage.setItem('isai_recently_played', JSON.stringify(trimmed))
-    } catch (e) {
-      console.error('Failed to set recently played songs', e)
+    } catch (error) {
+      console.error('Failed to set recently played songs', error)
+    }
+  }
+
+  clearRecentlyPlayed() {
+    if (typeof window === 'undefined' || !window.localStorage) return
+    try {
+      localStorage.removeItem('isai_recently_played')
+    } catch (error) {
+      console.error('Failed to clear recently played songs', error)
     }
   }
 
   addSongToPlaylist(playlistId: string, song: Song) {
     const playlists = this.getPlaylists()
-    const target = playlists.find(p => p.id === playlistId)
+    const target = playlists.find((p) => p.id === playlistId)
     if (!target) return
 
-    if (!target.songs.some(s => s.videoId === song.videoId)) {
+    if (!target.songs.some((s) => s.videoId === song.videoId)) {
       target.songs.push(song)
       try {
         localStorage.setItem(PLAYLISTS_KEY, JSON.stringify(playlists))
-      } catch (e) {
-        console.error('Failed to update playlist', e)
+      } catch (error) {
+        console.error('Failed to update playlist', error)
       }
     }
   }
@@ -197,6 +221,34 @@ export class LocalMusicStorageService {
     if (typeof window === 'undefined' || !window.localStorage) return
     localStorage.setItem('isai_audio_quality', quality)
   }
+
+  getLastPlaybackSession(): LastPlaybackSession | null {
+    if (typeof window === 'undefined' || !window.localStorage) return null
+    try {
+      const raw = localStorage.getItem('isai_last_playback_session')
+      return raw ? JSON.parse(raw) : null
+    } catch {
+      return null
+    }
+  }
+
+  setLastPlaybackSession(session: LastPlaybackSession) {
+    if (typeof window === 'undefined' || !window.localStorage) return
+    try {
+      localStorage.setItem('isai_last_playback_session', JSON.stringify(session))
+    } catch (error) {
+      console.error('Failed to save playback session', error)
+    }
+  }
+}
+
+export interface LastPlaybackSession {
+  song: Song
+  queue?: Song[]
+  queueIndex?: number
+  positionSec?: number
+  wasPlaying?: boolean
+  timestamp?: number
 }
 
 export const storageService = new LocalMusicStorageService()

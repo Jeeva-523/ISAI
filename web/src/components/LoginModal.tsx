@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
 import {
-  registerWithEmailPassword,
-  loginWithEmailPassword,
   checkEmailVerificationStatus,
-  resendVerificationEmail,
-  logoutFirebaseUser
+  loginWithEmailPassword,
+  logoutFirebaseUser,
+  registerWithEmailPassword,
+  resendVerificationEmail
 } from '../firebase'
 
 export interface UserProfile {
@@ -27,13 +27,7 @@ interface LoginModalProps {
 
 type AuthMode = 'SIGN_IN' | 'REGISTER' | 'VERIFY_EMAIL'
 
-export const LoginModal: React.FC<LoginModalProps> = ({
-  isOpen,
-  onClose,
-  user,
-  onLogin,
-  onLogout
-}) => {
+export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, user, onLogin, onLogout }) => {
   const [editingName, setEditingName] = useState(user.name || 'ISAI Listener')
   const [isSavedNotice, setIsSavedNotice] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -80,10 +74,12 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         onClose()
       } else {
         setAuthMode('VERIFY_EMAIL')
-        setErrorMessage('Your email is not verified yet. Please check your inbox/spam folder and click the verification link.')
+        setErrorMessage(
+          'Your email is not verified yet. Please check your inbox/spam folder and click the verification link.'
+        )
       }
-    } catch (err: any) {
-      setErrorMessage(err?.message || 'Sign in failed.')
+    } catch (error: any) {
+      setErrorMessage(error?.message || 'Sign in failed.')
     } finally {
       setLoading(false)
     }
@@ -111,9 +107,11 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     try {
       await registerWithEmailPassword(email, password, displayName)
       setAuthMode('VERIFY_EMAIL')
-      setStatusMessage(`🎉 Account Created Successfully! A verification email has been sent to ${email}. Please check your inbox / spam folder and click the verification link.`)
-    } catch (err: any) {
-      setErrorMessage(err?.message || 'Registration failed.')
+      setStatusMessage(
+        `🎉 Account Created Successfully! A verification email has been sent to ${email}. Please check your inbox / spam folder and click the verification link.`
+      )
+    } catch (error: any) {
+      setErrorMessage(error?.message || 'Registration failed.')
     } finally {
       setLoading(false)
     }
@@ -129,7 +127,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
       if (isVerified) {
         onLogin({
           name: displayName || email.split('@')[0],
-          email: email,
+          email,
           avatar: (displayName || email).slice(0, 1).toUpperCase(),
           isLoggedIn: true,
           isPremium: true
@@ -138,8 +136,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({
       } else {
         setErrorMessage('Your email is not verified yet. Please click the link sent to your inbox and try again.')
       }
-    } catch (err: any) {
-      setErrorMessage(err?.message || 'Error checking verification status.')
+    } catch (error: any) {
+      setErrorMessage(error?.message || 'Error checking verification status.')
     } finally {
       setLoading(false)
     }
@@ -155,8 +153,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({
       await resendVerificationEmail()
       setStatusMessage('Verification email sent again. Please check your inbox/spam folder.')
       setResendCooldown(30)
-    } catch (err: any) {
-      setErrorMessage(err?.message || 'Failed to resend verification email.')
+    } catch (error: any) {
+      setErrorMessage(error?.message || 'Failed to resend verification email.')
     } finally {
       setLoading(false)
     }
@@ -188,9 +186,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         {user.isLoggedIn ? (
           <div className="ytm-profile-view">
             <div className="ytm-profile-hero">
-              <div className="ytm-profile-hero-avatar">
-                {user.avatar || user.name.slice(0, 1) || 'J'}
-              </div>
+              <div className="ytm-profile-hero-avatar">{user.avatar || user.name.slice(0, 1) || 'J'}</div>
               <h2 className="ytm-profile-hero-name">{user.name}</h2>
               <p className="ytm-profile-hero-email">{user.email}</p>
               <div className="ytm-premium-badge">⚡ ISAI PREMIUM ACTIVE</div>
@@ -207,7 +203,9 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                   className="ytm-login-input"
                   required
                 />
-                <button type="submit" className="ytm-btn-save-name">Save</button>
+                <button type="submit" className="ytm-btn-save-name">
+                  Save
+                </button>
               </div>
               {isSavedNotice && <span className="ytm-saved-badge">✓ Username updated!</span>}
             </form>
@@ -230,7 +228,11 @@ export const LoginModal: React.FC<LoginModalProps> = ({
               <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', justifyContent: 'center' }}>
                 <button
                   type="button"
-                  onClick={() => { setAuthMode('SIGN_IN'); setErrorMessage(null); setStatusMessage(null); }}
+                  onClick={() => {
+                    setAuthMode('SIGN_IN')
+                    setErrorMessage(null)
+                    setStatusMessage(null)
+                  }}
                   style={{
                     padding: '8px 16px',
                     borderRadius: '20px',
@@ -246,7 +248,11 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setAuthMode('REGISTER'); setErrorMessage(null); setStatusMessage(null); }}
+                  onClick={() => {
+                    setAuthMode('REGISTER')
+                    setErrorMessage(null)
+                    setStatusMessage(null)
+                  }}
                   style={{
                     padding: '8px 16px',
                     borderRadius: '20px',
@@ -264,17 +270,41 @@ export const LoginModal: React.FC<LoginModalProps> = ({
             )}
 
             {authMode === 'VERIFY_EMAIL' && (
-              <h2 className="ytm-login-title" style={{ textAlign: 'center' }}>Verify Your Email Address</h2>
+              <h2 className="ytm-login-title" style={{ textAlign: 'center' }}>
+                Verify Your Email Address
+              </h2>
             )}
 
             {statusMessage && (
-              <div style={{ padding: '10px 14px', borderRadius: '12px', background: 'rgba(200, 255, 0, 0.15)', border: '1px solid #C8FF00', color: '#C8FF00', fontSize: '12px', fontWeight: 800, marginBottom: '16px' }}>
+              <div
+                style={{
+                  padding: '10px 14px',
+                  borderRadius: '12px',
+                  background: 'rgba(200, 255, 0, 0.15)',
+                  border: '1px solid #C8FF00',
+                  color: '#C8FF00',
+                  fontSize: '12px',
+                  fontWeight: 800,
+                  marginBottom: '16px'
+                }}
+              >
                 {statusMessage}
               </div>
             )}
 
             {errorMessage && (
-              <div style={{ padding: '10px 14px', borderRadius: '12px', background: 'rgba(255, 82, 82, 0.15)', border: '1px solid #FF5252', color: '#FF5252', fontSize: '12px', fontWeight: 800, marginBottom: '16px' }}>
+              <div
+                style={{
+                  padding: '10px 14px',
+                  borderRadius: '12px',
+                  background: 'rgba(255, 82, 82, 0.15)',
+                  border: '1px solid #FF5252',
+                  color: '#FF5252',
+                  fontSize: '12px',
+                  fontWeight: 800,
+                  marginBottom: '16px'
+                }}
+              >
                 ⚠️ {errorMessage}
               </div>
             )}
@@ -282,7 +312,15 @@ export const LoginModal: React.FC<LoginModalProps> = ({
             {/* SIGN IN FORM */}
             {authMode === 'SIGN_IN' && (
               <form onSubmit={handleSignIn} className="ytm-login-options">
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '16px', textAlign: 'left' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '12px',
+                    marginBottom: '16px',
+                    textAlign: 'left'
+                  }}
+                >
                   <div>
                     <label style={{ fontSize: '12px', color: '#aaa', fontWeight: 800 }}>Email Address</label>
                     <input
@@ -344,12 +382,30 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                         title={showPassword ? 'Hide password' : 'Show password'}
                       >
                         {showPassword ? (
-                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <svg
+                            width="18"
+                            height="18"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
                             <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
                             <line x1="1" y1="1" x2="23" y2="23"></line>
                           </svg>
                         ) : (
-                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <svg
+                            width="18"
+                            height="18"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
                             <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
                             <circle cx="12" cy="12" r="3"></circle>
                           </svg>
@@ -382,7 +438,15 @@ export const LoginModal: React.FC<LoginModalProps> = ({
             {/* REGISTER FORM */}
             {authMode === 'REGISTER' && (
               <form onSubmit={handleRegister} className="ytm-login-options">
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px', textAlign: 'left' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '10px',
+                    marginBottom: '16px',
+                    textAlign: 'left'
+                  }}
+                >
                   <div>
                     <label style={{ fontSize: '12px', color: '#aaa', fontWeight: 800 }}>Full Name</label>
                     <input
@@ -465,12 +529,30 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                         title={showPassword ? 'Hide password' : 'Show password'}
                       >
                         {showPassword ? (
-                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <svg
+                            width="18"
+                            height="18"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
                             <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
                             <line x1="1" y1="1" x2="23" y2="23"></line>
                           </svg>
                         ) : (
-                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <svg
+                            width="18"
+                            height="18"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
                             <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
                             <circle cx="12" cy="12" r="3"></circle>
                           </svg>
@@ -518,12 +600,30 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                         title={showConfirmPassword ? 'Hide password' : 'Show password'}
                       >
                         {showConfirmPassword ? (
-                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <svg
+                            width="18"
+                            height="18"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
                             <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
                             <line x1="1" y1="1" x2="23" y2="23"></line>
                           </svg>
                         ) : (
-                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <svg
+                            width="18"
+                            height="18"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
                             <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
                             <circle cx="12" cy="12" r="3"></circle>
                           </svg>
@@ -557,7 +657,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({
             {authMode === 'VERIFY_EMAIL' && (
               <div style={{ textAlign: 'center', marginTop: '12px' }}>
                 <p style={{ fontSize: '13px', color: '#aaa', marginBottom: '20px', lineHeight: '18px' }}>
-                  A verification email has been sent to <b>{email}</b>. Please open your email app and click the link to verify your account.
+                  A verification email has been sent to <b>{email}</b>. Please open your email app and click the link to
+                  verify your account.
                 </p>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -594,7 +695,9 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                       cursor: loading || resendCooldown > 0 ? 'not-allowed' : 'pointer'
                     }}
                   >
-                    {resendCooldown > 0 ? `Resend Verification Email (${resendCooldown}s)` : 'Resend Verification Email ✉️'}
+                    {resendCooldown > 0
+                      ? `Resend Verification Email (${resendCooldown}s)`
+                      : 'Resend Verification Email ✉️'}
                   </button>
 
                   <button
@@ -624,5 +727,3 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     </div>
   )
 }
-
-

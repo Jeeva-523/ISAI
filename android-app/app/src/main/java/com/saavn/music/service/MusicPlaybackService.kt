@@ -45,6 +45,8 @@ class MusicPlaybackService : Service() {
         try {
             createNotificationChannel()
             setupMediaSession()
+            // Immediately promote service to foreground on creation to satisfy OS startForegroundService requirement
+            startForegroundSafely(buildNotification())
         } catch (e: Exception) {
             Log.e(TAG, "Error in MusicPlaybackService onCreate: ${e.message}", e)
         }
@@ -55,6 +57,15 @@ class MusicPlaybackService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val action = intent?.action
         Log.i(TAG, "onStartCommand: action=$action")
+
+        // Ensure startForeground is called immediately on every onStartCommand invocation
+        // to fulfill Android's startForegroundService timeout requirement under all conditions.
+        val startedForeground = startForegroundSafely(buildNotification())
+        if (!startedForeground) {
+            Log.e(TAG, "startForegroundSafely failed in onStartCommand, stopping service to prevent ForegroundServiceDidNotStartInTimeException")
+            stopSelf()
+            return START_NOT_STICKY
+        }
 
         try {
             when (action) {
@@ -109,10 +120,12 @@ class MusicPlaybackService : Service() {
         mediaSession = MediaSession(this, "IsaiMediaSession").apply {
             setCallback(object : MediaSession.Callback() {
                 override fun onPlay() {
+                    if (YouTubePlayerController.getInstance()?.isPlaybackRestricted?.invoke() == true) return
                     YouTubePlayerController.getInstance()?.play()
                 }
 
                 override fun onPause() {
+                    if (YouTubePlayerController.getInstance()?.isPlaybackRestricted?.invoke() == true) return
                     YouTubePlayerController.getInstance()?.pause()
                 }
 
@@ -177,8 +190,8 @@ class MusicPlaybackService : Service() {
         startForegroundSafely(buildNotification())
     }
 
-    private fun startForegroundSafely(notification: Notification) {
-        try {
+    private fun startForegroundSafely(notification: Notification): Boolean {
+        return try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 startForeground(
                     NOTIFICATION_ID,
@@ -188,12 +201,15 @@ class MusicPlaybackService : Service() {
             } else {
                 startForeground(NOTIFICATION_ID, notification)
             }
+            true
         } catch (e: Exception) {
             Log.w(TAG, "Failed startForeground with mediaPlayback type: ${e.message}")
             try {
                 startForeground(NOTIFICATION_ID, notification)
+                true
             } catch (inner: Exception) {
                 Log.e(TAG, "Complete startForeground fallback failed: ${inner.message}")
+                false
             }
         }
     }
@@ -226,6 +242,11 @@ class MusicPlaybackService : Service() {
             Intent(this, MusicPlaybackService::class.java).apply { action = ACTION_STOP },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+        val deleteIntent = PendingIntent.getService(
+            this, 5,
+            Intent(this, MusicPlaybackService::class.java).apply { action = ACTION_STOP },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
         val contentIntent = PendingIntent.getActivity(
             this, 0,
             Intent(this, MainActivity::class.java).apply {
@@ -239,6 +260,7 @@ class MusicPlaybackService : Service() {
             .setContentText(currentArtist.ifBlank { "ISAI Tamil Music" })
             .setSmallIcon(R.drawable.ic_notification_music)
             .setContentIntent(contentIntent)
+            .setDeleteIntent(deleteIntent)
             .setVisibility(Notification.VISIBILITY_PUBLIC)
             .setOngoing(isPlaying)
             .setOnlyAlertOnce(true)
@@ -331,18 +353,21 @@ class MusicPlaybackService : Service() {
             @Suppress("DEPRECATION")
             stopForeground(true)
         }
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+        notificationManager?.cancel(NOTIFICATION_ID)
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         super.onTaskRemoved(rootIntent)
-        Log.i(TAG, "onTaskRemoved: Activity cleared from recents")
-        val controller = YouTubePlayerController.getInstance()
-        val isStillPlaying = controller?.isPlaying?.value == true || isPlaying
-        if (!isStillPlaying) {
-            stopForegroundState()
-            stopSelf()
+        Log.i(TAG, "onTaskRemoved: Activity cleared from recents - stopping playback and removing notification")
+        try {
+            val controller = YouTubePlayerController.getInstance()
+            controller?.pause()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error stopping controller in onTaskRemoved: ${e.message}")
         }
-        // If actively playing, the foreground service stays alive and keeps playing seamlessly!
+        stopForegroundState()
+        stopSelf()
     }
 
     override fun onDestroy() {

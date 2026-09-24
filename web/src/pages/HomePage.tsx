@@ -1,12 +1,13 @@
-import React, { useRef, useState } from 'react'
-import type { Song } from '@shared/models/song'
+import { storageService } from '@shared/services/storageService'
 import { deduplicateSongs } from '@shared/utils/formatters'
-import { SkeletonSongCard } from '../components/SkeletonLoader'
+import { isSongInLanguage } from '@shared/utils/relevance'
+import { ChevronLeft, ChevronRight, Globe, Heart, Play, Search } from 'lucide-react'
+import React, { useRef, useState } from 'react'
 import { ErrorBanner } from '../components/ErrorBanner'
+import { SkeletonSongCard } from '../components/SkeletonLoader'
 import type { Artist } from '../components/ArtistCard'
 import type { UserProfile } from '../components/LoginModal'
-import { storageService } from '@shared/services/storageService'
-import { Play, Heart, Search, ChevronRight, ChevronLeft, Globe, User } from 'lucide-react'
+import type { Song } from '@shared/models/song'
 
 interface HomePageProps {
   trendingSongs: Song[]
@@ -26,34 +27,157 @@ interface HomePageProps {
   userProfile?: UserProfile
   selectedLanguage?: string
   onSelectLanguage?: (lang: string) => void
-  onOpenProfile?: () => void
   onOpenSearch?: () => void
+  onOpenProfile?: () => void
   listeningHistory?: Song[]
   onSeeAllNewReleases?: () => void
   dailyMixes?: any[]
   onSelectPlaylistDetail?: any
+  picksSongs?: Song[]
+  newReleases?: Song[]
+  mostPlayedSongs?: Song[]
 }
 
 const SUPPORTED_LANGUAGES = ['Tamil', 'Telugu', 'Hindi', 'Kannada', 'Malayalam', 'English']
 
 const POPULAR_ARTISTS_BY_LANG: Record<string, Artist[]> = {
   Tamil: [
-    { name: 'Anirudh Ravichander', role: 'Composer & Singer', image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d4/Anirudh_Ravichander_at_Audi_R8_LMX_launch.jpg/480px-Anirudh_Ravichander_at_Audi_R8_LMX_launch.jpg', query: 'Anirudh Ravichander Tamil hits', followers: '24.5M Listeners' },
-    { name: 'A.R. Rahman', role: 'Composer & Maestro', image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/9/9c/A._R._Rahman_WM2016.jpg/480px-A._R._Rahman_WM2016.jpg', query: 'A R Rahman Tamil hits', followers: '32.1M Listeners' },
-    { name: 'Yuvan Shankar Raja', role: 'Composer & Singer', image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/14/Yuvan_Shankar_Raja.jpg/480px-Yuvan_Shankar_Raja.jpg', query: 'Yuvan Shankar Raja Tamil hits', followers: '19.8M Listeners' },
-    { name: 'Harris Jayaraj', role: 'Composer', image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/9/91/Harris_Jayaraj_at_Irandaam_Ulagam_Audio_Launch.jpg/480px-Harris_Jayaraj_at_Irandaam_Ulagam_Audio_Launch.jpg', query: 'Harris Jayaraj Tamil hits', followers: '15.4M Listeners' },
-    { name: 'Sid Sriram', role: 'Playback Singer', image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/87/Sid_Sriram_at_Enai_Noki_Paayum_Thota_Audio_Launch.jpg/480px-Sid_Sriram_at_Enai_Noki_Paayum_Thota_Audio_Launch.jpg', query: 'Sid Sriram Tamil hits', followers: '14.2M Listeners' }
+    {
+      name: 'Anirudh Ravichander',
+      role: 'Composer & Singer',
+      image: 'https://c.saavncdn.com/artists/Anirudh_Ravichander_003_20260121134149_500x500.jpg',
+      query: 'Anirudh Ravichander Tamil hits',
+      followers: '24.5M Listeners'
+    },
+    {
+      name: 'A.R. Rahman',
+      role: 'Composer & Maestro',
+      image: 'https://c.saavncdn.com/artists/AR_Rahman_002_20210120084455_500x500.jpg',
+      query: 'A R Rahman Tamil hits',
+      followers: '32.1M Listeners'
+    },
+    {
+      name: 'Yuvan Shankar Raja',
+      role: 'Composer & Singer',
+      image: 'https://c.saavncdn.com/artists/Yuvan_Shankar_Raja_002_20180802174245_500x500.jpg',
+      query: 'Yuvan Shankar Raja Tamil hits',
+      followers: '19.8M Listeners'
+    },
+    {
+      name: 'Harris Jayaraj',
+      role: 'Composer',
+      image: 'https://c.saavncdn.com/artists/Harris_Jayaraj_002_20230718071330_500x500.jpg',
+      query: 'Harris Jayaraj Tamil hits',
+      followers: '15.4M Listeners'
+    },
+    {
+      name: 'Sid Sriram',
+      role: 'Playback Singer',
+      image: 'https://c.saavncdn.com/artists/Sid_Sriram_005_20240425180600_500x500.jpg',
+      query: 'Sid Sriram Tamil hits',
+      followers: '14.2M Listeners'
+    }
   ],
   Telugu: [
-    { name: 'Devi Sri Prasad', role: 'Composer & Singer', image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e3/Devi_Sri_Prasad.jpg/480px-Devi_Sri_Prasad.jpg', query: 'Devi Sri Prasad Telugu hits', followers: '18.2M Listeners' },
-    { name: 'Thaman S', role: 'Music Director', image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/b2/S_Thaman.jpg/480px-S_Thaman.jpg', query: 'Thaman S Telugu hits', followers: '16.5M Listeners' },
-    { name: 'M.M. Keeravani', role: 'Academy Maestro', image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/c/ca/MM_Keeravani_2023.jpg/480px-MM_Keeravani_2023.jpg', query: 'MM Keeravani Telugu hits', followers: '12.8M Listeners' },
-    { name: 'Sid Sriram', role: 'Singer', image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/87/Sid_Sriram_at_Enai_Noki_Paayum_Thota_Audio_Launch.jpg/480px-Sid_Sriram_at_Enai_Noki_Paayum_Thota_Audio_Launch.jpg', query: 'Sid Sriram Telugu hits', followers: '14.2M Listeners' }
+    {
+      name: 'Devi Sri Prasad',
+      role: 'Composer & Singer',
+      image: 'https://c.saavncdn.com/artists/Devi_Sri_Prasad_008_20250619062824_500x500.jpg',
+      query: 'Devi Sri Prasad Telugu hits',
+      followers: '18.2M Listeners'
+    },
+    {
+      name: 'Thaman S',
+      role: 'Music Director',
+      image: 'https://c.saavncdn.com/artists/Thaman_S__007_20231106094011_500x500.jpg',
+      query: 'Thaman S Telugu hits',
+      followers: '16.5M Listeners'
+    },
+    {
+      name: 'M.M. Keeravani',
+      role: 'Academy Maestro',
+      image: 'https://c.saavncdn.com/artists/M__M__Keeravani_002_20240129101710_500x500.jpg',
+      query: 'MM Keeravani Telugu hits',
+      followers: '12.8M Listeners'
+    },
+    {
+      name: 'Sid Sriram',
+      role: 'Singer',
+      image: 'https://c.saavncdn.com/artists/Sid_Sriram_005_20240425180600_500x500.jpg',
+      query: 'Sid Sriram Telugu hits',
+      followers: '14.2M Listeners'
+    }
   ],
   Hindi: [
-    { name: 'Arijit Singh', role: 'Playback Singer', image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/9/9b/Arijit_Singh_5th_GiMA_Awards.jpg/480px-Arijit_Singh_5th_GiMA_Awards.jpg', query: 'Arijit Singh Hindi hits', followers: '45.1M Listeners' },
-    { name: 'Pritam', role: 'Composer', image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/f/f3/Pritam_Chakraborty.jpg/480px-Pritam_Chakraborty.jpg', query: 'Pritam Hindi hits', followers: '28.4M Listeners' },
-    { name: 'Shreya Ghoshal', role: 'Singer', image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/bf/Shreya_Ghoshal_at_FCAT.jpg/480px-Shreya_Ghoshal_at_FCAT.jpg', query: 'Shreya Ghoshal Hindi hits', followers: '25.6M Listeners' }
+    {
+      name: 'Arijit Singh',
+      role: 'Playback Singer',
+      image: 'https://c.saavncdn.com/artists/Arijit_Singh_004_20241118063717_500x500.jpg',
+      query: 'Arijit Singh Hindi hits',
+      followers: '45.1M Listeners'
+    },
+    {
+      name: 'Pritam',
+      role: 'Composer',
+      image: 'https://c.saavncdn.com/artists/Pritam_Chakraborty-20170711073326_500x500.jpg',
+      query: 'Pritam Hindi hits',
+      followers: '28.4M Listeners'
+    },
+    {
+      name: 'Shreya Ghoshal',
+      role: 'Singer',
+      image: 'https://c.saavncdn.com/artists/Shreya_Ghoshal_007_20241101074144_500x500.jpg',
+      query: 'Shreya Ghoshal Hindi hits',
+      followers: '25.6M Listeners'
+    }
+  ],
+  Malayalam: [
+    {
+      name: 'Sushin Shyam',
+      role: 'Composer & Singer',
+      image: 'https://c.saavncdn.com/artists/Sushin_Shyam_002_20250707125538_500x500.jpg',
+      query: 'Sushin Shyam Malayalam hits',
+      followers: '8.4M Listeners'
+    },
+    {
+      name: 'Shaan Rahman',
+      role: 'Composer',
+      image: 'https://c.saavncdn.com/artists/Shaan_Rahman_500x500.jpg',
+      query: 'Shaan Rahman Malayalam hits',
+      followers: '6.2M Listeners'
+    }
+  ],
+  Kannada: [
+    {
+      name: 'Ravi Basrur',
+      role: 'Music Director',
+      image: 'https://c.saavncdn.com/artists/Ravi_Basrur_002_20221011072518_500x500.jpg',
+      query: 'Ravi Basrur Kannada hits',
+      followers: '7.8M Listeners'
+    },
+    {
+      name: 'Vijay Prakash',
+      role: 'Playback Singer',
+      image: 'https://c.saavncdn.com/artists/Vijay_Prakash_007_20250225123208_500x500.jpg',
+      query: 'Vijay Prakash Kannada hits',
+      followers: '5.9M Listeners'
+    }
+  ],
+  English: [
+    {
+      name: 'Ed Sheeran',
+      role: 'Singer-Songwriter',
+      image: 'https://c.saavncdn.com/artists/Ed_Sheeran_002_20250625073038_500x500.jpg',
+      query: 'Ed Sheeran top popular songs',
+      followers: '85.2M Listeners'
+    },
+    {
+      name: 'Taylor Swift',
+      role: 'Global Pop Icon',
+      image: 'https://c.saavncdn.com/artists/Taylor_Swift_003_20200226074119_500x500.jpg',
+      query: 'Taylor Swift top hit songs',
+      followers: '92.4M Listeners'
+    }
   ]
 }
 
@@ -72,16 +196,25 @@ export const HomePage: React.FC<HomePageProps> = ({
   userProfile,
   selectedLanguage: propLanguage,
   onSelectLanguage,
-  onOpenProfile,
   onOpenSearch,
   listeningHistory = [],
-  onSeeAllNewReleases
+  onSeeAllNewReleases,
+  picksSongs: propPicks,
+  newReleases: propNewReleases,
+  mostPlayedSongs: propMostPlayed
 }) => {
   const [showLangDropdown, setShowLangDropdown] = useState(false)
 
   // Language Resolution
-  const activeLanguage = propLanguage || userProfile?.preferredLanguages?.[0] || 'Tamil'
-  const userName = userProfile?.name || 'JEEVA ⚡'
+  const rawLanguage = propLanguage || userProfile?.preferredLanguages?.[0] || 'Tamil'
+  const activeLanguage =
+    rawLanguage.toLowerCase().trim() === 'ta' || rawLanguage.toLowerCase().trim() === 'tam'
+      ? 'Tamil'
+      : rawLanguage.charAt(0).toUpperCase() + rawLanguage.slice(1)
+  const rawName = userProfile?.name?.trim()
+  const userName = (rawName && !rawName.toLowerCase().startsWith('jeeva ⚡') && rawName.toLowerCase() !== 'jeeva ⚡')
+    ? rawName
+    : 'Listener'
 
   // Ref for horizontal scrolling
   const historyRowRef = useRef<HTMLDivElement>(null)
@@ -100,40 +233,103 @@ export const HomePage: React.FC<HomePageProps> = ({
   // Section 3: Continue Listening (filtered by history, hidden if empty)
   const actualHistory = listeningHistory.length > 0 ? listeningHistory : storageService.getRecentlyPlayed()
 
-  // Section 4: Picks For You (10 recommended songs)
-  const picksSongs = deduplicated.slice(0, 10)
+  const activeLangs = [
+    activeLanguage.toLowerCase().trim() === 'ta' || activeLanguage.toLowerCase().trim() === 'tam'
+      ? 'tamil'
+      : activeLanguage.toLowerCase().trim()
+  ]
 
-  // Section 5: New Releases (rolling last 30 days filter verification)
+  // Section 4: Picks For You (Authoritative / Personalized pool - Strictly in active language, min 30-35 songs)
+  const validPicks = (propPicks || []).filter((s) => isSongInLanguage(s, activeLangs))
+  const validTrending = deduplicated.filter((s) => isSongInLanguage(s, activeLangs))
+  const rawPicks = deduplicateSongs([...validPicks, ...validTrending])
+  const picksSongs = (rawPicks.length >= 5 ? rawPicks : deduplicated).slice(0, 35)
+
+  // Section 5: New Releases (Strictly in active language, min 30-35 songs)
+  const validPropNew = (propNewReleases || []).filter((s) => isSongInLanguage(s, activeLangs))
   const nowMs = Date.now()
   const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000
-  const verifiedNewReleases = deduplicated.filter((song) => {
+  const verifiedNewReleases = validTrending.filter((song) => {
     const pub = (song as any).publishedAt
     if (!pub) return true
     const pubDate = new Date(pub).getTime()
-    return !Number.isNaN(pubDate) && (nowMs - pubDate) <= thirtyDaysMs
-  }).slice(0, 12)
-  const displayNewReleases = verifiedNewReleases.length >= 4 ? verifiedNewReleases : deduplicated.slice(6, 18)
+    return !Number.isNaN(pubDate) && nowMs - pubDate <= thirtyDaysMs
+  })
+  const rawNewReleases = deduplicateSongs([
+    ...validPropNew,
+    ...verifiedNewReleases,
+    ...validTrending.slice(5)
+  ])
+  const displayNewReleases = (rawNewReleases.length >= 5 ? rawNewReleases : deduplicated.slice(5)).slice(0, 35)
 
   // Section 6: Mood Cards
   const moodCards = [
-    { title: 'Love', emoji: '💖', query: `${activeLanguage} love romantic hit songs`, gradient: 'linear-gradient(135deg, rgba(236,72,153,0.3), rgba(139,92,246,0.3))' },
-    { title: 'Chill', emoji: '☕', query: `${activeLanguage} lo-fi chill rain songs`, gradient: 'linear-gradient(135deg, rgba(99,102,241,0.3), rgba(168,85,247,0.3))' },
-    { title: 'Gym', emoji: '⚡', query: `${activeLanguage} energetic gym workout bgm beats`, gradient: 'linear-gradient(135deg, rgba(16,185,129,0.3), rgba(6,182,212,0.3))' },
-    { title: 'Travel', emoji: '🚗', query: `${activeLanguage} road trip travel songs`, gradient: 'linear-gradient(135deg, rgba(245,158,11,0.3), rgba(239,68,68,0.3))' }
+    {
+      title: 'Love',
+      subtitle: 'Romantic Melodies',
+      emoji: '💖',
+      image: 'https://images.unsplash.com/photo-1518199266791-5375a83190b7?auto=format&fit=crop&w=600&q=80',
+      query: `${activeLanguage} love romantic hit songs`,
+      gradient: 'linear-gradient(135deg, rgba(236,72,153,0.45), rgba(139,92,246,0.45))'
+    },
+    {
+      title: 'Chill',
+      subtitle: 'Lo-Fi & Relax',
+      emoji: '☕',
+      image: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=600&q=80',
+      query: `${activeLanguage} lo-fi chill rain songs`,
+      gradient: 'linear-gradient(135deg, rgba(99,102,241,0.45), rgba(168,85,247,0.45))'
+    },
+    {
+      title: 'Gym',
+      subtitle: 'Workout Energy',
+      emoji: '⚡',
+      image: 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&w=600&q=80',
+      query: `${activeLanguage} energetic gym workout bgm beats`,
+      gradient: 'linear-gradient(135deg, rgba(16,185,129,0.45), rgba(6,182,212,0.45))'
+    },
+    {
+      title: 'Party',
+      subtitle: 'Dance & Beats',
+      emoji: '🎉',
+      image: 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=600&q=80',
+      query: `${activeLanguage} party dance kuthu fast beat songs`,
+      gradient: 'linear-gradient(135deg, rgba(244,63,94,0.45), rgba(249,115,22,0.45))'
+    },
+    {
+      title: 'Travel',
+      subtitle: 'Road Trip Vibes',
+      emoji: '🚗',
+      image: 'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?auto=format&fit=crop&w=600&q=80',
+      query: `${activeLanguage} road trip travel songs`,
+      gradient: 'linear-gradient(135deg, rgba(245,158,11,0.45), rgba(239,68,68,0.45))'
+    },
+    {
+      title: 'Sad',
+      subtitle: 'Heartbreak Soul',
+      emoji: '🌧️',
+      image: 'https://images.unsplash.com/photo-1518495973542-4542c06a5843?auto=format&fit=crop&w=600&q=80',
+      query: `${activeLanguage} sad emotional heartbreak breakup songs`,
+      gradient: 'linear-gradient(135deg, rgba(59,130,246,0.45), rgba(99,102,241,0.45))'
+    }
   ]
 
   // Section 7: Artists
-  const displayArtists = POPULAR_ARTISTS_BY_LANG[activeLanguage] || POPULAR_ARTISTS_BY_LANG['Tamil']
+  const displayArtists = POPULAR_ARTISTS_BY_LANG[activeLanguage] || POPULAR_ARTISTS_BY_LANG.Tamil
 
-  // Section 8: Most Played Songs
-  const mostPlayedList = deduplicated.slice(0, 25)
+  // Section 8: Most Played Songs (min 30-35 songs)
+  const validPropMost = (propMostPlayed || []).filter((s) => isSongInLanguage(s, activeLangs))
+  const rawMost = deduplicateSongs([...validPropMost, ...validTrending])
+  const mostPlayedList = (rawMost.length >= 5 ? rawMost : deduplicated).slice(0, 35)
 
   if (isLoading && deduplicated.length === 0) {
     return (
       <div style={{ paddingBottom: '120px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
         <div style={{ height: '60px', background: 'var(--surface-card)', borderRadius: '16px' }} />
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat( auto-fit, minmax(200px, 1fr) )', gap: '16px' }}>
-          {[1, 2, 3, 4, 5, 6].map((n) => <SkeletonSongCard key={n} />)}
+          {[1, 2, 3, 4, 5, 6].map((n) => (
+            <SkeletonSongCard key={n} />
+          ))}
         </div>
       </div>
     )
@@ -149,12 +345,29 @@ export const HomePage: React.FC<HomePageProps> = ({
 
   return (
     <div style={{ paddingBottom: '120px', display: 'flex', flexDirection: 'column', gap: '32px' }}>
-
       {/* 1. Header Section */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '12px'
+        }}
+      >
         <div>
-          <h1 style={{ fontSize: '24px', fontWeight: 900, color: '#fff', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-            Welcome, {userName} 👋
+          <h1
+            style={{
+              fontSize: '24px',
+              fontWeight: 900,
+              color: 'var(--text-primary)',
+              margin: 0,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}
+          >
+            Welcome, <span style={{ color: 'var(--isai-lime)' }}>{userName}</span> 👋
           </h1>
           <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: '4px 0 0 0' }}>
             Enjoying {activeLanguage} Music on ISAI
@@ -205,7 +418,9 @@ export const HomePage: React.FC<HomePageProps> = ({
                 }}
               >
                 {SUPPORTED_LANGUAGES.map((lang) => {
-                  const isSel = (lang as any).equalsIgnoreCase ? (lang as any).equalsIgnoreCase(activeLanguage) : lang.toLowerCase() === activeLanguage.toLowerCase()
+                  const isSel = (lang as any).equalsIgnoreCase
+                    ? (lang as any).equalsIgnoreCase(activeLanguage)
+                    : lang.toLowerCase() === activeLanguage.toLowerCase()
                   return (
                     <button
                       key={lang}
@@ -217,7 +432,7 @@ export const HomePage: React.FC<HomePageProps> = ({
                         padding: '8px 12px',
                         borderRadius: '8px',
                         background: isSel ? 'rgba(200, 255, 0, 0.15)' : 'transparent',
-                        color: isSel ? 'var(--isai-lime)' : '#fff',
+                        color: isSel ? 'var(--isai-lime)' : 'var(--text-primary)',
                         fontWeight: isSel ? 800 : 500,
                         fontSize: '13px',
                         border: 'none',
@@ -232,25 +447,6 @@ export const HomePage: React.FC<HomePageProps> = ({
               </div>
             )}
           </div>
-
-          <button
-            onClick={onOpenProfile}
-            style={{
-              width: '38px',
-              height: '38px',
-              borderRadius: '50%',
-              background: 'var(--surface-card)',
-              border: '1px solid var(--border-subtle)',
-              color: '#fff',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer'
-            }}
-            title="Profile"
-          >
-            <User size={18} />
-          </button>
         </div>
       </div>
 
@@ -280,12 +476,25 @@ export const HomePage: React.FC<HomePageProps> = ({
       {actualHistory.length > 0 && (
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-            <h2 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <h2
+              style={{
+                fontSize: '18px',
+                fontWeight: 800,
+                color: 'var(--text-primary)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+            >
               Continue Listening 🎧
             </h2>
             <div style={{ display: 'flex', gap: '6px' }}>
-              <button className="control-btn" onClick={() => scrollRow(historyRowRef, 'left')}><ChevronLeft size={18} /></button>
-              <button className="control-btn" onClick={() => scrollRow(historyRowRef, 'right')}><ChevronRight size={18} /></button>
+              <button className="control-btn" onClick={() => scrollRow(historyRowRef, 'left')}>
+                <ChevronLeft size={18} />
+              </button>
+              <button className="control-btn" onClick={() => scrollRow(historyRowRef, 'right')}>
+                <ChevronRight size={18} />
+              </button>
             </div>
           </div>
 
@@ -314,8 +523,20 @@ export const HomePage: React.FC<HomePageProps> = ({
                     gap: '6px'
                   }}
                 >
-                  <div style={{ position: 'relative', width: '120px', height: '120px', borderRadius: '14px', overflow: 'hidden' }}>
-                    <img src={song.thumbnailUrl} alt={song.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  <div
+                    style={{
+                      position: 'relative',
+                      width: '120px',
+                      height: '120px',
+                      borderRadius: '14px',
+                      overflow: 'hidden'
+                    }}
+                  >
+                    <img
+                      src={song.thumbnailUrl}
+                      alt={song.title}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
                     <div
                       style={{
                         position: 'absolute',
@@ -338,7 +559,18 @@ export const HomePage: React.FC<HomePageProps> = ({
                       )}
                     </div>
                   </div>
-                  <span style={{ fontSize: '12px', fontWeight: 700, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                  <span
+                    style={{
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      color: isThisPlaying ? 'var(--isai-lime)' : 'var(--text-primary)',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      display: '-webkit-box',
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: 'vertical'
+                    }}
+                  >
                     {song.title}
                   </span>
                 </div>
@@ -352,16 +584,31 @@ export const HomePage: React.FC<HomePageProps> = ({
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
           <div>
-            <h2 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <h2
+              style={{
+                fontSize: '18px',
+                fontWeight: 800,
+                color: 'var(--text-primary)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+            >
               Picks For You ✨
             </h2>
             <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-              {actualHistory.length > 0 ? `Personalized for your ${activeLanguage} taste` : `Popular in ${activeLanguage}`}
+              {actualHistory.length > 0
+                ? `Personalized for your ${activeLanguage} taste`
+                : `Popular in ${activeLanguage}`}
             </span>
           </div>
           <div style={{ display: 'flex', gap: '6px' }}>
-            <button className="control-btn" onClick={() => scrollRow(picksRowRef, 'left')}><ChevronLeft size={18} /></button>
-            <button className="control-btn" onClick={() => scrollRow(picksRowRef, 'right')}><ChevronRight size={18} /></button>
+            <button className="control-btn" onClick={() => scrollRow(picksRowRef, 'left')}>
+              <ChevronLeft size={18} />
+            </button>
+            <button className="control-btn" onClick={() => scrollRow(picksRowRef, 'right')}>
+              <ChevronRight size={18} />
+            </button>
           </div>
         </div>
 
@@ -376,10 +623,30 @@ export const HomePage: React.FC<HomePageProps> = ({
               <div
                 key={song.videoId}
                 onClick={() => onPlaySong?.(song, deduplicated)}
-                style={{ minWidth: '150px', maxWidth: '150px', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: '8px' }}
+                style={{
+                  minWidth: '150px',
+                  maxWidth: '150px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px'
+                }}
               >
-                <div style={{ position: 'relative', width: '150px', height: '150px', borderRadius: '16px', overflow: 'hidden', border: isThisPlaying ? '2px solid var(--isai-lime)' : 'none' }}>
-                  <img src={song.thumbnailUrl} alt={song.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                <div
+                  style={{
+                    position: 'relative',
+                    width: '150px',
+                    height: '150px',
+                    borderRadius: '16px',
+                    overflow: 'hidden',
+                    border: isThisPlaying ? '2px solid var(--isai-lime)' : 'none'
+                  }}
+                >
+                  <img
+                    src={song.thumbnailUrl}
+                    alt={song.title}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  />
                   <button
                     onClick={(e) => {
                       e.stopPropagation()
@@ -403,15 +670,43 @@ export const HomePage: React.FC<HomePageProps> = ({
                     <Heart size={14} fill={isFav ? '#FF007A' : 'none'} color={isFav ? '#FF007A' : '#fff'} />
                   </button>
                   {isThisPlaying && (
-                    <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div
+                      style={{
+                        position: 'absolute',
+                        inset: 0,
+                        background: 'rgba(0,0,0,0.4)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}
+                    >
                       <Play size={28} fill="var(--isai-lime)" color="var(--isai-lime)" />
                     </div>
                   )}
                 </div>
-                <span style={{ fontSize: '13px', fontWeight: 700, color: isThisPlaying ? 'var(--isai-lime)' : '#fff', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                <span
+                  style={{
+                    fontSize: '13px',
+                    fontWeight: 700,
+                    color: isThisPlaying ? 'var(--isai-lime)' : 'var(--text-primary)',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    display: '-webkit-box',
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: 'vertical'
+                  }}
+                >
                   {song.title}
                 </span>
-                <span style={{ fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <span
+                  style={{
+                    fontSize: '11px',
+                    color: 'var(--text-muted)',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis'
+                  }}
+                >
                   {song.channelTitle}
                 </span>
               </div>
@@ -433,12 +728,23 @@ export const HomePage: React.FC<HomePageProps> = ({
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <button
               onClick={onSeeAllNewReleases || (() => onSelectCategory(`${activeLanguage} new releases 2026`))}
-              style={{ background: 'none', border: 'none', color: 'var(--isai-lime)', fontWeight: 800, fontSize: '12px', cursor: 'pointer' }}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'var(--isai-lime)',
+                fontWeight: 800,
+                fontSize: '12px',
+                cursor: 'pointer'
+              }}
             >
               See all
             </button>
-            <button className="control-btn" onClick={() => scrollRow(newReleasesRowRef, 'left')}><ChevronLeft size={18} /></button>
-            <button className="control-btn" onClick={() => scrollRow(newReleasesRowRef, 'right')}><ChevronRight size={18} /></button>
+            <button className="control-btn" onClick={() => scrollRow(newReleasesRowRef, 'left')}>
+              <ChevronLeft size={18} />
+            </button>
+            <button className="control-btn" onClick={() => scrollRow(newReleasesRowRef, 'right')}>
+              <ChevronRight size={18} />
+            </button>
           </div>
         </div>
 
@@ -452,18 +758,69 @@ export const HomePage: React.FC<HomePageProps> = ({
               <div
                 key={song.videoId}
                 onClick={() => onPlaySong?.(song, displayNewReleases)}
-                style={{ minWidth: '150px', maxWidth: '150px', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: '8px' }}
+                style={{
+                  minWidth: '150px',
+                  maxWidth: '150px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px'
+                }}
               >
-                <div style={{ position: 'relative', width: '150px', height: '150px', borderRadius: '16px', overflow: 'hidden', border: isThisPlaying ? '2px solid var(--isai-lime)' : 'none' }}>
-                  <img src={song.thumbnailUrl} alt={song.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  <div style={{ position: 'absolute', top: '8px', right: '8px', background: 'rgba(0,0,0,0.7)', color: 'var(--isai-lime)', fontSize: '10px', fontWeight: 800, padding: '2px 6px', borderRadius: '6px' }}>
+                <div
+                  style={{
+                    position: 'relative',
+                    width: '150px',
+                    height: '150px',
+                    borderRadius: '16px',
+                    overflow: 'hidden',
+                    border: isThisPlaying ? '2px solid var(--isai-lime)' : 'none'
+                  }}
+                >
+                  <img
+                    src={song.thumbnailUrl}
+                    alt={song.title}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  />
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: '8px',
+                      right: '8px',
+                      background: 'rgba(0,0,0,0.7)',
+                      color: 'var(--isai-lime)',
+                      fontSize: '10px',
+                      fontWeight: 800,
+                      padding: '2px 6px',
+                      borderRadius: '6px'
+                    }}
+                  >
                     NEW
                   </div>
                 </div>
-                <span style={{ fontSize: '13px', fontWeight: 700, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                <span
+                  style={{
+                    fontSize: '13px',
+                    fontWeight: 700,
+                    color: isThisPlaying ? 'var(--isai-lime)' : 'var(--text-primary)',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    display: '-webkit-box',
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: 'vertical'
+                  }}
+                >
                   {song.title}
                 </span>
-                <span style={{ fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <span
+                  style={{
+                    fontSize: '11px',
+                    color: 'var(--text-muted)',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis'
+                  }}
+                >
                   {song.channelTitle}
                 </span>
               </div>
@@ -474,28 +831,91 @@ export const HomePage: React.FC<HomePageProps> = ({
 
       {/* 6. What's Your Mood Today? */}
       <div>
-        <h2 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '14px' }}>
-          What's Your Mood Today? 💫
-        </h2>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+          <div>
+            <h2 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)' }}>
+              What's Your Mood Today? 💫
+            </h2>
+            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+              Curated playlists matched to your current vibe
+            </span>
+          </div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '14px' }}>
           {moodCards.map((m) => (
-            <div
-              key={m.title}
-              onClick={() => onSelectCategory(m.query)}
-              style={{
-                padding: '16px',
-                borderRadius: '16px',
-                background: m.gradient,
-                border: '1px solid rgba(255,255,255,0.1)',
-                cursor: 'pointer',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '8px',
-                transition: 'transform 0.2s ease'
-              }}
-            >
-              <span style={{ fontSize: '24px' }}>{m.emoji}</span>
-              <span style={{ fontSize: '15px', fontWeight: 800, color: '#fff' }}>{m.title}</span>
+            <div key={m.title} onClick={() => onSelectCategory(m.query)} className="mood-card">
+              {/* Background Cover Image */}
+              <img
+                src={m.image}
+                alt={m.title}
+                loading="lazy"
+                referrerPolicy="no-referrer"
+                className="mood-card-bg"
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                  transition: 'transform 0.4s ease'
+                }}
+              />
+              {/* Dark Gradient Overlay for readability */}
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  background:
+                    'linear-gradient(to top, rgba(10,10,16,0.92) 0%, rgba(10,10,16,0.42) 55%, rgba(0,0,0,0.2) 100%)'
+                }}
+              />
+              {/* Tint overlay */}
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  background: m.gradient,
+                  mixBlendMode: 'overlay',
+                  opacity: 0.8
+                }}
+              />
+              {/* Foreground content */}
+              <div
+                style={{
+                  position: 'relative',
+                  zIndex: 2,
+                  height: '100%',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between',
+                  padding: '12px 14px'
+                }}
+              >
+                <div
+                  style={{
+                    alignSelf: 'flex-start',
+                    background: 'rgba(0,0,0,0.45)',
+                    backdropFilter: 'blur(8px)',
+                    WebkitBackdropFilter: 'blur(8px)',
+                    border: '1px solid rgba(255,255,255,0.18)',
+                    borderRadius: '20px',
+                    padding: '3px 8px',
+                    fontSize: '14px',
+                    display: 'flex',
+                    alignItems: 'center'
+                  }}
+                >
+                  <span>{m.emoji}</span>
+                </div>
+                <div>
+                  <div style={{ fontSize: '15px', fontWeight: 800, color: '#fff', letterSpacing: '-0.2px' }}>
+                    {m.title}
+                  </div>
+                  <div style={{ fontSize: '11px', fontWeight: 500, color: 'rgba(255,255,255,0.75)', marginTop: '2px' }}>
+                    {m.subtitle}
+                  </div>
+                </div>
+              </div>
             </div>
           ))}
         </div>
@@ -508,22 +928,52 @@ export const HomePage: React.FC<HomePageProps> = ({
         </h2>
         <div style={{ display: 'flex', gap: '20px', overflowX: 'auto', paddingBottom: '8px' }}>
           {displayArtists.map((artist) => (
-            <div
-              key={artist.name}
-              onClick={() => onSelectArtist?.(artist)}
-              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', cursor: 'pointer', minWidth: '90px' }}
-            >
-              <div style={{ position: 'relative', width: '84px', height: '84px', borderRadius: '50%', background: 'linear-gradient(135deg, var(--isai-purple), var(--isai-pink))', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid var(--border-subtle)', overflow: 'hidden' }}>
+            <div key={artist.name} onClick={() => onSelectArtist?.(artist)} className="artist-avatar-card">
+              <div
+                className="artist-avatar-img"
+                style={{
+                  position: 'relative',
+                  width: '84px',
+                  height: '84px',
+                  borderRadius: '50%',
+                  background: 'linear-gradient(135deg, var(--isai-purple), var(--isai-pink))',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  border: '2px solid rgba(255,255,255,0.15)',
+                  boxShadow: '0 6px 18px rgba(0,0,0,0.35)',
+                  overflow: 'hidden',
+                  transition: 'all 0.25s ease'
+                }}
+              >
                 <span style={{ fontSize: '24px', fontWeight: 900, color: '#fff' }}>{artist.name.charAt(0)}</span>
                 <img
                   src={artist.image}
                   alt={artist.name}
+                  loading="lazy"
+                  referrerPolicy="no-referrer"
                   style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
-                  onError={(e) => { (e.target as HTMLElement).style.display = 'none' }}
+                  onError={(e) => {
+                    ;(e.target as HTMLElement).style.display = 'none'
+                  }}
                 />
               </div>
-              <span style={{ fontSize: '12px', fontWeight: 700, color: '#fff', textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100px' }}>
+              <span
+                style={{
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  color: 'var(--text-primary)',
+                  textAlign: 'center',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  maxWidth: '100px'
+                }}
+              >
                 {artist.name}
+              </span>
+              <span style={{ fontSize: '10px', color: 'var(--text-muted)', textAlign: 'center', marginTop: '-4px' }}>
+                {artist.role}
               </span>
             </div>
           ))}
@@ -533,9 +983,7 @@ export const HomePage: React.FC<HomePageProps> = ({
       {/* 8. Most Played Songs Section 🔥 */}
       <div>
         <div style={{ marginBottom: '14px' }}>
-          <h2 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)' }}>
-            Most Played Songs 🔥
-          </h2>
+          <h2 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)' }}>Most Played Songs 🔥</h2>
           <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Top played hits by ISAI listeners</span>
         </div>
 
@@ -583,10 +1031,27 @@ export const HomePage: React.FC<HomePageProps> = ({
                 />
 
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: '13px', fontWeight: 700, color: isThisPlaying ? 'var(--isai-lime)' : '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  <div
+                    style={{
+                      fontSize: '13px',
+                      fontWeight: 700,
+                      color: isThisPlaying ? 'var(--isai-lime)' : 'var(--text-primary)',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis'
+                    }}
+                  >
                     {song.title}
                   </div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  <div
+                    style={{
+                      fontSize: '11px',
+                      color: 'var(--text-muted)',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis'
+                    }}
+                  >
                     {song.channelTitle}
                   </div>
                 </div>
@@ -605,7 +1070,6 @@ export const HomePage: React.FC<HomePageProps> = ({
           })}
         </div>
       </div>
-
     </div>
   )
 }

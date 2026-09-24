@@ -1,32 +1,32 @@
-import { initializeApp } from 'firebase/app'
 import { getAnalytics, isSupported } from 'firebase/analytics'
+import { initializeApp } from 'firebase/app'
 import {
+  applyActionCode,
+  createUserWithEmailAndPassword,
   getAuth,
   GoogleAuthProvider,
-  signInWithPopup,
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
+  onAuthStateChanged,
   sendEmailVerification,
   sendPasswordResetEmail,
-  applyActionCode,
-  updateProfile,
+  signInWithEmailAndPassword,
+  signInWithPopup,
   signOut,
-  onAuthStateChanged
+  updateProfile
 } from 'firebase/auth'
-import { getFirestore, doc, setDoc } from 'firebase/firestore'
-import { getDatabase, ref as rtdbRef, onValue as rtdbOnValue, off as rtdbOff } from 'firebase/database'
+import { getDatabase, off as rtdbOff, onValue as rtdbOnValue, ref as rtdbRef } from 'firebase/database'
+import { doc, getFirestore, setDoc } from 'firebase/firestore'
 import { getStorage } from 'firebase/storage'
 
 // Official Firebase configuration for ISAI Music (Project: isai-49b51)
 export const firebaseConfig = {
-  apiKey: "AIzaSyAnLBzkBJ9Jxf1Xw-kDGNMCOIgfFbft4_0",
-  authDomain: "isai-49b51.firebaseapp.com",
-  databaseURL: "https://isai-49b51-default-rtdb.firebaseio.com",
-  projectId: "isai-49b51",
-  storageBucket: "isai-49b51.firebasestorage.app",
-  messagingSenderId: "995240299930",
-  appId: "1:995240299930:web:256270fbe743f52f1b7e23",
-  measurementId: "G-F2SX8LWGC0"
+  apiKey: 'AIzaSyAnLBzkBJ9Jxf1Xw-kDGNMCOIgfFbft4_0',
+  authDomain: 'isai-49b51.firebaseapp.com',
+  databaseURL: 'https://isai-49b51-default-rtdb.firebaseio.com',
+  projectId: 'isai-49b51',
+  storageBucket: 'isai-49b51.firebasestorage.app',
+  messagingSenderId: '995240299930',
+  appId: '1:995240299930:web:256270fbe743f52f1b7e23',
+  measurementId: 'G-F2SX8LWGC0'
 }
 
 // Initialize Firebase App & Core Services
@@ -39,18 +39,24 @@ export const storage = getStorage(app)
 export const googleProvider = new GoogleAuthProvider()
 
 // Safely initialize Analytics if supported in browser environment
-export let analytics: any = null
+let analyticsInstance: any = null
 if (typeof window !== 'undefined') {
-  isSupported().then((supported) => {
-    if (supported) {
-      analytics = getAnalytics(app)
-    }
-  }).catch(() => {})
+  isSupported()
+    .then((supported) => {
+      if (supported) {
+        analyticsInstance = getAnalytics(app)
+      }
+    })
+    .catch(() => {})
 }
+export const getFirebaseAnalytics = () => analyticsInstance
 
 export function sanitizeEmailKey(email: string): string {
-  if (!email) return 'kongujeeva523@gmail_com'
-  return email.toLowerCase().trim().replace(/[.#$\[\]]/g, '_')
+  if (!email) return 'guest_listener'
+  return email
+    .toLowerCase()
+    .trim()
+    .replaceAll(/[.#$[\]]/g, '_')
 }
 
 // Native Firebase Registration
@@ -65,38 +71,42 @@ export async function registerWithEmailPassword(email: string, password: string,
     // Update Firebase Auth display name safely
     try {
       await updateProfile(user, { displayName: name })
-    } catch (e) {
-      console.warn('[Firebase Auth] updateProfile warning:', e)
+    } catch (error) {
+      console.warn('[Firebase Auth] updateProfile warning:', error)
     }
 
     // Immediately send native Firebase verification email
     try {
       await sendEmailVerification(user)
-    } catch (e) {
-      console.warn('[Firebase Auth] sendEmailVerification warning:', e)
+    } catch (error) {
+      console.warn('[Firebase Auth] sendEmailVerification warning:', error)
     }
 
     // Sync profile metadata to Firestore (Non-blocking so registration never hangs)
-    setDoc(doc(firestore, "profiles", user.uid), {
-      userId: user.uid,
-      displayName: name,
-      email: cleanEmail,
-      createdAt: Date.now()
-    }, { merge: true }).catch((err) => {
-      console.warn('[Firestore] Non-critical profile sync warning:', err)
+    setDoc(
+      doc(firestore, 'profiles', user.uid),
+      {
+        userId: user.uid,
+        displayName: name,
+        email: cleanEmail,
+        createdAt: Date.now()
+      },
+      { merge: true }
+    ).catch((error) => {
+      console.warn('[Firestore] Non-critical profile sync warning:', error)
     })
 
     return {
       uid: user.uid,
-      name: name,
+      name,
       email: cleanEmail,
       avatar: name.slice(0, 1).toUpperCase(),
       isLoggedIn: true,
       isPremium: true,
       emailVerified: false
     }
-  } catch (err: any) {
-    throw new Error(mapFirebaseError(err))
+  } catch (error: any) {
+    throw new Error(mapFirebaseError(error))
   }
 }
 
@@ -115,15 +125,15 @@ export async function loginWithEmailPassword(email: string, password: string) {
 
     return {
       uid: user.uid,
-      name: name,
+      name,
       email: cleanEmail,
       avatar: name.slice(0, 1).toUpperCase(),
       isLoggedIn: true,
       isPremium: true,
       emailVerified: user.emailVerified
     }
-  } catch (err: any) {
-    throw new Error(mapFirebaseError(err))
+  } catch (error: any) {
+    throw new Error(mapFirebaseError(error))
   }
 }
 
@@ -135,9 +145,9 @@ export async function verifyEmailActionCode(oobCode: string): Promise<boolean> {
       await auth.currentUser.reload()
     }
     return true
-  } catch (err: any) {
-    console.warn('[Firebase Auth] verifyEmailActionCode error:', err)
-    throw new Error(mapFirebaseError(err))
+  } catch (error: any) {
+    console.warn('[Firebase Auth] verifyEmailActionCode error:', error)
+    throw new Error(mapFirebaseError(error))
   }
 }
 
@@ -148,7 +158,7 @@ export async function checkEmailVerificationStatus(): Promise<boolean> {
   try {
     await user.reload()
     return user.emailVerified
-  } catch (err) {
+  } catch {
     return user.emailVerified
   }
 }
@@ -157,26 +167,26 @@ export async function checkEmailVerificationStatus(): Promise<boolean> {
 export async function resendVerificationEmail(): Promise<boolean> {
   const user = auth.currentUser
   if (!user) {
-    throw new Error("No active authentication session found. Please sign in again.")
+    throw new Error('No active authentication session found. Please sign in again.')
   }
   try {
     await sendEmailVerification(user)
     return true
-  } catch (err: any) {
-    throw new Error(mapFirebaseError(err))
+  } catch (error: any) {
+    throw new Error(mapFirebaseError(error))
   }
 }
 
 export async function sendPasswordReset(email: string): Promise<boolean> {
   const cleanEmail = email.trim().toLowerCase()
   if (!cleanEmail) {
-    throw new Error("Please enter your email address.")
+    throw new Error('Please enter your email address.')
   }
   try {
     await sendPasswordResetEmail(auth, cleanEmail)
     return true
-  } catch (err: any) {
-    throw new Error(mapFirebaseError(err))
+  } catch (error: any) {
+    throw new Error(mapFirebaseError(error))
   }
 }
 
@@ -197,8 +207,8 @@ export async function loginWithGoogleFirebase() {
       photoURL: u.photoURL || undefined,
       emailVerified: u.emailVerified
     }
-  } catch (err) {
-    console.warn('[Firebase Auth] Popup blocked or failed:', err)
+  } catch (error) {
+    console.warn('[Firebase Auth] Popup blocked or failed:', error)
     return null
   }
 }
@@ -240,10 +250,8 @@ export function subscribeToSubscription(userId: string, onUpdate: (data: any) =>
       }
     })
     return () => rtdbOff(subRef)
-  } catch (err) {
-    console.warn('[Firebase RTDB] Subscription listen warning:', err)
+  } catch (error) {
+    console.warn('[Firebase RTDB] Subscription listen warning:', error)
     return () => {}
   }
 }
-
-

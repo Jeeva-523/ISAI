@@ -28,6 +28,7 @@ export interface Song {
   genre?: string
   playCountNumber?: number
   artists?: SongArtist[]
+  isManual?: boolean
 }
 
 export interface TamilCategory {

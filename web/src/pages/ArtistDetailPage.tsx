@@ -1,8 +1,8 @@
+import { ArrowLeft, CheckCircle2, Play, UserPlus } from 'lucide-react'
 import React from 'react'
-import type { Song } from '@shared/models/song'
-import type { Artist } from '../components/ArtistCard'
 import { SongListItem } from '../components/SongListItem'
-import { Play, CheckCircle2, UserPlus, ArrowLeft } from 'lucide-react'
+import type { Artist } from '../components/ArtistCard'
+import type { Song } from '@shared/models/song'
 
 interface ArtistDetailPageProps {
   artist: Artist
@@ -74,12 +74,19 @@ export const ArtistDetailPage: React.FC<ArtistDetailPageProps> = ({
           />
 
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--isai-purple-light)', fontSize: '12px', fontWeight: 800 }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                color: 'var(--isai-purple-light)',
+                fontSize: '12px',
+                fontWeight: 800
+              }}
+            >
               <CheckCircle2 size={16} /> VERIFIED ARTIST
             </div>
-            <h1 style={{ fontSize: '42px', fontWeight: 900, color: '#fff', margin: '4px 0 8px' }}>
-              {artist.name}
-            </h1>
+            <h1 style={{ fontSize: '42px', fontWeight: 900, color: '#fff', margin: '4px 0 8px' }}>{artist.name}</h1>
             <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
               {artist.role || 'Composer & Singer'} • {artist.followers || '18.4M Monthly Listeners'}
             </p>
@@ -106,9 +113,7 @@ export const ArtistDetailPage: React.FC<ArtistDetailPageProps> = ({
 
       {/* Popular Songs Section */}
       <div style={{ marginBottom: '40px' }}>
-        <h2 style={{ fontSize: '22px', fontWeight: 900, marginBottom: '16px' }}>
-          Popular Tracks
-        </h2>
+        <h2 style={{ fontSize: '22px', fontWeight: 900, marginBottom: '16px' }}>Popular Tracks</h2>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
           {artistSongs.slice(0, 8).map((song, idx) => (

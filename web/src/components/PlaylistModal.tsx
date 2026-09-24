@@ -1,6 +1,6 @@
+import { Check, Music, Plus, X } from 'lucide-react'
 import React, { useState } from 'react'
 import type { Song, UserPlaylist } from '@shared/models/song'
-import { X, Plus, Music, Check } from 'lucide-react'
 
 interface PlaylistModalProps {
   isOpen: boolean
@@ -36,7 +36,7 @@ export const PlaylistModal: React.FC<PlaylistModalProps> = ({
   const handleSelectPlaylist = (plId: string) => {
     if (songToAdd) {
       onAddSongToPlaylist(plId, songToAdd)
-      setAddedPlaylistIds(prev => [...prev, plId])
+      setAddedPlaylistIds((prev) => [...prev, plId])
     }
   }
 
@@ -86,12 +86,16 @@ export const PlaylistModal: React.FC<PlaylistModalProps> = ({
         </h2>
         {songToAdd && (
           <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '20px' }}>
-            Choose a playlist for <span style={{ color: 'var(--isai-purple-light)', fontWeight: 700 }}>"{songToAdd.title}"</span>
+            Choose a playlist for{' '}
+            <span style={{ color: 'var(--isai-purple-light)', fontWeight: 700 }}>"{songToAdd.title}"</span>
           </p>
         )}
 
         {isCreating ? (
-          <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '16px' }}>
+          <form
+            onSubmit={handleCreate}
+            style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '16px' }}
+          >
             <input
               type="text"
               placeholder="Playlist name (e.g. Tamil Chill Hits)"
@@ -111,32 +115,23 @@ export const PlaylistModal: React.FC<PlaylistModalProps> = ({
               }}
             />
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-              <button
-                type="button"
-                onClick={() => setIsCreating(false)}
-                className="pill-button"
-              >
+              <button type="button" onClick={() => setIsCreating(false)} className="pill-button">
                 Cancel
               </button>
-              <button
-                type="submit"
-                className="pill-button active"
-              >
+              <button type="submit" className="pill-button active">
                 Create
               </button>
             </div>
           </form>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '16px' }}>
-            <button
-              onClick={() => setIsCreating(true)}
-              className="ytm-btn-new-playlist"
-              style={{ padding: '14px' }}
-            >
+            <button onClick={() => setIsCreating(true)} className="ytm-btn-new-playlist" style={{ padding: '14px' }}>
               <Plus size={18} /> Create New Playlist
             </button>
 
-            <div style={{ maxHeight: '240px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <div
+              style={{ maxHeight: '240px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px' }}
+            >
               {userPlaylists.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)', fontSize: '13px' }}>
                   No custom playlists yet. Create one above!

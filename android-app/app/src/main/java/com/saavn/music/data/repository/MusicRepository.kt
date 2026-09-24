@@ -107,15 +107,27 @@ class MusicRepository(
             }
 
             val dedupedAll = deduplicateSongItems(allSongs)
+            val targetLangs = preferredLanguages.map { it.trim().lowercase() }.filter { it.isNotEmpty() }.ifEmpty { listOf("tamil") }
 
-            val filtered = dedupedAll.filterNot { song ->
+            val languageFiltered = dedupedAll.filter { song ->
+                val sLang = song.language.trim().lowercase()
+                if (sLang.isNotBlank() && sLang != "unknown") {
+                    targetLangs.contains(sLang)
+                } else {
+                    val text = "${song.title} ${song.artistNames}".lowercase()
+                    !text.contains("telugu") && !text.contains("hindi") && !text.contains("malayalam") &&
+                    !text.contains("kannada") && !text.contains("punjabi")
+                }
+            }
+
+            val filtered = languageFiltered.filterNot { song ->
                 val title = song.title.lowercase()
                 title.contains("trending") || title.contains("jukebox") || title.contains("full album") || 
                 title.contains("non stop") || title.contains("compilation") || title.contains("remaster") ||
                 song.playCount < 10000L
             }.sortedByDescending { it.playCount }
 
-            Result.success(if (filtered.isNotEmpty()) filtered.take(limit) else dedupedAll.take(limit))
+            Result.success(if (filtered.isNotEmpty()) filtered.take(limit) else languageFiltered.take(limit))
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -357,11 +369,52 @@ class MusicRepository(
         }
     }
 
-    suspend fun resolveStreamUrl(title: String, artist: String = ""): String? = withContext(Dispatchers.IO) {
+    suspend fun resolveStreamUrlBySongId(songId: String): String? = withContext(Dispatchers.IO) {
+        if (songId.isBlank()) return@withContext null
         try {
-            // 1. Search JioSaavn official API
-            val searchRes = search(title).getOrNull()
-            val first = searchRes?.firstOrNull()
+            val details = api.getSongDetails(songId = songId)
+            val first = details.songs?.firstOrNull()
+            if (first != null) {
+                val songItem = first.toSongItem()
+                if (songItem != null) {
+                    val ensured = ensureStreamUrl(songItem)
+                    val streamUrl = ensured.getStreamUrl(AudioQuality.VERY_HIGH)
+                    if (!streamUrl.isNullOrBlank()) return@withContext streamUrl
+                }
+            }
+        } catch (_: Exception) {}
+        null
+    }
+
+    suspend fun resolveStreamUrl(title: String, artist: String = "", targetLanguage: String = "tamil"): String? = withContext(Dispatchers.IO) {
+        val cleanTitle = title.trim()
+        val cleanArtist = artist.trim()
+        if (cleanTitle.isBlank()) return@withContext null
+
+        val normTargetLang = targetLanguage.trim().lowercase().ifBlank { "tamil" }
+
+        // 1. Exact match with curated Tamil songs (0ms instant lookup)
+        if (normTargetLang == "tamil") {
+            val curatedMatch = YouTubeMusicRepository.CURATED_TAMIL_SONGS.firstOrNull { curated ->
+                curated.title.equals(cleanTitle, ignoreCase = true) ||
+                (cleanTitle.length >= 4 && curated.title.contains(cleanTitle, ignoreCase = true)) ||
+                (curated.title.length >= 4 && cleanTitle.contains(curated.title, ignoreCase = true))
+            }
+            val curatedAudio = curatedMatch?.audioUrl
+            if (!curatedAudio.isNullOrBlank()) {
+                return@withContext curatedAudio
+            }
+        }
+
+        try {
+            // 2. Search JioSaavn official API with language hint
+            val searchQuery = if (cleanArtist.isNotBlank()) "$cleanTitle $cleanArtist $normTargetLang" else "$cleanTitle $normTargetLang"
+            val searchRes = search(searchQuery, limit = 10).getOrNull()
+            val filtered = searchRes?.filter { s ->
+                val sLang = s.language.trim().lowercase()
+                sLang.isBlank() || sLang == normTargetLang
+            }
+            val first = filtered?.firstOrNull() ?: searchRes?.firstOrNull()
             if (first != null) {
                 val ensured = ensureStreamUrl(first)
                 val streamUrl = ensured.getStreamUrl(AudioQuality.VERY_HIGH)
@@ -370,12 +423,12 @@ class MusicRepository(
         } catch (_: Exception) {}
 
         try {
-            // 2. Secondary fallback: saavn-api-seven endpoint for direct downloadUrl
+            // 3. Secondary fallback: saavn-api-seven mirror
             val client = okhttp3.OkHttpClient.Builder()
                 .connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
                 .readTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
                 .build()
-            val cleanQuery = java.net.URLEncoder.encode("$title $artist".trim(), "UTF-8")
+            val cleanQuery = java.net.URLEncoder.encode("$cleanTitle $cleanArtist $normTargetLang".trim(), "UTF-8")
             val req = okhttp3.Request.Builder()
                 .url("https://saavn-api-seven.vercel.app/api/search/songs?query=$cleanQuery&limit=3")
                 .build()

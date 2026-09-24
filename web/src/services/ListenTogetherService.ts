@@ -1,15 +1,5 @@
+import { get, off, onDisconnect, onValue, ref, remove, set, update, type DataSnapshot } from 'firebase/database'
 import { rtdb } from '../firebase'
-import {
-  ref,
-  set,
-  get,
-  update,
-  remove,
-  onValue,
-  onDisconnect,
-  off,
-  DataSnapshot
-} from 'firebase/database'
 import type { Song } from '@shared/models/song'
 
 export interface RoomDevice {
@@ -38,6 +28,7 @@ export interface RoomPlaybackState {
   version: number
   song: RoomSong | null
   action?: string
+  volume?: number
 }
 
 export interface RoomData {
@@ -91,7 +82,7 @@ class ListenTogetherServiceManager {
     if (typeof window === 'undefined') return
     let storedId = localStorage.getItem('isai_room_device_id')
     if (!storedId) {
-      storedId = 'web_' + Math.random().toString(36).substring(2, 10) + '_' + Date.now().toString(36)
+      storedId = `web_${Math.random().toString(36).slice(2, 10)}_${Date.now().toString(36)}`
       localStorage.setItem('isai_room_device_id', storedId)
     }
     this.deviceId = storedId
@@ -120,8 +111,8 @@ class ListenTogetherServiceManager {
         const offset = snap.val()
         this.serverTimeOffset = typeof offset === 'number' ? offset : 0
       })
-    } catch (e) {
-      console.warn('[ListenTogether] Error listening to serverTimeOffset:', e)
+    } catch (error) {
+      console.warn('[ListenTogether] Error listening to serverTimeOffset:', error)
     }
   }
 
@@ -196,7 +187,8 @@ class ListenTogetherServiceManager {
       serverTimestamp: now,
       version: 1,
       song: songPayload,
-      action: initialSong ? 'PLAY' : 'INIT'
+      action: initialSong ? 'PLAY' : 'INIT',
+      volume: 100
     }
 
     const initialDevice: RoomDevice = {
@@ -276,7 +268,7 @@ class ListenTogetherServiceManager {
     return data
   }
 
-  private async attachToRoom(roomId: string) {
+  private attachToRoom(roomId: string) {
     this.currentRoomId = roomId
     this.setSyncStatus('SYNCING')
 
@@ -326,12 +318,10 @@ class ListenTogetherServiceManager {
 
       // Check playback state version
       const pb = roomData.playbackState
-      if (pb) {
-        if (pb.version >= this.lastProcessedVersion) {
-          this.lastProcessedVersion = pb.version
-          const isHost = roomData.hostDeviceId === this.deviceId
-          this.playbackStateListeners.forEach((l) => l(pb, isHost))
-        }
+      if (pb && pb.version >= this.lastProcessedVersion) {
+        this.lastProcessedVersion = pb.version
+        const isHost = roomData.hostDeviceId === this.deviceId
+        this.playbackStateListeners.forEach((l) => l(pb, isHost))
       }
     })
 
@@ -361,7 +351,7 @@ class ListenTogetherServiceManager {
 
         if (nextHost.deviceId === this.deviceId && room.hostDeviceId !== this.deviceId) {
           // Current device assumes host responsibility
-          console.log('[ListenTogether] Assuming Host responsibility for room:', room.roomId)
+          console.info('[ListenTogether] Assuming Host responsibility for room:', room.roomId)
           update(ref(rtdb, `rooms/${room.roomId}`), {
             hostDeviceId: this.deviceId,
             hostDeviceName: this.deviceName,
@@ -397,9 +387,7 @@ class ListenTogetherServiceManager {
       if (!snap.exists() || Object.keys(snap.val() || {}).length === 0) {
         await remove(ref(rtdb, `rooms/${roomId}`))
       } else {
-        const remaining = Object.values(snap.val() as Record<string, RoomDevice>).filter(
-          (d) => d && d.connected
-        )
+        const remaining = Object.values(snap.val() as Record<string, RoomDevice>).filter((d) => d && d.connected)
         if (this.isHost() && remaining.length > 0) {
           const sorted = remaining.sort((a, b) => (a.joinedAt || 0) - (b.joinedAt || 0))
           const newHost = sorted[0]
@@ -413,8 +401,8 @@ class ListenTogetherServiceManager {
           })
         }
       }
-    } catch (e) {
-      console.warn('[ListenTogether] Leave room error:', e)
+    } catch (error) {
+      console.warn('[ListenTogether] Leave room error:', error)
     } finally {
       this.cleanupRoomState()
     }
@@ -505,7 +493,7 @@ class ListenTogetherServiceManager {
     })
   }
 
-  public async hostChangeSong(song: Song, autoPlay: boolean = true) {
+  public async hostChangeSong(song: Song, autoPlay: boolean = true, volumePercent?: number) {
     if (!this.currentRoomId || !this.isHost()) return
     const now = this.getEstimatedServerTime()
     const nextVersion = (this.currentRoom?.version || 1) + 1
@@ -519,13 +507,17 @@ class ListenTogetherServiceManager {
       durationMs: song.durationMs || 210000
     }
 
+    const currentVol =
+      typeof volumePercent === 'number' ? volumePercent : (this.currentRoom?.playbackState?.volume ?? 100)
+
     const updatePayload: RoomPlaybackState = {
       state: autoPlay ? 'PLAYING' : 'PAUSED',
       positionSec: 0,
       serverTimestamp: now,
       version: nextVersion,
       song: songPayload,
-      action: 'SONG_CHANGED'
+      action: 'SONG_CHANGED',
+      volume: currentVol
     }
 
     await update(ref(rtdb, `rooms/${this.currentRoomId}/playbackState`), updatePayload)
@@ -533,6 +525,38 @@ class ListenTogetherServiceManager {
       version: nextVersion,
       updatedAt: now
     })
+  }
+
+  public async hostSetVolume(volumePercent: number) {
+    if (!this.currentRoomId || !this.isHost()) return
+    const now = this.getEstimatedServerTime()
+    const nextVersion = (this.currentRoom?.version || 1) + 1
+    const clamped = Math.max(0, Math.min(100, Math.round(volumePercent)))
+
+    await update(ref(rtdb, `rooms/${this.currentRoomId}/playbackState`), {
+      volume: clamped,
+      version: nextVersion
+    })
+    await update(ref(rtdb, `rooms/${this.currentRoomId}`), {
+      version: nextVersion,
+      updatedAt: now
+    })
+  }
+
+  private lastHostSyncTimestamp: number = 0
+
+  public hostCalibratePosition(positionSec: number) {
+    if (!this.currentRoomId || !this.isHost()) return
+    const now = this.getEstimatedServerTime()
+    if (now - this.lastHostSyncTimestamp < 3000) return
+    this.lastHostSyncTimestamp = now
+
+    const updates = {
+      'playbackState/positionSec': positionSec,
+      'playbackState/serverTimestamp': now,
+      updatedAt: now
+    }
+    update(ref(rtdb, `rooms/${this.currentRoomId}`), updates).catch(() => {})
   }
 
   // ==========================================
@@ -568,27 +592,26 @@ class ListenTogetherServiceManager {
    */
   public calculateDriftAdjustment(actualAudioPositionSec: number): DriftAdjustment {
     if (!this.currentRoom || !this.currentRoom.playbackState) {
-      return { action: 'NONE', speed: 1.0 }
+      return { action: 'NONE', speed: 1 }
     }
 
     const pb = this.currentRoom.playbackState
     if (pb.state !== 'PLAYING') {
-      return { action: 'NONE', speed: 1.0 }
+      return { action: 'NONE', speed: 1 }
     }
 
     const expected = this.getExpectedPosition()
     const drift = actualAudioPositionSec - expected // positive = guest is ahead, negative = guest is behind
     const absDrift = Math.abs(drift)
 
-    // Tier 1: In tight sync (within 200ms)
-    if (absDrift < 0.20) {
-      return { action: 'NONE', speed: 1.0, driftSec: drift }
+    // Tier 1: In tight sync (< 40ms) -> Normal 1.0x playback
+    if (absDrift < 0.04) {
+      return { action: 'NONE', speed: 1, driftSec: drift }
     }
 
-    // Tier 2: Moderate drift (200ms to 1.5s) -> Smooth rate nudge
-    if (absDrift <= 1.5) {
-      // If guest is ahead, slow down slightly (0.96); if behind, speed up slightly (1.04)
-      const adjustedSpeed = drift > 0 ? 0.96 : 1.04
+    // Tier 2: Micro drift (40ms - 250ms) -> Smooth pitch-preserved rate trim without buffering
+    if (absDrift <= 0.25) {
+      const adjustedSpeed = drift > 0 ? 0.95 : 1.05
       return {
         action: 'SPEED_ADJUST',
         speed: adjustedSpeed,
@@ -596,19 +619,29 @@ class ListenTogetherServiceManager {
       }
     }
 
-    // Tier 3: Large drift (> 1.5s) -> Perform debounced seek
-    const now = Date.now()
-    if (now - this.lastSeekTimestamp > 2500) {
-      this.lastSeekTimestamp = now
+    // Tier 3: Moderate drift (250ms - 2.5s) -> Dynamic rate catch-up (zero buffer dump, zero stutter)
+    if (absDrift <= 2.5) {
+      const adjustedSpeed = drift > 0 ? 0.9 : 1.1
       return {
-        action: 'SEEK',
-        targetPosition: expected,
-        speed: 1.0,
+        action: 'SPEED_ADJUST',
+        speed: adjustedSpeed,
         driftSec: drift
       }
     }
 
-    return { action: 'NONE', speed: 1.0, driftSec: drift }
+    // Tier 4: Major drift (> 2.5s) -> Hard seek with safe 5-second debounce
+    const now = Date.now()
+    if (now - this.lastSeekTimestamp > 5000) {
+      this.lastSeekTimestamp = now
+      return {
+        action: 'SEEK',
+        targetPosition: expected,
+        speed: 1,
+        driftSec: drift
+      }
+    }
+
+    return { action: 'NONE', speed: 1, driftSec: drift }
   }
 
   // ==========================================
@@ -623,9 +656,7 @@ class ListenTogetherServiceManager {
     }
   }
 
-  public subscribePlaybackState(
-    callback: (state: RoomPlaybackState, isHost: boolean) => void
-  ): () => void {
+  public subscribePlaybackState(callback: (state: RoomPlaybackState, isHost: boolean) => void): () => void {
     this.playbackStateListeners.push(callback)
     if (this.currentRoom?.playbackState) {
       callback(this.currentRoom.playbackState, this.isHost())

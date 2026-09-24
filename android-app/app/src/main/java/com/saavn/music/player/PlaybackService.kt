@@ -67,12 +67,11 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onTaskRemoved(rootIntent: android.content.Intent?) {
-        val player = mediaSession?.player
-        if (player == null || !player.playWhenReady || player.mediaItemCount == 0) {
-            stopSelf()
-        }
-        // If playing, we intentionally do NOT call super.onTaskRemoved() 
-        // to prevent the service from pausing and stopping.
+        super.onTaskRemoved(rootIntent)
+        try {
+            mediaSession?.player?.stop()
+        } catch (_: Exception) {}
+        stopSelf()
     }
 
     override fun onDestroy() {

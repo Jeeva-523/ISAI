@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react'
-import { Search as SearchIcon, X, Clock, TrendingUp } from 'lucide-react'
+import { Clock, Search as SearchIcon, TrendingUp, X } from 'lucide-react'
+import React, { useEffect, useRef, useState } from 'react'
 
 interface SearchBarProps {
   value: string
@@ -62,12 +62,21 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
       {isOpen && (
         <div className="search-suggestions-dropdown">
-          <div style={{ padding: '12px 18px 6px', fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+          <div
+            style={{
+              padding: '12px 18px 6px',
+              fontSize: '11px',
+              fontWeight: 800,
+              color: 'var(--text-muted)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.08em'
+            }}
+          >
             {value ? 'Suggestions' : 'Trending Searches'}
           </div>
 
           {(value
-            ? SEARCH_SUGGESTIONS.filter(s => s.toLowerCase().includes(value.toLowerCase()))
+            ? SEARCH_SUGGESTIONS.filter((s) => s.toLowerCase().includes(value.toLowerCase()))
             : SEARCH_SUGGESTIONS.slice(0, 5)
           ).map((sugg) => (
             <div
@@ -78,7 +87,11 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                 setIsOpen(false)
               }}
             >
-              {value ? <Clock size={16} className="text-muted" /> : <TrendingUp size={16} color="var(--isai-purple-light)" />}
+              {value ? (
+                <Clock size={16} className="text-muted" />
+              ) : (
+                <TrendingUp size={16} color="var(--isai-purple-light)" />
+              )}
               <span>{sugg}</span>
             </div>
           ))}

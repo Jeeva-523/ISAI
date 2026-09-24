@@ -39,7 +39,20 @@ export const MASTER_KEYWORD_DICTIONARY: KeywordEntry[] = [
   // 1. Song / Track Search
   {
     keyword: 'song',
-    synonyms: ['songs', 'track', 'tracks', 'music', 'paatu', 'paattu', 'பாட்டு', 'பாடல்', 'isai', 'இசை', 'paadal', 'padal'],
+    synonyms: [
+      'songs',
+      'track',
+      'tracks',
+      'music',
+      'paatu',
+      'paattu',
+      'பாட்டு',
+      'பாடல்',
+      'isai',
+      'இசை',
+      'paadal',
+      'padal'
+    ],
     language: 'Tamil/Global',
     category: CAT_TRACK,
     subCategory: 'track',
@@ -48,7 +61,16 @@ export const MASTER_KEYWORD_DICTIONARY: KeywordEntry[] = [
   },
   {
     keyword: 'hit songs',
-    synonyms: ['hits', 'super hit', 'super hits', 'super hit songs', 'top songs', 'best songs', 'favorite songs', 'popular songs'],
+    synonyms: [
+      'hits',
+      'super hit',
+      'super hits',
+      'super hit songs',
+      'top songs',
+      'best songs',
+      'favorite songs',
+      'popular songs'
+    ],
     language: 'Global',
     category: CAT_TRACK,
     subCategory: 'hits',
@@ -60,9 +82,22 @@ export const MASTER_KEYWORD_DICTIONARY: KeywordEntry[] = [
   {
     keyword: 'love',
     synonyms: [
-      'romantic', 'romance', 'romantic songs', 'love songs', 'love melody', 'romantic melody',
-      'kadhal', 'kaadhal', 'kathal', 'காதல்', 'kadhal paatu', 'kaadhal paatu',
-      'காதல் பாடல்கள்', 'kadhal songs', 'love paatu', 'kaadhal melody'
+      'romantic',
+      'romance',
+      'romantic songs',
+      'love songs',
+      'love melody',
+      'romantic melody',
+      'kadhal',
+      'kaadhal',
+      'kathal',
+      'காதல்',
+      'kadhal paatu',
+      'kaadhal paatu',
+      'காதல் பாடல்கள்',
+      'kadhal songs',
+      'love paatu',
+      'kaadhal melody'
     ],
     language: 'Tamil/Global',
     category: CAT_LOVE_ROMANCE,
@@ -99,7 +134,17 @@ export const MASTER_KEYWORD_DICTIONARY: KeywordEntry[] = [
   },
   {
     keyword: 'couple',
-    synonyms: ['couple songs', 'husband wife songs', 'husband songs', 'wife songs', 'marriage songs', 'wedding songs', 'engagement songs', 'kalyana paatu', 'thirumanam'],
+    synonyms: [
+      'couple songs',
+      'husband wife songs',
+      'husband songs',
+      'wife songs',
+      'marriage songs',
+      'wedding songs',
+      'engagement songs',
+      'kalyana paatu',
+      'thirumanam'
+    ],
     language: 'Tamil/Global',
     category: CAT_LOVE_ROMANCE,
     subCategory: 'wedding_couple',
@@ -108,7 +153,19 @@ export const MASTER_KEYWORD_DICTIONARY: KeywordEntry[] = [
   },
   {
     keyword: 'happy',
-    synonyms: ['joyful', 'fun', 'celebration', 'feel good', 'positive', 'magizhchi', 'மகிழ்ச்சி', 'santhosham', 'sandhosham', 'சந்தோஷம்', 'kushi'],
+    synonyms: [
+      'joyful',
+      'fun',
+      'celebration',
+      'feel good',
+      'positive',
+      'magizhchi',
+      'மகிழ்ச்சி',
+      'santhosham',
+      'sandhosham',
+      'சந்தோஷம்',
+      'kushi'
+    ],
     language: 'Tamil/Global',
     category: CAT_MOOD,
     subCategory: 'happy',
@@ -117,7 +174,17 @@ export const MASTER_KEYWORD_DICTIONARY: KeywordEntry[] = [
   },
   {
     keyword: 'peaceful',
-    synonyms: ['calm', 'relaxing', 'chill', 'stress relief', 'mind relax', 'meditation', 'nimmathi', 'amaidhi', 'அமைதி'],
+    synonyms: [
+      'calm',
+      'relaxing',
+      'chill',
+      'stress relief',
+      'mind relax',
+      'meditation',
+      'nimmathi',
+      'amaidhi',
+      'அமைதி'
+    ],
     language: 'Tamil/Global',
     category: CAT_MOOD,
     subCategory: 'peaceful',
@@ -147,9 +214,24 @@ export const MASTER_KEYWORD_DICTIONARY: KeywordEntry[] = [
   {
     keyword: 'sad',
     synonyms: [
-      'sad songs', 'sad melody', 'emotional', 'emotional songs', 'pain', 'pain songs',
-      'heartbreak', 'heartbreak songs', 'crying songs', 'deep emotional', 'sogam', 'சோகம்',
-      'sogam songs', 'sogamana paatu', 'சோக பாடல்கள்', 'thunbam', 'துன்பம்', 'valigal'
+      'sad songs',
+      'sad melody',
+      'emotional',
+      'emotional songs',
+      'pain',
+      'pain songs',
+      'heartbreak',
+      'heartbreak songs',
+      'crying songs',
+      'deep emotional',
+      'sogam',
+      'சோகம்',
+      'sogam songs',
+      'sogamana paatu',
+      'சோக பாடல்கள்',
+      'thunbam',
+      'துன்பம்',
+      'valigal'
     ],
     language: 'Tamil/Global',
     category: CAT_SAD_EMOTIONAL,
@@ -159,7 +241,15 @@ export const MASTER_KEYWORD_DICTIONARY: KeywordEntry[] = [
   },
   {
     keyword: 'breakup',
-    synonyms: ['breakup songs', 'love failure', 'love failure songs', 'heartbreak', 'kaadhal tholvi', 'kadhal tholvi', 'காதல் தோல்வி'],
+    synonyms: [
+      'breakup songs',
+      'love failure',
+      'love failure songs',
+      'heartbreak',
+      'kaadhal tholvi',
+      'kadhal tholvi',
+      'காதல் தோல்வி'
+    ],
     language: 'Tamil/Global',
     category: CAT_SAD_EMOTIONAL,
     subCategory: 'breakup',
@@ -177,7 +267,16 @@ export const MASTER_KEYWORD_DICTIONARY: KeywordEntry[] = [
   },
   {
     keyword: 'pirivu',
-    synonyms: ['separation', 'separation songs', 'pirivu paatu', 'பிரிவு', 'பிரிவு பாடல்கள்', 'yaekkam', 'yekkam', 'ஏக்கம்'],
+    synonyms: [
+      'separation',
+      'separation songs',
+      'pirivu paatu',
+      'பிரிவு',
+      'பிரிவு பாடல்கள்',
+      'yaekkam',
+      'yekkam',
+      'ஏக்கம்'
+    ],
     language: 'Tamil',
     category: CAT_SAD_EMOTIONAL,
     subCategory: 'separation',
@@ -197,7 +296,16 @@ export const MASTER_KEYWORD_DICTIONARY: KeywordEntry[] = [
   },
   {
     keyword: 'kuthu',
-    synonyms: ['tamil kuthu', 'dappankuthu', 'kuthu songs', 'fast beat', 'dance beat', 'குத்து பாடல்கள்', 'dappan kuthu', 'thara local'],
+    synonyms: [
+      'tamil kuthu',
+      'dappankuthu',
+      'kuthu songs',
+      'fast beat',
+      'dance beat',
+      'குத்து பாடல்கள்',
+      'dappan kuthu',
+      'thara local'
+    ],
     language: 'Tamil',
     category: CAT_TAMIL_GENRE,
     subCategory: 'kuthu',
@@ -206,7 +314,16 @@ export const MASTER_KEYWORD_DICTIONARY: KeywordEntry[] = [
   },
   {
     keyword: 'gaana',
-    synonyms: ['gana', 'gana songs', 'tamil gaana', 'marana gana', 'local gana', 'chennai gana', 'கானா பாடல்கள்', 'gana paatu'],
+    synonyms: [
+      'gana',
+      'gana songs',
+      'tamil gaana',
+      'marana gana',
+      'local gana',
+      'chennai gana',
+      'கானா பாடல்கள்',
+      'gana paatu'
+    ],
     language: 'Tamil',
     category: CAT_TAMIL_GENRE,
     subCategory: 'gaana',
@@ -215,7 +332,15 @@ export const MASTER_KEYWORD_DICTIONARY: KeywordEntry[] = [
   },
   {
     keyword: 'folk',
-    synonyms: ['tamil folk', 'village songs', 'tamil village songs', 'nattupura paadal', 'nattuppura paatu', 'நாட்டுப்புற பாடல்கள்', 'gramathu paadal'],
+    synonyms: [
+      'tamil folk',
+      'village songs',
+      'tamil village songs',
+      'nattupura paadal',
+      'nattuppura paatu',
+      'நாட்டுப்புற பாடல்கள்',
+      'gramathu paadal'
+    ],
     language: 'Tamil',
     category: CAT_TAMIL_GENRE,
     subCategory: 'folk',
@@ -280,7 +405,17 @@ export const MASTER_KEYWORD_DICTIONARY: KeywordEntry[] = [
   },
   {
     keyword: 'travel',
-    synonyms: ['driving', 'driving songs', 'travel songs', 'road trip', 'road trip songs', 'bike ride', 'bike ride songs', 'car drive', 'highway'],
+    synonyms: [
+      'driving',
+      'driving songs',
+      'travel songs',
+      'road trip',
+      'road trip songs',
+      'bike ride',
+      'bike ride songs',
+      'car drive',
+      'highway'
+    ],
     language: 'Global',
     category: CAT_ACTIVITY,
     subCategory: 'travel',
@@ -309,7 +444,16 @@ export const MASTER_KEYWORD_DICTIONARY: KeywordEntry[] = [
   // 9. Devotional
   {
     keyword: 'devotional',
-    synonyms: ['devotional songs', 'bhakti', 'bhakti songs', 'god songs', 'spiritual', 'temple songs', 'prayer songs', 'tamil devotional'],
+    synonyms: [
+      'devotional songs',
+      'bhakti',
+      'bhakti songs',
+      'god songs',
+      'spiritual',
+      'temple songs',
+      'prayer songs',
+      'tamil devotional'
+    ],
     language: 'Tamil/Global',
     category: CAT_DEVOTIONAL,
     subCategory: 'general_devotional',
@@ -318,7 +462,16 @@ export const MASTER_KEYWORD_DICTIONARY: KeywordEntry[] = [
   },
   {
     keyword: 'murugan',
-    synonyms: ['murugan songs', 'murugan devotional', 'kandan', 'vel', 'thaipusam', 'kanda sashti kavasam', 'முருகன் பாடல்கள்', 'முருகன்'],
+    synonyms: [
+      'murugan songs',
+      'murugan devotional',
+      'kandan',
+      'vel',
+      'thaipusam',
+      'kanda sashti kavasam',
+      'முருகன் பாடல்கள்',
+      'முருகன்'
+    ],
     language: 'Tamil',
     category: CAT_DEVOTIONAL,
     subCategory: 'murugan',
@@ -488,7 +641,18 @@ export const MASTER_KEYWORD_DICTIONARY: KeywordEntry[] = [
   // 15, 16, 17. Release Status, Trending, Old
   {
     keyword: 'latest',
-    synonyms: ['new', 'newest', 'recent', 'new release', 'new releases', 'latest release', 'just released', 'latest tamil songs', 'puthiya paadal', 'புதிய பாடல்கள்'],
+    synonyms: [
+      'new',
+      'newest',
+      'recent',
+      'new release',
+      'new releases',
+      'latest release',
+      'just released',
+      'latest tamil songs',
+      'puthiya paadal',
+      'புதிய பாடல்கள்'
+    ],
     language: 'Global',
     category: CAT_RELEASE,
     subCategory: 'new_releases',
@@ -497,7 +661,16 @@ export const MASTER_KEYWORD_DICTIONARY: KeywordEntry[] = [
   },
   {
     keyword: 'trending',
-    synonyms: ['trending songs', 'viral', 'viral songs', 'popular', 'popular songs', 'top songs', 'top hits', 'chartbusters'],
+    synonyms: [
+      'trending songs',
+      'viral',
+      'viral songs',
+      'popular',
+      'popular songs',
+      'top songs',
+      'top hits',
+      'chartbusters'
+    ],
     language: 'Global',
     category: CAT_TRENDING,
     subCategory: 'viral_trends',
@@ -506,7 +679,17 @@ export const MASTER_KEYWORD_DICTIONARY: KeywordEntry[] = [
   },
   {
     keyword: 'old songs',
-    synonyms: ['old tamil songs', 'classic songs', 'classical hits', 'evergreen', 'evergreen songs', 'retro', 'golden hits', 'pazhaya paadal', 'பழைய பாடல்கள்'],
+    synonyms: [
+      'old tamil songs',
+      'classic songs',
+      'classical hits',
+      'evergreen',
+      'evergreen songs',
+      'retro',
+      'golden hits',
+      'pazhaya paadal',
+      'பழைய பாடல்கள்'
+    ],
     language: 'Tamil/Global',
     category: CAT_CLASSIC,
     subCategory: 'evergreen',
@@ -517,7 +700,18 @@ export const MASTER_KEYWORD_DICTIONARY: KeywordEntry[] = [
   // 19. Relationships
   {
     keyword: 'friendship',
-    synonyms: ['friends', 'best friend', 'friendship songs', 'nanban', 'நண்பன்', 'thozhi', 'தோழி', 'natpu', 'நட்பு', 'natpu paadal'],
+    synonyms: [
+      'friends',
+      'best friend',
+      'friendship songs',
+      'nanban',
+      'நண்பன்',
+      'thozhi',
+      'தோழி',
+      'natpu',
+      'நட்பு',
+      'natpu paadal'
+    ],
     language: 'Tamil/Global',
     category: CAT_RELATIONSHIP,
     subCategory: 'friends',

@@ -1,31 +1,36 @@
-import React, { useEffect, useRef, useState } from 'react'
-import type { Song } from '@shared/models/song'
-import { type AudioQualitySetting, getAudioUrlWithQuality, musicApi } from '@shared/api/music-api'
-import { cleanHtmlTitle } from '@shared/utils/formatters'
+import { detectSongLanguage, musicApi } from '@shared/api/music-api'
 import { storageService } from '@shared/services/storageService'
-import { type DeviceInfo, IsaiConnectService, type PlaybackStateSync } from '../services/IsaiConnectService'
-import { recommendationService } from '../services/RecommendationService'
-import { ListenTogetherService, type RoomData } from '../services/ListenTogetherService'
+import { cleanHtmlTitle, isSameSongOrDuplicate } from '@shared/utils/formatters'
 import {
+  FileText,
   GripVertical,
   Heart,
+  History,
   Laptop,
   ListMusic,
   Maximize2,
   Minimize2,
   Pause,
   Play,
+  Plus,
   Radio,
   Repeat,
+  Share2,
   Shuffle,
   SkipBack,
   SkipForward,
+  Sparkles,
   Trash2,
   Volume2,
   VolumeX
 } from 'lucide-react'
+import React, { useEffect, useRef, useState } from 'react'
+import { IsaiConnectService, type DeviceInfo, type PlaybackStateSync } from '../services/IsaiConnectService'
+import { ListenTogetherService, type RoomData } from '../services/ListenTogetherService'
+import { recommendationService } from '../services/RecommendationService'
 import { IsaiConnectModal } from './IsaiConnectModal'
 import { ListenTogetherModal } from './ListenTogetherModal'
+import type { Song } from '@shared/models/song'
 
 interface WebPlayerProps {
   song: Song | null
@@ -62,48 +67,53 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
   onPrevSong,
   queue = [],
   onSelectQueueItem,
-  userId = 'kongujeeva523@gmail.com',
+  userId = '',
   onTransferPlayback,
   onRemoveQueueItem,
   onReorderQueue,
   onClearQueue
 }) => {
+  const lastSessionInitial = useRef(storageService.getLastPlaybackSession()).current
+  const initialSeek =
+    lastSessionInitial &&
+    lastSessionInitial.song?.videoId === song?.videoId &&
+    typeof lastSessionInitial.positionSec === 'number'
+      ? lastSessionInitial.positionSec
+      : null
+
   const [isExpanded, setIsExpanded] = useState(false)
-  const [isPlaying, setIsPlaying] = useState(true)
-  const [currentTime, setCurrentTime] = useState(0)
+  const [isPlaying, setIsPlaying] = useState(() => {
+    if (
+      lastSessionInitial &&
+      lastSessionInitial.song?.videoId === song?.videoId &&
+      typeof lastSessionInitial.wasPlaying === 'boolean'
+    ) {
+      return lastSessionInitial.wasPlaying
+    }
+    return true
+  })
+  const [currentTime, setCurrentTime] = useState(() => initialSeek || 0)
   const [duration, setDuration] = useState(0)
   const [isShuffle, setIsShuffle] = useState(false)
   const [isRepeat, setIsRepeat] = useState(false)
   const [volume, setVolume] = useState(0.8)
   const [isMuted, setIsMuted] = useState(false)
-  const [showQueuePanel, setShowQueuePanel] = useState(false)
+  const [selectedQueueTab, setSelectedQueueTab] = useState<'up_next' | 'played' | 'all'>('up_next')
+  const [sessionPlayedSongs, setSessionPlayedSongs] = useState<Song[]>([])
+  const [queueRecommendations, setQueueRecommendations] = useState<Song[]>([])
+  const [activeExpandedTab, setActiveExpandedTab] = useState<'queue' | 'lyrics'>('queue')
+  const [toastMessage, setToastMessage] = useState<string | null>(null)
+  const toastTimeoutRef = useRef<any>(null)
+
+  const showPlayerToast = (msg: string) => {
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current)
+    setToastMessage(msg)
+    toastTimeoutRef.current = setTimeout(() => setToastMessage(null), 3000)
+  }
   const [isConnectModalOpen, setIsConnectModalOpen] = useState(false)
   const [isListenTogetherModalOpen, setIsListenTogetherModalOpen] = useState(false)
   const [listenRoom, setListenRoom] = useState<RoomData | null>(() => ListenTogetherService.getCurrentRoom())
   const [needsAutoplayGesture, setNeedsAutoplayGesture] = useState(false)
-  const [audioQuality, setAudioQuality] = useState<AudioQualitySetting>(() => storageService.getAudioQuality())
-  const [showQualityMenu, setShowQualityMenu] = useState(false)
-
-  const handleQualityChange = (newQuality: AudioQualitySetting) => {
-    setAudioQuality(newQuality)
-    storageService.setAudioQuality(newQuality)
-    setShowQualityMenu(false)
-
-    if (audioRef.current) {
-      const curUrl = audioRef.current.src || ''
-      if (curUrl) {
-        const newUrl = getAudioUrlWithQuality(curUrl, newQuality)
-        const curTime = audioRef.current.currentTime
-        const wasPlaying = !audioRef.current.paused
-
-        audioRef.current.src = newUrl
-        audioRef.current.currentTime = curTime
-        if (wasPlaying) {
-          audioRef.current.play().catch(() => {})
-        }
-      }
-    }
-  }
 
   // Drag and drop state for queue reordering
   const [draggedIdx, setDraggedIdx] = useState<number | null>(null)
@@ -112,25 +122,85 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
 
   const myDeviceId = IsaiConnectService.getMyDeviceId()
   const audioRef = useRef<HTMLAudioElement | null>(null)
-  const pendingSeekTimeRef = useRef<number | null>(null)
+  const pendingSeekTimeRef = useRef<number | null>(initialSeek)
   const lastSyncTimeRef = useRef<number>(0)
+  const lastSaveSessionTimeRef = useRef<number>(0)
 
   // Meaningful listening tracking refs
   const listenSecondsRef = useRef<number>(0)
   const recordedMeaningfulRef = useRef<boolean>(false)
   const activeSongRef = useRef<Song | null>(song)
   const lastTimeRef = useRef<number>(0)
+  const streamRetryCountRef = useRef<number>(0)
+
+  useEffect(() => {
+    streamRetryCountRef.current = 0
+  }, [song?.videoId, remoteState?.currentSongId])
+
+  // Track session played history
+  useEffect(() => {
+    if (song && song.videoId) {
+      setSessionPlayedSongs((prev) => {
+        if (prev.some((s) => s.videoId === song.videoId)) return prev
+        return [song, ...prev.slice(0, 49)]
+      })
+    }
+  }, [song?.videoId])
+
+  // Fetch similar song recommendations for queue autoplay
+  useEffect(() => {
+    if (!song || !song.videoId) return
+    let isCancelled = false
+    const query = `${(song.channelTitle || '').split(',')[0].replace(/•.*/, '').trim() || 'Tamil'} hits`
+    musicApi
+      .searchSongs(query, 6)
+      .then((recs: Song[]) => {
+        if (!isCancelled && recs && recs.length > 0) {
+          setQueueRecommendations(recs.filter((r) => r.videoId !== song.videoId).slice(0, 5))
+        }
+      })
+      .catch(() => {})
+    return () => {
+      isCancelled = true
+    }
+  }, [song?.videoId])
+
+  // Native Web Share or clipboard copy fallback
+  const handleShareSong = async () => {
+    const title = activeTitle
+    const artist = activeArtist
+    const shareText = `🎵 Listening to "${title}" by ${artist} on ISAI Music!`
+    const url = window.location.href
+    if (navigator.share) {
+      try {
+        await navigator.share({ title, text: shareText, url })
+        return
+      } catch {}
+    }
+    if (navigator.clipboard) {
+      try {
+        await navigator.clipboard.writeText(`${shareText}\n${url}`)
+        showPlayerToast('Share link copied to clipboard! 📋')
+        return
+      } catch {}
+    }
+    showPlayerToast('Share link ready!')
+  }
 
   // Remote active determination (Spotify Connect mode)
   // Active when another device is set as the active player in Firebase playbackState
+  const inListenTogetherRoom = Boolean(listenRoom)
   const isSeparateMode = storageService.isMultiDevicePlaybackSeparate()
-  const isRemoteActive = !isSeparateMode && Boolean(
-    remoteState &&
-    remoteState.currentDeviceId &&
-    remoteState.currentDeviceId !== myDeviceId &&
-    remoteState.currentTitle &&
-    (Date.now() - (remoteState.updatedAt || 0) < 15 * 60 * 1000)
-  )
+  const isRemoteActive =
+    !inListenTogetherRoom &&
+    !isSeparateMode &&
+    Boolean(
+      remoteState &&
+      remoteState.currentDeviceId &&
+      remoteState.currentDeviceId !== myDeviceId &&
+      remoteState.currentTitle &&
+      Date.now() - (remoteState.updatedAt || 0) < 15 * 60 * 1000
+    )
 
   // Pre-resolve audioUrl for remote track so it is instantly playable on transfer
   const [cachedRemoteAudioUrl, setCachedRemoteAudioUrl] = useState<string>('')
@@ -145,48 +215,99 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
     const resolveRemoteAudio = async () => {
       try {
         const cleanQuery = cleanHtmlTitle(remoteState.currentTitle || '')
-          .replace(/\s*[|–—\-].*$/, '')
+          .replace(/\s*[|–—-].*$/, '')
           .replaceAll(/\s*\(.*?(official|video|audio|lyrics|hd|4k|song).*?\)/gi, '')
           .replaceAll(/\s*\[.*?(official|video|audio|lyrics|hd|4k|song).*?\]/gi, '')
           .replace(/\.{2,}$/, '')
           .trim()
 
         const results = await musicApi.searchSongs(cleanQuery || remoteState.currentTitle)
-        if (isMounted && results && results.length > 0 && results[0].audioUrl) {
-          setCachedRemoteAudioUrl(results[0].audioUrl)
-          IsaiConnectService.updatePlaybackState({ currentAudioUrl: results[0].audioUrl })
+        if (isMounted && results && results.length > 0) {
+          const expectedLang = detectSongLanguage({ title: remoteState.currentTitle })
+          const matched = results.find((r) => {
+            if (!r.audioUrl) return false
+            const rLang = (r.language || detectSongLanguage(r)).toLowerCase().trim()
+            if (expectedLang && rLang && expectedLang !== rLang) return false
+            return isSameSongOrDuplicate(r, { title: remoteState.currentTitle })
+          })
+          if (matched?.audioUrl) {
+            setCachedRemoteAudioUrl(matched.audioUrl)
+            IsaiConnectService.updatePlaybackState({ currentAudioUrl: matched.audioUrl })
+          }
         }
       } catch (error) {
         console.warn('[WebPlayer] Pre-fetch remote audio error:', error)
       }
     }
     resolveRemoteAudio()
-    return () => { isMounted = false }
+    return () => {
+      isMounted = false
+    }
   }, [isRemoteActive, remoteState?.currentSongId, remoteState?.currentTitle, remoteState?.currentAudioUrl])
 
-  const remoteAsSong: Song | null = (remoteState && remoteState.currentTitle) ? {
-    videoId: remoteState.currentSongId || `transferred_${Date.now()}`,
-    title: remoteState.currentTitle,
-    channelTitle: remoteState.currentArtist || 'Artist',
-    thumbnailUrl: remoteState.currentArtwork || '',
-    audioUrl: remoteState.currentAudioUrl || cachedRemoteAudioUrl || '',
-    durationFormatted: formatTime((remoteState.durationMs || 210000) / 1000),
-    durationMs: remoteState.durationMs || 210000,
-    viewCountFormatted: ''
-  } : null
+  const roomSongData = listenRoom?.playbackState?.song
+  const roomAsSong: Song | null =
+    roomSongData && roomSongData.title
+      ? {
+          videoId: roomSongData.videoId || (roomSongData as any).id || `room_${Date.now()}`,
+          title: roomSongData.title,
+          channelTitle: roomSongData.artist || 'Artist',
+          thumbnailUrl: roomSongData.artwork || '',
+          audioUrl: roomSongData.audioUrl || '',
+          durationFormatted: formatTime((roomSongData.durationMs || (roomSongData as any).duration || 210000) / 1000),
+          durationMs: roomSongData.durationMs || (roomSongData as any).duration || 210000,
+          viewCountFormatted: ''
+        }
+      : null
 
-  const displaySong: Song | null = isRemoteActive ? (remoteAsSong || song) : (song || remoteAsSong)
+  const remoteAsSong: Song | null =
+    remoteState && remoteState.currentTitle
+      ? {
+          videoId: remoteState.currentSongId || `transferred_${Date.now()}`,
+          title: remoteState.currentTitle,
+          channelTitle: remoteState.currentArtist || 'Artist',
+          thumbnailUrl: remoteState.currentArtwork || '',
+          audioUrl: remoteState.currentAudioUrl || cachedRemoteAudioUrl || '',
+          durationFormatted: formatTime((remoteState.durationMs || 210000) / 1000),
+          durationMs: remoteState.durationMs || 210000,
+          viewCountFormatted: ''
+        }
+      : null
 
-  const activeTitle = isRemoteActive ? (remoteState?.currentTitle || displaySong?.title) : displaySong?.title
-  const activeArtist = isRemoteActive ? (remoteState?.currentArtist || displaySong?.channelTitle || 'Artist') : displaySong?.channelTitle
-  const activeArtwork = isRemoteActive ? (remoteState?.currentArtwork || displaySong?.thumbnailUrl) : displaySong?.thumbnailUrl
-  const activeDuration = isRemoteActive ? ((remoteState?.durationMs || 0) / 1000 || 210) : (duration || (displaySong?.durationMs ? displaySong.durationMs / 1000 : 210))
+  const displaySong: Song | null = inListenTogetherRoom
+    ? song || roomAsSong
+    : isRemoteActive
+      ? remoteAsSong || song
+      : song || remoteAsSong
+
+  const activeTitle = inListenTogetherRoom
+    ? displaySong?.title || roomAsSong?.title
+    : isRemoteActive
+      ? remoteState?.currentTitle || displaySong?.title
+      : displaySong?.title
+  const activeArtist = inListenTogetherRoom
+    ? displaySong?.channelTitle || roomAsSong?.channelTitle || 'Artist'
+    : isRemoteActive
+      ? remoteState?.currentArtist || displaySong?.channelTitle || 'Artist'
+      : displaySong?.channelTitle
+  const activeArtwork = inListenTogetherRoom
+    ? displaySong?.thumbnailUrl || roomAsSong?.thumbnailUrl
+    : isRemoteActive
+      ? remoteState?.currentArtwork || displaySong?.thumbnailUrl
+      : displaySong?.thumbnailUrl
+  const activeDuration = inListenTogetherRoom
+    ? duration || (displaySong?.durationMs ? displaySong.durationMs / 1000 : 210)
+    : isRemoteActive
+      ? (remoteState?.durationMs || 0) / 1000 || 210
+      : duration || (displaySong?.durationMs ? displaySong.durationMs / 1000 : 210)
 
   const effectiveQueue: Song[] = React.useMemo(() => {
     if (isRemoteActive && remoteState?.queue) {
       const raw = Array.isArray(remoteState.queue)
         ? remoteState.queue
-        : (typeof remoteState.queue === 'object' && remoteState.queue !== null ? Object.values(remoteState.queue) : [])
+        : typeof remoteState.queue === 'object' && remoteState.queue !== null
+          ? Object.values(remoteState.queue)
+          : []
       return (raw || [])
         .filter((q: any) => Boolean(q && typeof q === 'object' && (q.id || q.videoId)))
         .map((q: any) => ({
@@ -202,9 +323,10 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
     }
     const safeQueue: any[] = Array.isArray(queue)
       ? queue
-      : (queue && typeof queue === 'object' && queue !== null ? Object.values(queue) : [])
-    return (safeQueue || [])
-      .filter((s: any) => Boolean(s && typeof s === 'object' && (s.videoId || s.id))) as Song[]
+      : queue && typeof queue === 'object' && queue !== null
+        ? Object.values(queue)
+        : []
+    return (safeQueue || []).filter((s: any) => Boolean(s && typeof s === 'object' && (s.videoId || s.id))) as Song[]
   }, [isRemoteActive, remoteState?.queue, queue])
 
   // Real-time seconds ticking when playing remotely on mobile
@@ -235,16 +357,24 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
   const activePosition = isRemoteActive ? remoteCurrentTime : currentTime
   const activeIsPlaying = isRemoteActive ? Boolean(remoteState?.isPlaying) : isPlaying
 
-  const playingDevice = connectedDevices.find(d => d.deviceId === remoteState?.currentDeviceId)
-  const remoteDeviceName = playingDevice?.deviceName || (remoteState?.currentDeviceId?.includes('android') ? 'Mobile Phone' : 'Remote Device')
+  const playingDevice = connectedDevices.find((d) => d.deviceId === remoteState?.currentDeviceId)
+  const remoteDeviceName =
+    playingDevice?.deviceName || (remoteState?.currentDeviceId?.includes('android') ? 'Mobile Phone' : 'Remote Device')
 
   // Activate local playback on Web when user transfers or remote device hands off
   const activateLocalPlayback = async (targetSong?: any, positionMs?: number) => {
-    const seekSec = (positionMs != null ? positionMs : (remoteState?.positionMs || 0)) / 1000
+    const seekSec = (positionMs != null ? positionMs : remoteState?.positionMs || 0) / 1000
     const rawTitle = targetSong?.title || remoteState?.currentTitle || song?.title || ''
-    const rawArtist = targetSong?.channelTitle || targetSong?.artist || remoteState?.currentArtist || song?.channelTitle || 'Artist'
-    const rawArtwork = targetSong?.thumbnailUrl || targetSong?.artwork || remoteState?.currentArtwork || song?.thumbnailUrl || ''
-    const rawId = targetSong?.videoId || targetSong?.id || remoteState?.currentSongId || song?.videoId || `transferred_${Date.now()}`
+    const rawArtist =
+      targetSong?.channelTitle || targetSong?.artist || remoteState?.currentArtist || song?.channelTitle || 'Artist'
+    const rawArtwork =
+      targetSong?.thumbnailUrl || targetSong?.artwork || remoteState?.currentArtwork || song?.thumbnailUrl || ''
+    const rawId =
+      targetSong?.videoId ||
+      targetSong?.id ||
+      remoteState?.currentSongId ||
+      song?.videoId ||
+      `transferred_${Date.now()}`
     let targetAudio = targetSong?.audioUrl || cachedRemoteAudioUrl || remoteState?.currentAudioUrl || ''
 
     if (seekSec > 0) {
@@ -271,7 +401,7 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
         audioRef.current.src = targetAudio
       }
       if (seekSec > 0) audioRef.current.currentTime = seekSec
-      audioRef.current.play().catch(error => {
+      audioRef.current.play().catch((error) => {
         console.warn('[WebPlayer] Transfer play catch (may need user gesture):', error)
         const onFirstInteraction = () => {
           audioRef.current?.play().catch(() => {})
@@ -284,7 +414,11 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
     }
 
     if (!storageService.isMultiDevicePlaybackSeparate()) {
-      IsaiConnectService.transferPlaybackToDevice(myDeviceId, transferred, (positionMs != null ? positionMs : (remoteState?.positionMs || 0)))
+      IsaiConnectService.transferPlaybackToDevice(
+        myDeviceId,
+        transferred,
+        positionMs != null ? positionMs : remoteState?.positionMs || 0
+      )
     }
     onTransferPlayback?.(transferred)
 
@@ -292,21 +426,28 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
     if (!targetAudio && rawTitle) {
       try {
         const cleanTitle = cleanHtmlTitle(rawTitle)
-          .replace(/\s*[|–—\-].*$/, '')
+          .replace(/\s*[|–—-].*$/, '')
           .replaceAll(/\s*\(.*?(official|video|audio|lyrics|hd|4k|song).*?\)/gi, '')
           .replaceAll(/\s*\[.*?(official|video|audio|lyrics|hd|4k|song).*?\]/gi, '')
           .replace(/\.{2,}$/, '')
           .trim()
 
-        const results = await musicApi.searchSongs(cleanTitle || rawTitle)
-        if (results && results.length > 0 && results[0].audioUrl) {
-          const resolvedUrl = results[0].audioUrl
+        const expectedLang = (transferred.language || detectSongLanguage(transferred)).toLowerCase().trim()
+        const results = await musicApi.searchSongs(cleanTitle ? `${cleanTitle} ${expectedLang}` : rawTitle)
+        const matched = results?.find((r) => {
+          if (!r.audioUrl) return false
+          const rLang = (r.language || detectSongLanguage(r)).toLowerCase().trim()
+          if (expectedLang && rLang && expectedLang !== rLang) return false
+          return isSameSongOrDuplicate(r, transferred)
+        })
+        if (matched?.audioUrl) {
+          const resolvedUrl = matched.audioUrl
           setCachedRemoteAudioUrl(resolvedUrl)
           targetAudio = resolvedUrl
           if (audioRef.current) {
             audioRef.current.src = resolvedUrl
             if (seekSec > 0) audioRef.current.currentTime = seekSec
-            audioRef.current.play().catch(error => {
+            audioRef.current.play().catch((error) => {
               console.warn('[WebPlayer] Resolved async play catch:', error)
               const onFirstInteraction = () => {
                 audioRef.current?.play().catch(() => {})
@@ -354,15 +495,21 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
           }
 
           // If playback was handed off to this Web device by another device (e.g. Android App):
-          if (syncState.currentTitle && (!activeSongRef.current || activeSongRef.current.title !== syncState.currentTitle || !isPlaying)) {
+          if (
+            syncState.currentTitle &&
+            (!activeSongRef.current || activeSongRef.current.title !== syncState.currentTitle || !isPlaying)
+          ) {
             console.info('[WebPlayer] Playback handed off to Web in syncState:', syncState)
-            activateLocalPlaybackRef.current({
-              id: syncState.currentSongId,
-              title: syncState.currentTitle,
-              artist: syncState.currentArtist,
-              artwork: syncState.currentArtwork,
-              audioUrl: syncState.currentAudioUrl
-            }, syncState.positionMs)
+            activateLocalPlaybackRef.current(
+              {
+                id: syncState.currentSongId,
+                title: syncState.currentTitle,
+                artist: syncState.currentArtist,
+                artwork: syncState.currentArtwork,
+                audioUrl: syncState.currentAudioUrl
+              },
+              syncState.positionMs
+            )
           }
         }
       }
@@ -391,7 +538,7 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
           if (!audioRef.current.src && activeAudioUrl) {
             audioRef.current.src = activeAudioUrl
           }
-          audioRef.current.play().catch(error => console.warn('[WebPlayer] Remote PLAY catch:', error))
+          audioRef.current.play().catch((error) => console.warn('[WebPlayer] Remote PLAY catch:', error))
         }
         setIsPlaying(true)
         IsaiConnectService.updatePlaybackState({ isPlaying: true })
@@ -403,20 +550,24 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
         const sec = cmd.positionMs / 1000
         setCurrentTime(sec)
       } else if (cmd.action === 'SET_VOLUME') {
-        const rawVol = cmd.volume != null ? cmd.volume : (cmd.positionMs != null ? cmd.positionMs / 100 : 1)
+        const rawVol = cmd.volume != null ? cmd.volume : cmd.positionMs != null ? cmd.positionMs / 100 : 1
         const clamped = Math.max(0, Math.min(1, rawVol))
         console.info('[WebPlayer] Setting remote volume to:', clamped)
         setVolume(clamped)
         setIsMuted(clamped === 0)
       } else if (cmd.action === 'PLAY_SONG') {
         console.info('[WebPlayer] Remote command PLAY_SONG received:', cmd)
-        const incomingSong = cmd.song || (cmd.songId ? {
-          videoId: cmd.songId,
-          title: cmd.songTitle,
-          channelTitle: cmd.songArtist,
-          thumbnailUrl: cmd.songArtwork,
-          audioUrl: cmd.songAudioUrl
-        } : null)
+        const incomingSong =
+          cmd.song ||
+          (cmd.songId
+            ? {
+                videoId: cmd.songId,
+                title: cmd.songTitle,
+                channelTitle: cmd.songArtist,
+                thumbnailUrl: cmd.songArtwork,
+                audioUrl: cmd.songAudioUrl
+              }
+            : null)
         activateLocalPlaybackRef.current(incomingSong, cmd.positionMs)
       }
     })
@@ -432,60 +583,79 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
     const unsubPb = ListenTogetherService.subscribePlaybackState((pbState, isHost) => {
       if (isHost) return // Host controls local playback and broadcasts to guests
 
-      if (pbState.song && pbState.song.audioUrl) {
-        const incomingUrl = pbState.song.audioUrl
+      if (pbState.song) {
         const isDifferentSong = !activeSongRef.current || activeSongRef.current.videoId !== pbState.song.videoId
 
+        const roomSong: Song = {
+          videoId: pbState.song.videoId,
+          title: pbState.song.title,
+          channelTitle: pbState.song.artist,
+          thumbnailUrl: pbState.song.artwork,
+          audioUrl: pbState.song.audioUrl || '',
+          durationFormatted: formatTime((pbState.song.durationMs || 210000) / 1000),
+          durationMs: pbState.song.durationMs || 210000,
+          viewCountFormatted: ''
+        }
+
         if (isDifferentSong) {
-          const roomSong: Song = {
-            videoId: pbState.song.videoId,
-            title: pbState.song.title,
-            channelTitle: pbState.song.artist,
-            thumbnailUrl: pbState.song.artwork,
-            audioUrl: pbState.song.audioUrl,
-            durationFormatted: formatTime((pbState.song.durationMs || 210000) / 1000),
-            durationMs: pbState.song.durationMs || 210000,
-            viewCountFormatted: ''
-          }
           activeSongRef.current = roomSong
           onTransferPlayback?.(roomSong)
+        }
 
-          if (audioRef.current) {
-            audioRef.current.src = incomingUrl
-            const expected = ListenTogetherService.getExpectedPosition()
-            audioRef.current.currentTime = expected
-            if (pbState.state === 'PLAYING') {
-              audioRef.current.play().then(() => {
+        const incomingUrl = pbState.song.audioUrl
+        if (incomingUrl && audioRef.current && (isDifferentSong || audioRef.current.src !== incomingUrl)) {
+          audioRef.current.src = incomingUrl
+          const expected = ListenTogetherService.getExpectedPosition()
+          audioRef.current.currentTime = expected
+          if (pbState.state === 'PLAYING') {
+            audioRef.current
+              .play()
+              .then(() => {
                 setIsPlaying(true)
                 setNeedsAutoplayGesture(false)
-              }).catch((error) => {
+              })
+              .catch((error) => {
                 console.warn('[WebPlayer] Autoplay blocked for synchronized playback:', error)
                 setNeedsAutoplayGesture(true)
               })
-            } else {
-              audioRef.current.pause()
-              setIsPlaying(false)
-            }
+          } else {
+            audioRef.current.pause()
+            setIsPlaying(false)
           }
-        } else if (audioRef.current) {
+        }
+
+        if (!isDifferentSong && audioRef.current) {
           // Same song, state or position update
           if (pbState.state === 'PLAYING') {
             const expected = ListenTogetherService.getExpectedPosition()
             if (Math.abs(audioRef.current.currentTime - expected) > 1.2) {
               audioRef.current.currentTime = expected
             }
-            audioRef.current.play().then(() => {
-              setIsPlaying(true)
-              setNeedsAutoplayGesture(false)
-            }).catch((error) => {
-              console.warn('[WebPlayer] Autoplay blocked for synchronized playback:', error)
-              setNeedsAutoplayGesture(true)
-            })
+            audioRef.current
+              .play()
+              .then(() => {
+                setIsPlaying(true)
+                setNeedsAutoplayGesture(false)
+              })
+              .catch((error) => {
+                console.warn('[WebPlayer] Autoplay blocked for synchronized playback:', error)
+                setNeedsAutoplayGesture(true)
+              })
           } else if (pbState.state === 'PAUSED') {
             audioRef.current.pause()
             audioRef.current.currentTime = pbState.positionSec
             setIsPlaying(false)
           }
+        }
+      }
+
+      // Synchronize room volume from Host
+      if (typeof pbState.volume === 'number' && !isHost) {
+        const normVol = Math.max(0, Math.min(1, pbState.volume / 100))
+        setVolume(normVol)
+        setIsMuted(normVol === 0)
+        if (audioRef.current) {
+          audioRef.current.volume = normVol
         }
       }
     })
@@ -496,19 +666,27 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
     }
   }, [onTransferPlayback])
 
-  // Periodic Drift Correction for Listen Together (every 2.5s)
+  // Periodic Drift Correction and Host Live Position Calibration for Listen Together
   useEffect(() => {
     if (!listenRoom) return
     const isHostDevice = listenRoom.hostDeviceId === ListenTogetherService.getDeviceId()
-    if (isHostDevice) {
-      if (audioRef.current && audioRef.current.playbackRate !== 1) {
-        audioRef.current.playbackRate = 1
-      }
-      return
-    }
 
-    const driftInterval = setInterval(() => {
-      if (!audioRef.current || audioRef.current.paused) return
+    const syncInterval = setInterval(() => {
+      if (!audioRef.current) return
+
+      if (isHostDevice) {
+        if (audioRef.current.playbackRate !== 1) {
+          audioRef.current.playbackRate = 1
+        }
+        if (!audioRef.current.paused && audioRef.current.currentTime > 0.1) {
+          ListenTogetherService.hostCalibratePosition(audioRef.current.currentTime)
+        }
+        return
+      }
+
+      // Guest: Never interrupt active audio buffering
+      if (audioRef.current.paused || audioRef.current.readyState < 3) return
+
       const adj = ListenTogetherService.calculateDriftAdjustment(audioRef.current.currentTime)
       if (adj.action === 'SPEED_ADJUST' && adj.speed) {
         audioRef.current.playbackRate = adj.speed
@@ -518,10 +696,10 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
       } else if (audioRef.current.playbackRate !== 1) {
         audioRef.current.playbackRate = 1
       }
-    }, 2500)
+    }, 500)
 
     return () => {
-      clearInterval(driftInterval)
+      clearInterval(syncInterval)
       if (audioRef.current) audioRef.current.playbackRate = 1
     }
   }, [listenRoom])
@@ -532,7 +710,7 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
     if (remoteState?.currentDeviceId && remoteState.currentDeviceId !== myDeviceId) return
 
     const qList = (Array.isArray(queue) ? queue : []).filter(Boolean)
-    const curQIdx = song ? qList.findIndex(q => (q.videoId || (q as any).id) === song.videoId) : 0
+    const curQIdx = song ? qList.findIndex((q) => (q.videoId || (q as any).id) === song.videoId) : 0
 
     IsaiConnectService.updatePlaybackState({
       currentDeviceId: myDeviceId,
@@ -545,7 +723,7 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
       durationMs: (duration || 211) * 1000,
       positionMs: currentTime * 1000,
       queueIndex: curQIdx >= 0 ? curQIdx : 0,
-      queue: qList.map(q => ({
+      queue: qList.map((q) => ({
         id: q.videoId || (q as any).id || '',
         title: q.title || '',
         artist: q.channelTitle || (q as any).artist || '',
@@ -553,7 +731,19 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
         audioUrl: (q as any).audioUrl || ''
       }))
     })
-  }, [song?.videoId, song?.title, song?.thumbnailUrl, song?.audioUrl, isPlaying, isRemoteActive, remoteState?.currentDeviceId, myDeviceId, queue, duration, currentTime])
+  }, [
+    song?.videoId,
+    song?.title,
+    song?.thumbnailUrl,
+    song?.audioUrl,
+    isPlaying,
+    isRemoteActive,
+    remoteState?.currentDeviceId,
+    myDeviceId,
+    queue,
+    duration,
+    currentTime
+  ])
 
   // Immediate auto-play and recommendation threshold session management when a new song is selected
   useEffect(() => {
@@ -564,7 +754,13 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
 
     // If previous song was skipped (<10s) and not marked meaningful:
     const prevSong = activeSongRef.current
-    if (prevSong && prevSong.videoId !== song?.videoId && !recordedMeaningfulRef.current && listenSecondsRef.current > 0 && listenSecondsRef.current < 10) {
+    if (
+      prevSong &&
+      prevSong.videoId !== song?.videoId &&
+      !recordedMeaningfulRef.current &&
+      listenSecondsRef.current > 0 &&
+      listenSecondsRef.current < 10
+    ) {
       recommendationService.recordListen(userId, prevSong, listenSecondsRef.current, duration)
     }
 
@@ -576,7 +772,8 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
     const activeAudioUrl = displaySong?.audioUrl || (!isRemoteActive ? remoteState?.currentAudioUrl : undefined)
     if (activeAudioUrl && !isRemoteActive) {
       setIsPlaying(true)
-      const seekTarget = (pendingSeekTimeRef.current !== null && pendingSeekTimeRef.current > 0) ? pendingSeekTimeRef.current : 0
+      const seekTarget =
+        pendingSeekTimeRef.current !== null && pendingSeekTimeRef.current > 0 ? pendingSeekTimeRef.current : 0
       pendingSeekTimeRef.current = null
       setCurrentTime(seekTarget)
       if (audioRef.current) {
@@ -584,16 +781,26 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
           audioRef.current.src = activeAudioUrl
           audioRef.current.currentTime = seekTarget
         }
-        audioRef.current.play().catch(error => {
+        audioRef.current.play().catch((error) => {
           console.warn('[WebPlayer] Autoplay catch:', error)
         })
       }
     }
 
     if (listenRoom && listenRoom.hostDeviceId === ListenTogetherService.getDeviceId() && song) {
-      ListenTogetherService.hostChangeSong(song)
+      ListenTogetherService.hostChangeSong(song, true, Math.round(volume * 100))
     }
-  }, [displaySong?.videoId, displaySong?.audioUrl, isRemoteActive, listenRoom?.hostDeviceId, song?.videoId, duration, remoteState?.currentAudioUrl, song, userId])
+  }, [
+    displaySong?.videoId,
+    displaySong?.audioUrl,
+    isRemoteActive,
+    listenRoom?.hostDeviceId,
+    song?.videoId,
+    duration,
+    remoteState?.currentAudioUrl,
+    song,
+    userId
+  ])
 
   // Control audio element play/pause
   useEffect(() => {
@@ -606,17 +813,30 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
     if (audioRef.current && activeAudioUrl) {
       audioRef.current.volume = isMuted ? 0 : volume
       if (isPlaying) {
-        audioRef.current.play().catch(error => {
+        audioRef.current.play().catch((error) => {
           console.warn('[WebPlayer] Playback play warning:', error)
         })
       } else {
         audioRef.current.pause()
       }
     }
-  }, [displaySong?.videoId, displaySong?.audioUrl, isPlaying, volume, isMuted, isRemoteActive, remoteState?.currentAudioUrl])
+  }, [
+    displaySong?.videoId,
+    displaySong?.audioUrl,
+    isPlaying,
+    volume,
+    isMuted,
+    isRemoteActive,
+    remoteState?.currentAudioUrl
+  ])
 
   const togglePlay = () => {
-    if (listenRoom && listenRoom.hostDeviceId === ListenTogetherService.getDeviceId()) {
+    if (listenRoom) {
+      const isHost = listenRoom.hostDeviceId === ListenTogetherService.getDeviceId()
+      if (!isHost) {
+        showPlayerToast(`👑 Play/Pause is controlled by Host (${listenRoom.hostDeviceName || 'Host'})`)
+        return
+      }
       if (isPlaying) {
         ListenTogetherService.hostPause(currentTime)
       } else {
@@ -634,20 +854,49 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
       if (isPlaying) {
         audioRef.current.pause()
         setIsPlaying(false)
+        if (song && !isRemoteActive) {
+          const curIdx = effectiveQueue.findIndex((q) => (q.videoId || (q as any).id) === song.videoId)
+          storageService.setLastPlaybackSession({
+            song,
+            queue: effectiveQueue,
+            queueIndex: curIdx >= 0 ? curIdx : 0,
+            positionSec: audioRef.current.currentTime || currentTime,
+            wasPlaying: false,
+            timestamp: Date.now()
+          })
+        }
       } else {
         const activeAudioUrl = displaySong?.audioUrl || remoteState?.currentAudioUrl
         if (activeAudioUrl && !audioRef.current.src) {
           audioRef.current.src = activeAudioUrl
         }
-        audioRef.current.play().then(() => setIsPlaying(true)).catch(error => console.warn(error))
+        audioRef.current
+          .play()
+          .then(() => setIsPlaying(true))
+          .catch((error) => console.warn(error))
         setIsPlaying(true)
+        if (song && !isRemoteActive) {
+          const curIdx = effectiveQueue.findIndex((q) => (q.videoId || (q as any).id) === song.videoId)
+          storageService.setLastPlaybackSession({
+            song,
+            queue: effectiveQueue,
+            queueIndex: curIdx >= 0 ? curIdx : 0,
+            positionSec: audioRef.current.currentTime || currentTime,
+            wasPlaying: true,
+            timestamp: Date.now()
+          })
+        }
       }
     } else {
-      setIsPlaying(prev => !prev)
+      setIsPlaying((prev) => !prev)
     }
   }
 
   const handleNext = () => {
+    if (listenRoom && listenRoom.hostDeviceId !== ListenTogetherService.getDeviceId()) {
+      showPlayerToast(`👑 Only Host (${listenRoom.hostDeviceName || 'Host'}) can skip songs`)
+      return
+    }
     if (isRemoteActive) {
       IsaiConnectService.sendCommand('NEXT', { targetDeviceId: remoteState?.currentDeviceId })
     } else if (onNextSong) {
@@ -656,6 +905,10 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
   }
 
   const handlePrev = () => {
+    if (listenRoom && listenRoom.hostDeviceId !== ListenTogetherService.getDeviceId()) {
+      showPlayerToast(`👑 Only Host (${listenRoom.hostDeviceName || 'Host'}) can skip songs`)
+      return
+    }
     if (isRemoteActive) {
       IsaiConnectService.sendCommand('PREV', { targetDeviceId: remoteState?.currentDeviceId })
     } else if (onPrevSong) {
@@ -705,22 +958,41 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
 
       // Increment continuous listening seconds
       if (isPlaying && !isRemoteActive && song) {
-        const delta = lastTimeRef.current > 0 ? (cur - lastTimeRef.current) : 0
+        const delta = lastTimeRef.current > 0 ? cur - lastTimeRef.current : 0
         if (delta > 0 && delta < 2) {
           listenSecondsRef.current += delta
         }
         lastTimeRef.current = cur
 
         const played = listenSecondsRef.current
-        if (!recordedMeaningfulRef.current && (played >= 30 || (dur > 0 && (played / dur) >= 0.5))) {
+        if (!recordedMeaningfulRef.current && (played >= 30 || (dur > 0 && played / dur >= 0.5))) {
           recordedMeaningfulRef.current = true
           recommendationService.recordListen(userId, song, played, dur)
         }
       }
 
-      // Sync position to Firebase every 1.5 seconds so remote device has accurate timestamp (in sync mode)
+      // Persist last playback session periodically (every 2.5s)
       const now = Date.now()
-      if (!isRemoteActive && !storageService.isMultiDevicePlaybackSeparate() && song && now - lastSyncTimeRef.current > 1500) {
+      if (song && !isRemoteActive && now - lastSaveSessionTimeRef.current > 2500) {
+        lastSaveSessionTimeRef.current = now
+        const curIdx = effectiveQueue.findIndex((q) => (q.videoId || (q as any).id) === song.videoId)
+        storageService.setLastPlaybackSession({
+          song,
+          queue: effectiveQueue,
+          queueIndex: curIdx >= 0 ? curIdx : 0,
+          positionSec: cur,
+          wasPlaying: isPlaying,
+          timestamp: now
+        })
+      }
+
+      // Sync position to Firebase every 1.5 seconds so remote device has accurate timestamp (in sync mode)
+      if (
+        !isRemoteActive &&
+        !storageService.isMultiDevicePlaybackSeparate() &&
+        song &&
+        now - lastSyncTimeRef.current > 1500
+      ) {
         lastSyncTimeRef.current = now
         IsaiConnectService.updatePlaybackState({
           currentDeviceId: myDeviceId,
@@ -734,6 +1006,10 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = Number.parseFloat(e.target.value)
+    if (listenRoom && listenRoom.hostDeviceId !== ListenTogetherService.getDeviceId()) {
+      showPlayerToast(`👑 Playback position is controlled by Host (${listenRoom.hostDeviceName || 'Host'})`)
+      return
+    }
     if (isRemoteActive) {
       setRemoteCurrentTime(val)
       IsaiConnectService.sendCommand('SEEK', { positionMs: Math.round(val * 1000) })
@@ -745,6 +1021,17 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
       if (audioRef.current) {
         audioRef.current.currentTime = val
       }
+      if (song && !isRemoteActive) {
+        const curIdx = effectiveQueue.findIndex((q) => (q.videoId || (q as any).id) === song.videoId)
+        storageService.setLastPlaybackSession({
+          song,
+          queue: effectiveQueue,
+          queueIndex: curIdx >= 0 ? curIdx : 0,
+          positionSec: val,
+          wasPlaying: isPlaying,
+          timestamp: Date.now()
+        })
+      }
       if (listenRoom && listenRoom.hostDeviceId === ListenTogetherService.getDeviceId()) {
         ListenTogetherService.hostSeek(val)
       }
@@ -753,10 +1040,17 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
 
   const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = Number.parseFloat(e.target.value)
+    if (listenRoom && listenRoom.hostDeviceId !== ListenTogetherService.getDeviceId()) {
+      showPlayerToast(`👑 Sound/Volume is controlled by Host (${listenRoom.hostDeviceName || 'Host'})`)
+      return
+    }
     setVolume(val)
     if (val === 0) setIsMuted(true)
     else setIsMuted(false)
     if (audioRef.current) audioRef.current.volume = val
+    if (listenRoom && listenRoom.hostDeviceId === ListenTogetherService.getDeviceId()) {
+      ListenTogetherService.hostSetVolume(Math.round(val * 100))
+    }
     if (!isRemoteActive) {
       if (!storageService.isMultiDevicePlaybackSeparate()) {
         IsaiConnectService.updatePlaybackState({ volume: val })
@@ -767,6 +1061,9 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
   }
 
   const handleAudioEnded = () => {
+    if (listenRoom && listenRoom.hostDeviceId !== ListenTogetherService.getDeviceId()) {
+      return // Guests wait for Host to transition track
+    }
     if (song && !recordedMeaningfulRef.current) {
       recordedMeaningfulRef.current = true
       recommendationService.recordListen(userId, song, duration || 210, duration || 210)
@@ -783,6 +1080,52 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
     }
   }
 
+  const handleAudioError = (e: React.SyntheticEvent<HTMLAudioElement, Event>) => {
+    const audio = audioRef.current
+    const currentSrc = audio?.src || displaySong?.audioUrl || song?.audioUrl || ''
+    console.warn('[WebPlayer] Audio stream error encountered for:', currentSrc, e)
+
+    // 1. Bitrate fallback: 320kbps -> 160kbps -> 96kbps
+    if (currentSrc && (currentSrc.includes('_320.mp4') || currentSrc.includes('_320.'))) {
+      const fallback160 = currentSrc.replace(/_320\.(mp4|m4a|mp3)/, '_160.$1')
+      console.warn('[WebPlayer] Bitrate fallback 320 -> 160:', fallback160)
+      if (audio) {
+        audio.src = fallback160
+        audio.load()
+        audio.play().catch(() => {})
+      }
+      return
+    }
+    if (currentSrc && (currentSrc.includes('_160.mp4') || currentSrc.includes('_160.'))) {
+      const fallback96 = currentSrc.replace(/_160\.(mp4|m4a|mp3)/, '_96.$1')
+      console.warn('[WebPlayer] Bitrate fallback 160 -> 96:', fallback96)
+      if (audio) {
+        audio.src = fallback96
+        audio.load()
+        audio.play().catch(() => {})
+      }
+      return
+    }
+
+    // 2. Transient network retry (up to 2 retries)
+    if (streamRetryCountRef.current < 2) {
+      streamRetryCountRef.current += 1
+      console.warn(`[WebPlayer] Retrying stream playback (attempt ${streamRetryCountRef.current})...`)
+      setTimeout(() => {
+        if (audioRef.current) {
+          audioRef.current.load()
+          audioRef.current.play().catch(() => {})
+        }
+      }, 1200)
+      return
+    }
+
+    // 3. All stream fallbacks exhausted -> skip to next song
+    streamRetryCountRef.current = 0
+    console.warn('[WebPlayer] All stream fallbacks exhausted, skipping to next track')
+    onNextSong?.()
+  }
+
   if (!displaySong && !activeTitle) {
     return null
   }
@@ -794,14 +1137,12 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
         src={displaySong?.audioUrl || song?.audioUrl || cachedRemoteAudioUrl || undefined}
         autoPlay
         playsInline
+        preload="auto"
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}
         onCanPlay={handleLoadedMetadata}
         onEnded={handleAudioEnded}
-        onError={(error) => {
-          console.warn('[WebPlayer] Audio error on stream, skipping to next track:', error)
-          onNextSong?.()
-        }}
+        onError={handleAudioError}
       />
 
       {/* 1. Persistent Bottom Player Bar */}
@@ -811,7 +1152,12 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
           {activeArtwork ? (
             <img src={activeArtwork} alt={activeTitle} className="player-artwork" />
           ) : (
-            <div className="player-artwork" style={{ background: '#222', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>🎵</div>
+            <div
+              className="player-artwork"
+              style={{ background: '#222', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            >
+              🎵
+            </div>
           )}
           <div className="player-track-details">
             <span className="player-title">{activeTitle || 'ISAI Track'}</span>
@@ -857,7 +1203,11 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
             </button>
 
             <button className="play-pause-circle" onClick={togglePlay} title={activeIsPlaying ? 'Pause' : 'Play'}>
-              {activeIsPlaying ? <Pause size={22} fill="#fff" /> : <Play size={22} fill="#fff" style={{ marginLeft: '3px' }} />}
+              {activeIsPlaying ? (
+                <Pause size={22} fill="#fff" />
+              ) : (
+                <Play size={22} fill="#fff" style={{ marginLeft: '3px' }} />
+              )}
             </button>
 
             <button className="control-btn" onClick={handleNext} title="Next track">
@@ -882,6 +1232,13 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
               value={activePosition}
               onChange={handleSeek}
               className="custom-range-slider"
+              style={{
+                background: `linear-gradient(to right, var(--isai-purple) 0%, var(--isai-purple) ${
+                  activeDuration > 0 ? (activePosition / activeDuration) * 100 : 0
+                }%, var(--surface-elevated, #CBD5E1) ${
+                  activeDuration > 0 ? (activePosition / activeDuration) * 100 : 0
+                }%, var(--surface-elevated, #CBD5E1) 100%)`
+              }}
             />
             <span className="time-stamp">{formatTime(activeDuration)}</span>
           </div>
@@ -889,120 +1246,6 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
 
         {/* Right Action Icons */}
         <div className="player-right-actions">
-          {/* Quality Selector Badge Button */}
-          <div style={{ position: 'relative' }}>
-            <button
-              className="control-btn"
-              onClick={(e) => {
-                e.stopPropagation()
-                setShowQualityMenu(!showQualityMenu)
-              }}
-              title="Song Audio Quality"
-              style={{
-                fontSize: '11px',
-                fontWeight: 800,
-                padding: '4px 10px',
-                borderRadius: '8px',
-                background: 'rgba(139, 92, 246, 0.15)',
-                color: '#C8FF00',
-                border: '1px solid rgba(200, 255, 0, 0.3)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px',
-                cursor: 'pointer',
-                whiteSpace: 'nowrap'
-              }}
-            >
-              <span>{audioQuality === '320kbps' ? '💎 320k' : audioQuality === '160kbps' ? '🎧 160k' : '⚡ 96k'}</span>
-            </button>
-
-            {showQualityMenu && (
-              <div
-                onClick={(e) => e.stopPropagation()}
-                style={{
-                  position: 'absolute',
-                  bottom: '48px',
-                  right: 0,
-                  backgroundColor: 'rgba(20, 20, 28, 0.95)',
-                  backdropFilter: 'blur(20px)',
-                  border: '1px solid rgba(200, 255, 0, 0.3)',
-                  borderRadius: '16px',
-                  padding: '12px',
-                  boxShadow: '0 20px 50px rgba(0,0,0,0.9), 0 0 20px rgba(200,255,0,0.15)',
-                  zIndex: 999,
-                  minWidth: '240px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '8px'
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '2px 6px' }}>
-                  <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--isai-lime)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                    ⚡ Audio Quality
-                  </span>
-                  <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', background: 'rgba(255,255,255,0.08)', padding: '2px 6px', borderRadius: '6px' }}>
-                    {audioQuality.toUpperCase()}
-                  </span>
-                </div>
-
-                {[
-                  { key: '320kbps', label: '💎 Ultra HD', bitrate: '320 kbps', desc: 'Studio Lossless Audio' },
-                  { key: '160kbps', label: '🎧 High Def', bitrate: '160 kbps', desc: 'Balanced HD Stream' },
-                  { key: '96kbps', label: '⚡ Data Saver', bitrate: '96 kbps', desc: 'Saves Mobile Data' }
-                ].map((q) => {
-                  const isSelected = audioQuality === q.key
-                  return (
-                    <button
-                      key={q.key}
-                      onClick={() => handleQualityChange(q.key as AudioQualitySetting)}
-                      style={{
-                        padding: '10px 12px',
-                        borderRadius: '12px',
-                        border: isSelected ? '1px solid #C8FF00' : '1px solid rgba(255, 255, 255, 0.08)',
-                        background: isSelected ? 'linear-gradient(135deg, rgba(200, 255, 0, 0.15), rgba(139, 92, 246, 0.2))' : 'rgba(255, 255, 255, 0.03)',
-                        color: isSelected ? '#C8FF00' : '#fff',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        transition: 'all 0.2s ease',
-                        textAlign: 'left'
-                      }}
-                    >
-                      <div>
-                        <div style={{ fontSize: '13px', fontWeight: isSelected ? 800 : 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span>{q.label}</span>
-                          <span style={{ fontSize: '10px', opacity: 0.8, background: isSelected ? 'rgba(200, 255, 0, 0.2)' : 'rgba(255,255,255,0.1)', padding: '1px 5px', borderRadius: '4px' }}>
-                            {q.bitrate}
-                          </span>
-                        </div>
-                        <div style={{ fontSize: '10px', color: isSelected ? 'rgba(200,255,0,0.8)' : 'var(--text-muted)', marginTop: '2px' }}>
-                          {q.desc}
-                        </div>
-                      </div>
-                      {isSelected && (
-                        <div style={{ width: '20px', height: '20px', borderRadius: '50%', background: '#C8FF00', color: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: '11px' }}>
-                          ✓
-                        </div>
-                      )}
-                    </button>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-
-          <button
-            className={`control-btn ${showQueuePanel ? 'active' : ''}`}
-            onClick={() => {
-              setIsExpanded(true)
-              setShowQueuePanel(true)
-            }}
-            title="Queue"
-          >
-            <ListMusic size={18} />
-          </button>
-
           {isRemoteActive ? (
             <button
               onClick={(e) => {
@@ -1038,18 +1281,20 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
             title="ISAI Connect (Device Picker)"
             style={{ position: 'relative' }}
           >
-            <Laptop size={18} color={isRemoteActive ? '#1DB954' : 'var(--isai-purple-light)'} />
+            <Laptop size={20} color={isRemoteActive ? '#10B981' : 'var(--text-primary)'} />
             {isRemoteActive && (
-              <span style={{
-                position: 'absolute',
-                top: '4px',
-                right: '4px',
-                width: '8px',
-                height: '8px',
-                borderRadius: '50%',
-                backgroundColor: '#1DB954',
-                boxShadow: '0 0 8px #1DB954'
-              }} />
+              <span
+                style={{
+                  position: 'absolute',
+                  top: '4px',
+                  right: '4px',
+                  width: '8px',
+                  height: '8px',
+                  borderRadius: '50%',
+                  backgroundColor: '#10B981',
+                  boxShadow: '0 0 8px #10B981'
+                }}
+              />
             )}
           </button>
 
@@ -1059,7 +1304,7 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
             title="Listen Together (Multi-device Sync Room)"
             style={{ position: 'relative' }}
           >
-            <Radio size={18} color={listenRoom ? '#C8FF00' : 'var(--isai-purple-light)'} />
+            <Radio size={20} color={listenRoom ? '#16A34A' : 'var(--text-primary)'} />
             {listenRoom && (
               <span
                 style={{
@@ -1069,20 +1314,26 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
                   width: '8px',
                   height: '8px',
                   borderRadius: '50%',
-                  backgroundColor: '#C8FF00',
-                  boxShadow: '0 0 8px #C8FF00'
+                  backgroundColor: '#16A34A',
+                  boxShadow: '0 0 8px #16A34A'
                 }}
               />
             )}
           </button>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <button
               className="control-btn"
-              onClick={() => setIsMuted(!isMuted)}
+              onClick={() => {
+                if (listenRoom && listenRoom.hostDeviceId !== ListenTogetherService.getDeviceId()) {
+                  showPlayerToast(`👑 Sound/Volume is controlled by Host (${listenRoom.hostDeviceName || 'Host'})`)
+                  return
+                }
+                setIsMuted(!isMuted)
+              }}
               title={isMuted ? 'Unmute' : 'Mute'}
             >
-              {isMuted || volume === 0 ? <VolumeX size={18} /> : <Volume2 size={18} />}
+              {isMuted || volume === 0 ? <VolumeX size={20} /> : <Volume2 size={20} />}
             </button>
 
             <input
@@ -1092,23 +1343,75 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
               step={0.01}
               value={isMuted ? 0 : volume}
               onChange={handleVolumeChange}
+              disabled={Boolean(listenRoom && listenRoom.hostDeviceId !== ListenTogetherService.getDeviceId())}
               className="custom-range-slider"
-              style={{ width: '70px' }}
+              title={
+                listenRoom && listenRoom.hostDeviceId !== ListenTogetherService.getDeviceId()
+                  ? `Volume is controlled by Host (${listenRoom.hostDeviceName || 'Host'})`
+                  : 'Volume'
+              }
+              style={{
+                width: '85px',
+                background: `linear-gradient(to right, var(--isai-purple) 0%, var(--isai-purple) ${
+                  (isMuted ? 0 : volume) * 100
+                }%, var(--surface-elevated, #CBD5E1) ${
+                  (isMuted ? 0 : volume) * 100
+                }%, var(--surface-elevated, #CBD5E1) 100%)`,
+                opacity: listenRoom && listenRoom.hostDeviceId !== ListenTogetherService.getDeviceId() ? 0.6 : 1,
+                cursor:
+                  listenRoom && listenRoom.hostDeviceId !== ListenTogetherService.getDeviceId()
+                    ? 'not-allowed'
+                    : 'pointer'
+              }}
             />
           </div>
 
           <button className="control-btn" onClick={() => setIsExpanded(true)} title="Expand Fullscreen">
-            <Maximize2 size={18} />
+            <Maximize2 size={20} />
           </button>
         </div>
       </div>
+
+      {/* Floating Notice Toast */}
+      {toastMessage && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: '100px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: 'rgba(20, 20, 25, 0.95)',
+            border: '1px solid var(--border-glass-bright)',
+            backdropFilter: 'blur(12px)',
+            color: '#fff',
+            padding: '10px 20px',
+            borderRadius: '24px',
+            fontSize: '13px',
+            fontWeight: 700,
+            boxShadow: '0 8px 30px rgba(0,0,0,0.5)',
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}
+        >
+          <span>{toastMessage}</span>
+        </div>
+      )}
 
       {/* 2. Expanded Full-screen View */}
       {isExpanded && (
         <div className="expanded-player-overlay">
           <div className="expanded-header">
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <span style={{ fontSize: '11px', fontWeight: 900, color: 'var(--isai-purple-light)', letterSpacing: '0.12em' }}>
+              <span
+                style={{
+                  fontSize: '11px',
+                  fontWeight: 900,
+                  color: 'var(--isai-purple)',
+                  letterSpacing: '0.12em'
+                }}
+              >
                 {isRemoteActive ? `PLAYING ON ${remoteDeviceName.toUpperCase()}` : 'PLAYING FROM ISAI'}
               </span>
               {isRemoteActive ? (
@@ -1136,7 +1439,7 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
               ) : null}
             </div>
 
-            <div style={{ display: 'flex', gap: '12px' }}>
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
               <button
                 className={`pill-button ${listenRoom ? 'active' : ''}`}
                 onClick={() => setIsListenTogetherModalOpen(true)}
@@ -1153,10 +1456,13 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
                 <span>{listenRoom ? listenRoom.roomCode : 'Sync Room'}</span>
               </button>
               <button
-                className={`pill-button ${showQueuePanel ? 'active' : ''}`}
-                onClick={() => setShowQueuePanel(!showQueuePanel)}
+                className="control-btn"
+                onClick={handleShareSong}
+                title="Share Song"
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px' }}
               >
-                Queue ({effectiveQueue.length})
+                <Share2 size={16} />
+                <span style={{ fontSize: '12px', fontWeight: 600 }}>Share</span>
               </button>
               <button className="control-btn" onClick={() => setIsExpanded(false)}>
                 <Minimize2 size={24} />
@@ -1170,259 +1476,468 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
               {activeArtwork ? (
                 <img src={activeArtwork} alt={activeTitle} className="expanded-artwork-box" />
               ) : (
-                <div className="expanded-artwork-box" style={{ background: '#222', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>🎵</div>
+                <div
+                  className="expanded-artwork-box"
+                  style={{ background: 'var(--surface-elevated, #E2E8F0)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  🎵
+                </div>
               )}
-              <h2 style={{ fontSize: '28px', fontWeight: 900, marginTop: '24px', color: '#fff' }}>
-                {activeTitle}
-              </h2>
-              <p style={{ fontSize: '16px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                {activeArtist}
-              </p>
+              <h2 style={{ fontSize: '28px', fontWeight: 900, marginTop: '24px', color: 'var(--text-primary)' }}>{activeTitle}</h2>
+              <p style={{ fontSize: '16px', color: 'var(--text-secondary)', marginTop: '4px' }}>{activeArtist}</p>
             </div>
 
-            {/* Right Panel (Queue or Song Details) */}
-            {showQueuePanel ? (
-              <div className="expanded-lyrics-panel">
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-                  <div>
-                    <h3 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--isai-purple-light)', margin: 0 }}>
-                      Up Next Queue ({effectiveQueue.length})
-                    </h3>
-                    <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: '4px 0 0 0' }}>
-                      Drag songs to reorder • Tap to play
-                    </p>
-                  </div>
-                  {effectiveQueue.length > 1 && (
-                    <button
-                      onClick={() => onClearQueue?.()}
-                      style={{
-                        background: 'rgba(239, 68, 68, 0.12)',
-                        border: '1px solid rgba(239, 68, 68, 0.3)',
-                        color: '#ef4444',
-                        borderRadius: '6px',
-                        padding: '4px 10px',
-                        fontSize: '12px',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        transition: 'all 0.2s ease'
-                      }}
-                      title="Clear upcoming songs"
-                    >
-                      Clear Queue
-                    </button>
-                  )}
-                </div>
-
-                {effectiveQueue.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-muted)', fontSize: '14px' }}>
-                    Queue is empty
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {effectiveQueue.filter(Boolean).map((qSong, idx) => {
-                      const songId = qSong?.videoId || (qSong as any)?.id || `q_${idx}`
-                      const isCurrent = songId === (isRemoteActive ? (remoteState?.currentSongId || song?.videoId) : (song?.videoId || remoteState?.currentSongId))
-                      const isDragging = draggedIdx === idx
-                      const isDragOver = dragOverIdx === idx
-
-                      return (
-                        <div
-                          key={`${songId}_${idx}`}
-                          draggable={true}
-                          onDragStart={(e) => {
-                            isDraggingRef.current = true
-                            setDraggedIdx(idx)
-                            e.dataTransfer.effectAllowed = 'move'
-                            e.dataTransfer.setData('text/plain', `${idx}`)
-                          }}
-                          onDragOver={(e) => {
-                            e.preventDefault()
-                            e.dataTransfer.dropEffect = 'move'
-                            if (dragOverIdx !== idx) setDragOverIdx(idx)
-                          }}
-                          onDragEnter={(e) => {
-                            e.preventDefault()
-                            if (dragOverIdx !== idx) setDragOverIdx(idx)
-                          }}
-                          onDragEnd={() => {
-                            setDraggedIdx(null)
-                            setDragOverIdx(null)
-                            setTimeout(() => {
-                              isDraggingRef.current = false
-                            }, 150)
-                          }}
-                          onDrop={(e) => {
-                            e.preventDefault()
-                            e.stopPropagation()
-                            const sourceIdx = draggedIdx !== null ? draggedIdx : Number.parseInt(e.dataTransfer.getData('text/plain'), 10)
-                            if (Number.isNaN(sourceIdx) || sourceIdx === idx) {
-                              setDraggedIdx(null)
-                              setDragOverIdx(null)
-                              setTimeout(() => { isDraggingRef.current = false }, 150)
-                              return
-                            }
-                            const nextQueue = [...effectiveQueue]
-                            const [movedSong] = nextQueue.splice(sourceIdx, 1)
-                            nextQueue.splice(idx, 0, movedSong)
-                            if (isRemoteActive) {
-                              IsaiConnectService.updatePlaybackState({
-                                queue: nextQueue.map(item => ({
-                                  id: item.videoId || (item as any).id || '',
-                                  title: item.title || '',
-                                  artist: item.channelTitle || (item as any).artist || '',
-                                  artwork: item.thumbnailUrl || (item as any).artwork || ''
-                                }))
-                              })
-                            }
-                            onReorderQueue?.(nextQueue)
-                            setDraggedIdx(null)
-                            setDragOverIdx(null)
-                            setTimeout(() => {
-                              isDraggingRef.current = false
-                            }, 150)
-                          }}
-                          onClick={() => {
-                            if (isDraggingRef.current) return
-                            onSelectQueueItem?.(qSong)
-                          }}
-                          className={`queue-row-item ${isCurrent ? 'active' : ''} ${isDragging ? 'dragging' : ''} ${isDragOver ? 'drag-over' : ''}`}
-                        >
-                          {/* Drag Handle */}
-                          <div
-                            className="queue-drag-handle"
-                            title="Drag to reorder"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <GripVertical size={16} />
-                          </div>
-
-                          {/* Index / Playing Equalizer Indicator */}
-                          <div style={{ width: '22px', textAlign: 'center', fontSize: '12px', fontWeight: 700, color: isCurrent ? 'var(--isai-pink)' : 'var(--text-muted)' }}>
-                            {isCurrent ? '▶' : `${idx + 1}`}
-                          </div>
-
-                          {/* Song Thumbnail */}
-                          <img
-                            src={qSong.thumbnailUrl || ''}
-                            alt={qSong.title || 'Track'}
-                            style={{ width: '42px', height: '42px', borderRadius: '6px', objectFit: 'cover', flexShrink: 0 }}
-                          />
-
-                          {/* Song Details */}
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div
-                              className="ytm-pl-title"
-                              style={{
-                                color: isCurrent ? 'var(--isai-pink)' : 'var(--text-primary)',
-                                maxWidth: '100%',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap'
-                              }}
-                            >
-                              {qSong.title || 'Unknown Track'}
-                            </div>
-                            <div
-                              className="ytm-pl-sub"
-                              style={{
-                                maxWidth: '100%',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap'
-                              }}
-                            >
-                              {qSong.channelTitle || 'ISAI Artist'}
-                            </div>
-                          </div>
-
-                          {/* Playing Badge or Delete Button */}
-                          {isCurrent ? (
-                            <span style={{
-                              fontSize: '10px',
-                              fontWeight: 800,
-                              color: 'var(--isai-purple-light)',
-                              background: 'rgba(139, 92, 246, 0.2)',
-                              padding: '3px 8px',
-                              borderRadius: '6px',
-                              letterSpacing: '0.05em'
-                            }}>
-                              PLAYING
-                            </span>
-                          ) : (
-                            <button
-                              className="queue-delete-btn"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                onRemoveQueueItem?.(idx)
-                              }}
-                              title="Remove from queue"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
+            {/* Right Panel: Tabs for Queue & Lyrics */}
+            <div
+              className="expanded-lyrics-panel"
+              style={{ display: 'flex', flexDirection: 'column', height: '100%', maxHeight: '550px' }}
+            >
+              {/* Tab Selector: Queue vs Lyrics */}
+              <div
+                style={{
+                  display: 'flex',
+                  gap: '8px',
+                  paddingBottom: '14px',
+                  borderBottom: '1px solid var(--border-subtle)',
+                  marginBottom: '16px'
+                }}
+              >
+                <button
+                  onClick={() => setActiveExpandedTab('queue')}
+                  style={{
+                    flex: 1,
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    fontWeight: 700,
+                    fontSize: '13px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    background:
+                      activeExpandedTab === 'queue' ? 'var(--isai-gradient)' : 'var(--surface-elevated, #E2E8F0)',
+                    color: activeExpandedTab === 'queue' ? '#fff' : 'var(--text-secondary, #334155)',
+                    transition: 'all 0.2s',
+                    boxShadow: activeExpandedTab === 'queue' ? '0 4px 12px rgba(124, 58, 237, 0.3)' : 'none'
+                  }}
+                >
+                  <ListMusic size={15} /> Up Next Queue ({effectiveQueue.length})
+                </button>
+                <button
+                  onClick={() => setActiveExpandedTab('lyrics')}
+                  style={{
+                    flex: 1,
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    fontWeight: 700,
+                    fontSize: '13px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    background:
+                      activeExpandedTab === 'lyrics' ? 'var(--isai-gradient)' : 'var(--surface-elevated, #E2E8F0)',
+                    color: activeExpandedTab === 'lyrics' ? '#fff' : 'var(--text-secondary, #334155)',
+                    transition: 'all 0.2s',
+                    boxShadow: activeExpandedTab === 'lyrics' ? '0 4px 12px rgba(124, 58, 237, 0.3)' : 'none'
+                  }}
+                >
+                  <FileText size={15} /> Lyrics & Sing-Along
+                </button>
               </div>
-            ) : (
-              <div style={{ padding: '32px', background: 'var(--surface-card)', borderRadius: 'var(--radius-xl)', border: '1px solid var(--border-subtle)' }}>
-                <h3 style={{ fontSize: '18px', fontWeight: 800, marginBottom: '16px', color: 'var(--isai-purple-light)' }}>
-                  Song Details & Audio Quality
-                </h3>
-                <div style={{ marginBottom: '20px' }}>
-                  <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--isai-lime)', display: 'block', marginBottom: '10px', letterSpacing: '0.05em' }}>
-                    SELECT STREAMING AUDIO BITRATE
-                  </span>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
-                    {[
-                      { key: '320kbps', title: '💎 Ultra HD (320k)', desc: 'Studio Lossless Quality', accent: '#C8FF00' },
-                      { key: '160kbps', title: '🎧 High Def (160k)', desc: 'Balanced Crisp Audio', accent: '#00F0FF' },
-                      { key: '96kbps', title: '⚡ Data Saver (96k)', desc: 'Fast & Low Data Usage', accent: '#FF007A' }
-                    ].map((item) => {
-                      const isSelected = audioQuality === item.key
+
+              {activeExpandedTab === 'queue' ? (
+                <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+                  {/* Queue Sub-Tabs: Up Next, Played, All */}
+                  <div style={{ display: 'flex', gap: '6px', marginBottom: '14px' }}>
+                    {(['up_next', 'played', 'all'] as const).map((tabKey) => {
+                      const labels = {
+                        up_next: `Up Next (${Math.max(0, effectiveQueue.length - 1)})`,
+                        played: `Played (${sessionPlayedSongs.length})`,
+                        all: `All Queue (${effectiveQueue.length})`
+                      }
+                      const isSelected = selectedQueueTab === tabKey
                       return (
                         <button
-                          key={item.key}
-                          onClick={() => handleQualityChange(item.key as AudioQualitySetting)}
+                          key={tabKey}
+                          onClick={() => setSelectedQueueTab(tabKey)}
                           style={{
-                            padding: '14px 16px',
-                            borderRadius: '14px',
-                            border: isSelected ? `1.5px solid ${item.accent}` : '1px solid rgba(255, 255, 255, 0.1)',
-                            background: `rgba(139, 92, 246, ${isSelected ? '0.25' : '0.04'})`,
-                            color: isSelected ? item.accent : '#fff',
-                            fontWeight: 800,
-                            fontSize: '13px',
-                            cursor: 'pointer',
-                            textAlign: 'left',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: '4px',
-                            transition: 'all 0.2s ease',
-                            boxShadow: isSelected ? `0 4px 16px ${item.accent}30` : 'none'
+                            padding: '4px 10px',
+                            borderRadius: '16px',
+                            border: isSelected ? '1px solid var(--isai-pink)' : '1px solid var(--border-subtle)',
+                            background: isSelected ? 'rgba(236, 72, 153, 0.15)' : 'transparent',
+                            color: isSelected ? 'var(--isai-pink)' : 'var(--text-secondary)',
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            cursor: 'pointer'
                           }}
                         >
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span>{item.title}</span>
-                            {isSelected && <span style={{ fontSize: '14px', color: item.accent }}>✓</span>}
-                          </div>
-                          <span style={{ fontSize: '11px', color: isSelected ? '#fff' : 'var(--text-muted)', fontWeight: 400 }}>
-                            {item.desc}
-                          </span>
+                          {labels[tabKey]}
                         </button>
                       )
                     })}
+                    {effectiveQueue.length > 1 && selectedQueueTab !== 'played' && (
+                      <button
+                        onClick={() => onClearQueue?.()}
+                        style={{
+                          marginLeft: 'auto',
+                          background: 'rgba(239, 68, 68, 0.12)',
+                          border: '1px solid rgba(239, 68, 68, 0.3)',
+                          color: '#ef4444',
+                          borderRadius: '6px',
+                          padding: '3px 8px',
+                          fontSize: '11px',
+                          fontWeight: 700,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Queue Sub-tab Content with scroll */}
+                  <div style={{ overflowY: 'auto', flex: 1, paddingRight: '4px' }}>
+                    {selectedQueueTab === 'played' ? (
+                      sessionPlayedSongs.length === 0 ? (
+                        <div
+                          style={{
+                            textAlign: 'center',
+                            padding: '40px 0',
+                            color: 'var(--text-muted)',
+                            fontSize: '13px'
+                          }}
+                        >
+                          No previously played songs in this session yet
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {sessionPlayedSongs.map((pSong, pIdx) => (
+                            <div
+                              key={`played_${pSong.videoId}_${pIdx}`}
+                              onClick={() => onSelectQueueItem?.(pSong)}
+                              className="queue-row-item"
+                              style={{ cursor: 'pointer' }}
+                            >
+                              <History size={15} color="var(--text-muted)" />
+                              <img
+                                src={pSong.thumbnailUrl || ''}
+                                alt={pSong.title}
+                                style={{ width: '38px', height: '38px', borderRadius: '6px', objectFit: 'cover' }}
+                              />
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div className="ytm-pl-title">{pSong.title}</div>
+                                <div className="ytm-pl-sub">{pSong.channelTitle}</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )
+                    ) : (
+                      <>
+                        {/* Queue items */}
+                        {effectiveQueue.length === 0 ? (
+                          <div
+                            style={{
+                              textAlign: 'center',
+                              padding: '30px 0',
+                              color: 'var(--text-muted)',
+                              fontSize: '13px'
+                            }}
+                          >
+                            Queue is empty
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            {effectiveQueue.filter(Boolean).map((qSong, idx) => {
+                              if (selectedQueueTab === 'up_next' && idx === 0) return null // Hide current in Up Next view
+                              const songId = qSong?.videoId || (qSong as any)?.id || `q_${idx}`
+                              const isCurrent =
+                                songId ===
+                                (isRemoteActive
+                                  ? remoteState?.currentSongId || song?.videoId
+                                  : song?.videoId || remoteState?.currentSongId)
+                              const isDragging = draggedIdx === idx
+                              const isDragOver = dragOverIdx === idx
+
+                              return (
+                                <div
+                                  key={`${songId}_${idx}`}
+                                  draggable={true}
+                                  onDragStart={(e) => {
+                                    isDraggingRef.current = true
+                                    setDraggedIdx(idx)
+                                    e.dataTransfer.effectAllowed = 'move'
+                                    e.dataTransfer.setData('text/plain', `${idx}`)
+                                  }}
+                                  onDragOver={(e) => {
+                                    e.preventDefault()
+                                    e.dataTransfer.dropEffect = 'move'
+                                    if (dragOverIdx !== idx) setDragOverIdx(idx)
+                                  }}
+                                  onDragEnter={(e) => {
+                                    e.preventDefault()
+                                    if (dragOverIdx !== idx) setDragOverIdx(idx)
+                                  }}
+                                  onDragEnd={() => {
+                                    setDraggedIdx(null)
+                                    setDragOverIdx(null)
+                                    setTimeout(() => {
+                                      isDraggingRef.current = false
+                                    }, 150)
+                                  }}
+                                  onDrop={(e) => {
+                                    e.preventDefault()
+                                    e.stopPropagation()
+                                    const sourceIdx =
+                                      draggedIdx !== null
+                                        ? draggedIdx
+                                        : Number.parseInt(e.dataTransfer.getData('text/plain'), 10)
+                                    if (Number.isNaN(sourceIdx) || sourceIdx === idx) {
+                                      setDraggedIdx(null)
+                                      setDragOverIdx(null)
+                                      setTimeout(() => {
+                                        isDraggingRef.current = false
+                                      }, 150)
+                                      return
+                                    }
+                                    const nextQueue = [...effectiveQueue]
+                                    const [movedSong] = nextQueue.splice(sourceIdx, 1)
+                                    nextQueue.splice(idx, 0, movedSong)
+                                    if (isRemoteActive) {
+                                      IsaiConnectService.updatePlaybackState({
+                                        queue: nextQueue.map((item) => ({
+                                          id: item.videoId || (item as any).id || '',
+                                          title: item.title || '',
+                                          artist: item.channelTitle || (item as any).artist || '',
+                                          artwork: item.thumbnailUrl || (item as any).artwork || ''
+                                        }))
+                                      })
+                                    }
+                                    onReorderQueue?.(nextQueue)
+                                    setDraggedIdx(null)
+                                    setDragOverIdx(null)
+                                    setTimeout(() => {
+                                      isDraggingRef.current = false
+                                    }, 150)
+                                  }}
+                                  onClick={() => {
+                                    if (isDraggingRef.current) return
+                                    onSelectQueueItem?.(qSong)
+                                  }}
+                                  className={`queue-row-item ${isCurrent ? 'active' : ''} ${isDragging ? 'dragging' : ''} ${isDragOver ? 'drag-over' : ''}`}
+                                >
+                                  <div
+                                    className="queue-drag-handle"
+                                    title="Drag to reorder"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <GripVertical size={16} />
+                                  </div>
+
+                                  <div
+                                    style={{
+                                      width: '22px',
+                                      textAlign: 'center',
+                                      fontSize: '12px',
+                                      fontWeight: 700,
+                                      color: isCurrent ? 'var(--isai-pink)' : 'var(--text-muted)'
+                                    }}
+                                  >
+                                    {isCurrent ? '▶' : `${idx + 1}`}
+                                  </div>
+
+                                  <img
+                                    src={qSong.thumbnailUrl || ''}
+                                    alt={qSong.title || 'Track'}
+                                    style={{
+                                      width: '40px',
+                                      height: '40px',
+                                      borderRadius: '6px',
+                                      objectFit: 'cover',
+                                      flexShrink: 0
+                                    }}
+                                  />
+
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div
+                                      className="ytm-pl-title"
+                                      style={{
+                                        color: isCurrent ? 'var(--isai-pink)' : 'var(--text-primary)',
+                                        maxWidth: '100%',
+                                        overflow: 'hidden',
+                                        textOverflow: 'ellipsis',
+                                        whiteSpace: 'nowrap'
+                                      }}
+                                    >
+                                      {qSong.title || 'Unknown Track'}
+                                    </div>
+                                    <div
+                                      className="ytm-pl-sub"
+                                      style={{
+                                        maxWidth: '100%',
+                                        overflow: 'hidden',
+                                        textOverflow: 'ellipsis',
+                                        whiteSpace: 'nowrap'
+                                      }}
+                                    >
+                                      {qSong.channelTitle || 'ISAI Artist'}
+                                    </div>
+                                  </div>
+
+                                  {isCurrent ? (
+                                    <span
+                                      style={{
+                                        fontSize: '10px',
+                                        fontWeight: 800,
+                                        color: 'var(--isai-purple-light)',
+                                        background: 'rgba(139, 92, 246, 0.2)',
+                                        padding: '3px 8px',
+                                        borderRadius: '6px',
+                                        letterSpacing: '0.05em'
+                                      }}
+                                    >
+                                      PLAYING
+                                    </span>
+                                  ) : (
+                                    <button
+                                      className="queue-delete-btn"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        onRemoveQueueItem?.(idx)
+                                      }}
+                                      title="Remove from queue"
+                                    >
+                                      <Trash2 size={16} />
+                                    </button>
+                                  )}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
+
+                        {/* Autoplay Recommendations section */}
+                        {queueRecommendations.length > 0 && (
+                          <div
+                            style={{
+                              marginTop: '24px',
+                              paddingTop: '16px',
+                              borderTop: '1px solid var(--border-subtle)'
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '12px' }}>
+                              <Sparkles size={16} color="var(--isai-pink)" />
+                              <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text-primary)' }}>
+                                Autoplay Similar Songs
+                              </span>
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                              {queueRecommendations.map((rSong, rIdx) => (
+                                <div
+                                  key={`rec_${rSong.videoId}_${rIdx}`}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '12px',
+                                    padding: '8px 10px',
+                                    borderRadius: '8px',
+                                    background: 'rgba(255,255,255,0.03)',
+                                    border: '1px solid var(--border-subtle)',
+                                    cursor: 'pointer'
+                                  }}
+                                  onClick={() => onSelectQueueItem?.(rSong)}
+                                >
+                                  <img
+                                    src={rSong.thumbnailUrl || ''}
+                                    alt={rSong.title}
+                                    style={{ width: '36px', height: '36px', borderRadius: '6px', objectFit: 'cover' }}
+                                  />
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div className="ytm-pl-title">{rSong.title}</div>
+                                    <div className="ytm-pl-sub">{rSong.channelTitle}</div>
+                                  </div>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      const nextQueue = [...effectiveQueue, rSong]
+                                      onReorderQueue?.(nextQueue)
+                                      setQueueRecommendations((prev) => prev.filter((_, i) => i !== rIdx))
+                                    }}
+                                    style={{
+                                      background: 'rgba(139, 92, 246, 0.15)',
+                                      border: 'none',
+                                      color: 'var(--isai-purple-light)',
+                                      borderRadius: '50%',
+                                      width: '28px',
+                                      height: '28px',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      cursor: 'pointer'
+                                    }}
+                                    title="Add to queue"
+                                  >
+                                    <Plus size={16} />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
                   </div>
                 </div>
-                <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '8px' }}>
-                  <strong>Artist:</strong> {activeArtist}
-                </p>
-                <p style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
-                  <strong>Duration:</strong> {formatTime(activeDuration)}
-                </p>
-              </div>
-            )}
+              ) : (
+                /* Lyrics & Sing-Along Panel */
+                <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+                  <div
+                    style={{
+                      flex: 1,
+                      overflowY: 'auto',
+                      padding: '20px',
+                      background: 'var(--surface-card)',
+                      borderRadius: '12px',
+                      border: '1px solid var(--border-subtle)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      textAlign: 'center'
+                    }}
+                  >
+                    <FileText size={40} color="var(--isai-pink)" style={{ marginBottom: '14px', opacity: 0.8 }} />
+                    <h4 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '8px' }}>
+                      {activeTitle}
+                    </h4>
+                    <p style={{ fontSize: '13px', color: 'var(--isai-purple)', marginBottom: '24px' }}>
+                      Sing-Along Mode • {activeArtist}
+                    </p>
+                    <div
+                      style={{
+                        lineHeight: '2.2',
+                        fontSize: '16px',
+                        color: 'var(--text-secondary)',
+                        fontWeight: 500
+                      }}
+                    >
+                      <p style={{ margin: '8px 0', color: 'var(--isai-pink)', fontWeight: 700, fontSize: '18px' }}>
+                        ♪ {activeTitle} ♪
+                      </p>
+                      <p style={{ margin: '8px 0' }}>Listen and sing along with high-fidelity acoustics...</p>
+                      <p style={{ margin: '8px 0' }}>Artist: {activeArtist}</p>
+                      <p style={{ margin: '8px 0', opacity: 0.6, fontSize: '13px' }}>
+                        Lyrics sync automatically when synchronized track timestamps are available.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -1447,10 +1962,13 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
         onAutoplayGestureUnlock={() => {
           if (audioRef.current) {
             audioRef.current.currentTime = ListenTogetherService.getExpectedPosition()
-            audioRef.current.play().then(() => {
-              setIsPlaying(true)
-              setNeedsAutoplayGesture(false)
-            }).catch(() => {})
+            audioRef.current
+              .play()
+              .then(() => {
+                setIsPlaying(true)
+                setNeedsAutoplayGesture(false)
+              })
+              .catch(() => {})
           }
         }}
       />
@@ -1478,10 +1996,13 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
           onClick={() => {
             if (audioRef.current) {
               audioRef.current.currentTime = ListenTogetherService.getExpectedPosition()
-              audioRef.current.play().then(() => {
-                setIsPlaying(true)
-                setNeedsAutoplayGesture(false)
-              }).catch(() => {})
+              audioRef.current
+                .play()
+                .then(() => {
+                  setIsPlaying(true)
+                  setNeedsAutoplayGesture(false)
+                })
+                .catch(() => {})
             }
           }}
         >
