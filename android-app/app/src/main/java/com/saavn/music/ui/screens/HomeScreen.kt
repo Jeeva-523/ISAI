@@ -90,6 +90,15 @@ data class MoodCardItem(
     val imageUrl: String
 )
 
+data class FeaturedPlaylistItem(
+    val id: String,
+    val title: String,
+    val subtitle: String,
+    val language: String,
+    val coverUrl: String,
+    val searchQuery: String
+)
+
 private val POPULAR_ARTISTS_BY_LANG = mapOf(
     "tamil" to listOf(
         ArtistItem("Anirudh Ravichander", "Composer & Singer", "https://c.saavncdn.com/artists/Anirudh_Ravichander_003_20260121134149_500x500.jpg", "Anirudh Ravichander Tamil hits"),
@@ -221,6 +230,40 @@ fun HomeScreen(
                 "https://images.unsplash.com/photo-1518495973542-4542c06a5843?auto=format&fit=crop&w=600&q=80"
             )
         )
+    }
+
+    var selectedPlaylistLang by remember { mutableStateOf("All") }
+
+    val allFeaturedPlaylists = remember {
+        listOf(
+            FeaturedPlaylistItem("hot-tamil", "Hot Hits Tamil 🔥", "Trending blockbuster hits", "Tamil", "https://c.saavncdn.com/187/Jailer-Tamil-2023-20230728081443-500x500.jpg", "Tamil latest hits 2026"),
+            FeaturedPlaylistItem("romance-tamil", "Tamil Romance ❤️", "Soulful love anthems", "Tamil", "https://c.saavncdn.com/450/2-In-1-Hits-Of-Maddy-Tamil-2001-20190515150512-500x500.jpg", "Tamil romantic melody hits"),
+            FeaturedPlaylistItem("melodies-tamil", "All-Time Melodies 🌸", "Golden era evergreen hits", "Tamil", "https://c.saavncdn.com/artists/AR_Rahman_002_20210120084455_500x500.jpg", "Tamil golden melody hits evergreen"),
+            FeaturedPlaylistItem("kuthu-tamil", "Kuthu & Party ⚡", "High energy dance beats", "Tamil", "https://c.saavncdn.com/510/Beast-Tamil-2022-20220504184736-500x500.jpg", "Tamil kuthu dance party songs"),
+            FeaturedPlaylistItem("chill-tamil", "Tamil Chill Lo-Fi 🌙", "Relaxing midnight vibes", "Tamil", "https://c.saavncdn.com/420/Vendhu-Thanindhathu-Kaadu-Original-Motion-Picture-Soundtrack-Tamil-2022-20250905072731-500x500.jpg", "Tamil acoustic lofi chill songs"),
+            FeaturedPlaylistItem("nostalgia-tamil", "90s & 2000s Nostalgia 📻", "Unforgettable golden classics", "Tamil", "https://c.saavncdn.com/artists/Harris_Jayaraj_002_20230718071330_500x500.jpg", "Tamil 90s 2000s super hit songs"),
+
+            FeaturedPlaylistItem("hot-telugu", "Hot Hits Telugu 🔥", "Tollywood chartbusters", "Telugu", "https://c.saavncdn.com/artists/Devi_Sri_Prasad_008_20250619062824_500x500.jpg", "Telugu latest hits 2026"),
+            FeaturedPlaylistItem("romance-telugu", "Telugu Romance ❤️", "Romantic melodies & duets", "Telugu", "https://c.saavncdn.com/artists/Sid_Sriram_005_20240425180600_500x500.jpg", "Telugu romantic melodies"),
+            FeaturedPlaylistItem("mass-telugu", "Tollywood Mass & Party ⚡", "High-voltage commercial hits", "Telugu", "https://c.saavncdn.com/artists/Thaman_S__007_20231106094011_500x500.jpg", "Telugu mass commercial party songs"),
+
+            FeaturedPlaylistItem("hot-hindi", "Hot Hits Hindi 🔥", "Bollywood chartbusters", "Hindi", "https://c.saavncdn.com/artists/Arijit_Singh_004_20241118063717_500x500.jpg", "Hindi latest bollywood hits 2026"),
+            FeaturedPlaylistItem("romance-hindi", "Bollywood Romance ❤️", "Arijit & Shreya love anthems", "Hindi", "https://c.saavncdn.com/artists/Shreya_Ghoshal_007_20241101074144_500x500.jpg", "Bollywood romantic hits Arijit Shreya"),
+            FeaturedPlaylistItem("classics-hindi", "90s Bollywood Classics 📻", "Evergreen golden melodies", "Hindi", "https://c.saavncdn.com/artists/Pritam_Chakraborty-20170711073326_500x500.jpg", "90s bollywood super hit songs"),
+
+            FeaturedPlaylistItem("hot-malayalam", "Hot Hits Malayalam 🔥", "Trending Mollywood tracks", "Malayalam", "https://c.saavncdn.com/artists/Sushin_Shyam_002_20250707125538_500x500.jpg", "Malayalam latest hits 2026"),
+            FeaturedPlaylistItem("chill-malayalam", "Malayalam Chill & Acoustic 🌿", "Serene acoustic melodies", "Malayalam", "https://c.saavncdn.com/artists/Shaan_Rahman_500x500.jpg", "Malayalam melodies chill songs"),
+
+            FeaturedPlaylistItem("hot-kannada", "Hot Hits Kannada 🔥", "Top Sandalwood hits", "Kannada", "https://c.saavncdn.com/artists/AR_Rahman_002_20210120084455_500x500.jpg", "Kannada latest hits 2026"),
+
+            FeaturedPlaylistItem("top-english", "Today's Top Hits 🌐", "Global pop leaders & viral hits", "English", "https://c.saavncdn.com/artists/Anirudh_Ravichander_003_20260121134149_500x500.jpg", "Global english pop hits 2026"),
+            FeaturedPlaylistItem("chill-english", "Pop & Chill Vibes 🎧", "Smooth weekend acoustic pop", "English", "https://c.saavncdn.com/415/Leo-Original-Motion-Picture-Soundtrack-English-2023-20231019170311-500x500.jpg", "English chill pop acoustic")
+        )
+    }
+
+    val filteredPlaylists = remember(selectedPlaylistLang, allFeaturedPlaylists) {
+        if (selectedPlaylistLang.equals("All", ignoreCase = true)) allFeaturedPlaylists
+        else allFeaturedPlaylists.filter { it.language.equals(selectedPlaylistLang, ignoreCase = true) }
     }
 
     LazyColumn(
@@ -398,8 +441,151 @@ fun HomeScreen(
                                     fontWeight = FontWeight.Bold,
                                     maxLines = 2,
                                     overflow = TextOverflow.Ellipsis
-                                )
+                                 )
                             }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3.5. Featured Playlists 🎧 (Spotify Curated & Language Based)
+        item {
+            Column {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "Featured Playlists 🎧",
+                            color = TextPrimary,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                        Text(
+                            text = "Spotify-style curated playlists in top languages",
+                            color = TextMuted,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                    }
+                }
+
+                // Language Filter Chips
+                val filterLangs = listOf("All", "Tamil", "Telugu", "Hindi", "Malayalam", "Kannada", "English")
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(bottom = 14.dp)
+                ) {
+                    items(filterLangs) { lang ->
+                        val isSelected = selectedPlaylistLang.equals(lang, ignoreCase = true)
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(if (isSelected) com.saavn.music.ui.theme.IsaiLime else DarkSurfaceGlass)
+                                .border(
+                                    1.dp,
+                                    if (isSelected) com.saavn.music.ui.theme.IsaiLime else GlassBorderSubtle,
+                                    RoundedCornerShape(20.dp)
+                                )
+                                .clickable { selectedPlaylistLang = lang }
+                                .padding(horizontal = 14.dp, vertical = 6.dp)
+                        ) {
+                            Text(
+                                text = lang,
+                                color = if (isSelected) Color.Black else TextPrimary,
+                                fontSize = 12.sp,
+                                fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Medium
+                            )
+                        }
+                    }
+                }
+
+                // Playlists Carousel
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    items(filteredPlaylists, key = { it.id }) { playlist ->
+                        Column(
+                            modifier = Modifier
+                                .width(150.dp)
+                                .clip(RoundedCornerShape(18.dp))
+                                .background(DarkSurfaceGlass)
+                                .border(1.dp, GlassBorderSubtle, RoundedCornerShape(18.dp))
+                                .clickable { viewModel.selectCategory(playlist.searchQuery) }
+                                .padding(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(130.dp)
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(DarkSurfaceVariant)
+                            ) {
+                                AsyncImage(
+                                    model = ImageRequest.Builder(LocalContext.current)
+                                        .data(playlist.coverUrl)
+                                        .crossfade(true)
+                                        .build(),
+                                    contentDescription = playlist.title,
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop
+                                )
+
+                                // Language Badge
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.TopStart)
+                                        .padding(6.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(Color.Black.copy(alpha = 0.75f))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = playlist.language.uppercase(),
+                                        color = Color.White,
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+
+                                // Spotify-style round green Play button
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.BottomEnd)
+                                        .padding(6.dp)
+                                        .size(36.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFF1DB954)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.PlayArrow,
+                                        contentDescription = "Play",
+                                        tint = Color.Black,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+
+                            Text(
+                                text = playlist.title,
+                                color = TextPrimary,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = playlist.subtitle,
+                                color = TextMuted,
+                                fontSize = 11.sp,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                lineHeight = 14.sp
+                            )
                         }
                     }
                 }

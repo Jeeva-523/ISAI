@@ -5,6 +5,9 @@ import { ChevronLeft, ChevronRight, Globe, Heart, Play, Search } from 'lucide-re
 import React, { useRef, useState } from 'react'
 import { ErrorBanner } from '../components/ErrorBanner'
 import { SkeletonSongCard } from '../components/SkeletonLoader'
+import { FeaturedPlaylistCard } from '../components/FeaturedPlaylistCard'
+import { FEATURED_PLAYLISTS, type FeaturedPlaylist } from '../data/featuredPlaylists'
+import { musicApi } from '@shared/api/music-api'
 import type { Artist } from '../components/ArtistCard'
 import type { UserProfile } from '../components/LoginModal'
 import type { Song } from '@shared/models/song'
@@ -201,9 +204,11 @@ export const HomePage: React.FC<HomePageProps> = ({
   onSeeAllNewReleases,
   picksSongs: propPicks,
   newReleases: propNewReleases,
-  mostPlayedSongs: propMostPlayed
+  mostPlayedSongs: propMostPlayed,
+  onSelectPlaylistDetail
 }) => {
   const [showLangDropdown, setShowLangDropdown] = useState(false)
+  const [playlistFilterLang, setPlaylistFilterLang] = useState<string>('All')
 
   // Language Resolution
   const rawLanguage = propLanguage || userProfile?.preferredLanguages?.[0] || 'Tamil'
@@ -220,6 +225,53 @@ export const HomePage: React.FC<HomePageProps> = ({
   const historyRowRef = useRef<HTMLDivElement>(null)
   const picksRowRef = useRef<HTMLDivElement>(null)
   const newReleasesRowRef = useRef<HTMLDivElement>(null)
+  const playlistRowRef = useRef<HTMLDivElement>(null)
+
+  const handlePlaylistClick = async (playlist: FeaturedPlaylist) => {
+    const initial = playlist.initialSongs && playlist.initialSongs.length > 0 ? playlist.initialSongs : []
+    if (onSelectPlaylistDetail) {
+      onSelectPlaylistDetail(
+        playlist.title,
+        playlist.description,
+        initial.length > 0 ? initial : picksSongs.slice(0, 10),
+        playlist.coverUrl,
+        playlist.gradient
+      )
+    }
+
+    try {
+      const fetched = await musicApi.searchSongs(playlist.query)
+      if (fetched && fetched.length > 0 && onSelectPlaylistDetail) {
+        const merged = deduplicateSongs([...initial, ...fetched])
+        onSelectPlaylistDetail(
+          playlist.title,
+          playlist.description,
+          merged,
+          playlist.coverUrl,
+          playlist.gradient
+        )
+      }
+    } catch (e) {
+      console.warn('[FeaturedPlaylist] Could not fetch more songs:', e)
+    }
+  }
+
+  const handlePlaylistPlay = async (playlist: FeaturedPlaylist) => {
+    const initial = playlist.initialSongs && playlist.initialSongs.length > 0 ? playlist.initialSongs : []
+    if (initial.length > 0 && onPlaySong) {
+      onPlaySong(initial[0], initial)
+      return
+    }
+
+    try {
+      const fetched = await musicApi.searchSongs(playlist.query)
+      if (fetched && fetched.length > 0 && onPlaySong) {
+        onPlaySong(fetched[0], fetched)
+      }
+    } catch (e) {
+      console.warn('[FeaturedPlaylist] Play error:', e)
+    }
+  }
 
   const scrollRow = (ref: React.RefObject<HTMLDivElement>, dir: 'left' | 'right') => {
     if (ref.current) {
@@ -244,6 +296,11 @@ export const HomePage: React.FC<HomePageProps> = ({
   const validTrending = deduplicated.filter((s) => isSongInLanguage(s, activeLangs))
   const rawPicks = deduplicateSongs([...validPicks, ...validTrending])
   const picksSongs = (rawPicks.length >= 5 ? rawPicks : deduplicated).slice(0, 35)
+
+  // Featured Spotify-Style Playlists (Language-Based)
+  const displayedPlaylists = playlistFilterLang === 'All'
+    ? FEATURED_PLAYLISTS
+    : FEATURED_PLAYLISTS.filter((p) => p.language.toLowerCase() === playlistFilterLang.toLowerCase())
 
   // Section 5: New Releases (Strictly in active language, min 30-35 songs)
   const validPropNew = (propNewReleases || []).filter((s) => isSongInLanguage(s, activeLangs))
@@ -579,6 +636,92 @@ export const HomePage: React.FC<HomePageProps> = ({
           </div>
         </div>
       )}
+
+      {/* Spotify-Style Featured Playlists 🎧 (Language-Based) */}
+      <div>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'flex-end',
+            marginBottom: '14px',
+            flexWrap: 'wrap',
+            gap: '12px'
+          }}
+        >
+          <div>
+            <h2
+              style={{
+                fontSize: '19px',
+                fontWeight: 800,
+                color: 'var(--text-primary)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+            >
+              Featured Playlists 🎧
+            </h2>
+            <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+              Spotify-style curated playlists in your favorite languages
+            </span>
+          </div>
+
+          {/* Language Filter Pills */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+            {['All', ...SUPPORTED_LANGUAGES].map((lang) => {
+              const isSelected = playlistFilterLang.toLowerCase() === lang.toLowerCase()
+              return (
+                <button
+                  key={lang}
+                  onClick={() => setPlaylistFilterLang(lang)}
+                  style={{
+                    padding: '5px 13px',
+                    borderRadius: '20px',
+                    background: isSelected ? 'var(--isai-lime)' : 'rgba(255, 255, 255, 0.08)',
+                    color: isSelected ? '#000000' : '#E5E7EB',
+                    border: isSelected ? '1px solid var(--isai-lime)' : '1px solid rgba(255, 255, 255, 0.12)',
+                    fontSize: '12px',
+                    fontWeight: isSelected ? 800 : 600,
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  {lang}
+                </button>
+              )
+            })}
+            <div style={{ display: 'flex', gap: '6px', marginLeft: '6px' }}>
+              <button className="control-btn" onClick={() => scrollRow(playlistRowRef, 'left')}>
+                <ChevronLeft size={18} />
+              </button>
+              <button className="control-btn" onClick={() => scrollRow(playlistRowRef, 'right')}>
+                <ChevronRight size={18} />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div
+          ref={playlistRowRef}
+          style={{
+            display: 'flex',
+            gap: '16px',
+            overflowX: 'auto',
+            scrollBehavior: 'smooth',
+            paddingBottom: '12px'
+          }}
+        >
+          {displayedPlaylists.map((playlist) => (
+            <FeaturedPlaylistCard
+              key={playlist.id}
+              playlist={playlist}
+              onClick={handlePlaylistClick}
+              onPlay={handlePlaylistPlay}
+            />
+          ))}
+        </div>
+      </div>
 
       {/* 4. Picks For You ✨ (YouTube Music Style Cards) */}
       <div>
