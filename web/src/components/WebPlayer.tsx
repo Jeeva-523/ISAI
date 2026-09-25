@@ -104,6 +104,7 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
   const [activeExpandedTab, setActiveExpandedTab] = useState<'queue' | 'lyrics'>('queue')
   const [toastMessage, setToastMessage] = useState<string | null>(null)
   const toastTimeoutRef = useRef<any>(null)
+  const volumeSyncTimeoutRef = useRef<any>(null)
 
   const showPlayerToast = (msg: string) => {
     if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current)
@@ -187,19 +188,24 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
     showPlayerToast('Share link ready!')
   }
 
-  // Remote active determination (Spotify Connect mode)
+  // Remote active determination (ISAI Connect mode)
   // Active when another device is set as the active player in Firebase playbackState
   const inListenTogetherRoom = Boolean(listenRoom)
   const isSeparateMode = storageService.isMultiDevicePlaybackSeparate()
+  const isRemoteOnline = connectedDevices.some(
+    (d) => d.deviceId === remoteState?.currentDeviceId && IsaiConnectService.isDeviceOnline(d)
+  )
   const isRemoteActive =
     !inListenTogetherRoom &&
     !isSeparateMode &&
     Boolean(
       remoteState &&
+      remoteState.isPlaying &&
       remoteState.currentDeviceId &&
       remoteState.currentDeviceId !== myDeviceId &&
       remoteState.currentTitle &&
-      Date.now() - (remoteState.updatedAt || 0) < 15 * 60 * 1000
+      Date.now() - (remoteState.updatedAt || 0) < 30000 &&
+      isRemoteOnline
     )
 
   // Pre-resolve audioUrl for remote track so it is instantly playable on transfer
@@ -422,7 +428,7 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
     }
     onTransferPlayback?.(transferred)
 
-    // If audio stream is not yet cached, resolve 320kbps stream via JioSaavn search
+    // If audio stream is not yet cached, resolve 320kbps stream via search
     if (!targetAudio && rawTitle) {
       try {
         const cleanTitle = cleanHtmlTitle(rawTitle)
@@ -779,10 +785,17 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
       if (audioRef.current) {
         if (audioRef.current.src !== activeAudioUrl) {
           audioRef.current.src = activeAudioUrl
-          audioRef.current.currentTime = seekTarget
+          if (seekTarget > 0) {
+            try {
+              audioRef.current.currentTime = seekTarget
+            } catch {}
+          }
         }
         audioRef.current.play().catch((error) => {
           console.warn('[WebPlayer] Autoplay catch:', error)
+          if (error.name === 'NotAllowedError') {
+            setNeedsAutoplayGesture(true)
+          }
         })
       }
     }
@@ -815,6 +828,9 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
       if (isPlaying) {
         audioRef.current.play().catch((error) => {
           console.warn('[WebPlayer] Playback play warning:', error)
+          if (error.name === 'NotAllowedError') {
+            setNeedsAutoplayGesture(true)
+          }
         })
       } else {
         audioRef.current.pause()
@@ -1044,20 +1060,30 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
       showPlayerToast(`👑 Sound/Volume is controlled by Host (${listenRoom.hostDeviceName || 'Host'})`)
       return
     }
+    // 1. Instant 0ms local audio and visual state change
+    if (audioRef.current) {
+      audioRef.current.volume = val
+    }
     setVolume(val)
     if (val === 0) setIsMuted(true)
     else setIsMuted(false)
-    if (audioRef.current) audioRef.current.volume = val
-    if (listenRoom && listenRoom.hostDeviceId === ListenTogetherService.getDeviceId()) {
-      ListenTogetherService.hostSetVolume(Math.round(val * 100))
+
+    // 2. Debounce heavy Firebase network sync so UI slider & audio never lag
+    if (volumeSyncTimeoutRef.current) {
+      clearTimeout(volumeSyncTimeoutRef.current)
     }
-    if (!isRemoteActive) {
-      if (!storageService.isMultiDevicePlaybackSeparate()) {
-        IsaiConnectService.updatePlaybackState({ volume: val })
+    volumeSyncTimeoutRef.current = setTimeout(() => {
+      if (listenRoom && listenRoom.hostDeviceId === ListenTogetherService.getDeviceId()) {
+        ListenTogetherService.hostSetVolume(Math.round(val * 100))
       }
-    } else {
-      IsaiConnectService.sendCommand('SET_VOLUME', { volume: val })
-    }
+      if (!isRemoteActive) {
+        if (!storageService.isMultiDevicePlaybackSeparate()) {
+          IsaiConnectService.updatePlaybackState({ volume: val })
+        }
+      } else {
+        IsaiConnectService.sendCommand('SET_VOLUME', { volume: val })
+      }
+    }, 80)
   }
 
   const handleAudioEnded = () => {
@@ -1329,7 +1355,27 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
                   showPlayerToast(`👑 Sound/Volume is controlled by Host (${listenRoom.hostDeviceName || 'Host'})`)
                   return
                 }
-                setIsMuted(!isMuted)
+                const nextMuted = !isMuted
+                setIsMuted(nextMuted)
+                const effectiveVol = nextMuted ? 0 : (volume || 0.8)
+                if (audioRef.current) {
+                  audioRef.current.volume = effectiveVol
+                }
+                if (volumeSyncTimeoutRef.current) {
+                  clearTimeout(volumeSyncTimeoutRef.current)
+                }
+                volumeSyncTimeoutRef.current = setTimeout(() => {
+                  if (listenRoom && listenRoom.hostDeviceId === ListenTogetherService.getDeviceId()) {
+                    ListenTogetherService.hostSetVolume(Math.round(effectiveVol * 100))
+                  }
+                  if (!isRemoteActive) {
+                    if (!storageService.isMultiDevicePlaybackSeparate()) {
+                      IsaiConnectService.updatePlaybackState({ volume: effectiveVol })
+                    }
+                  } else {
+                    IsaiConnectService.sendCommand('SET_VOLUME', { volume: effectiveVol })
+                  }
+                }, 80)
               }}
               title={isMuted ? 'Unmute' : 'Mute'}
             >
@@ -1342,6 +1388,7 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({
               max={1}
               step={0.01}
               value={isMuted ? 0 : volume}
+              onInput={handleVolumeChange}
               onChange={handleVolumeChange}
               disabled={Boolean(listenRoom && listenRoom.hostDeviceId !== ListenTogetherService.getDeviceId())}
               className="custom-range-slider"

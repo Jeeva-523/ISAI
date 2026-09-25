@@ -88,6 +88,7 @@ data class RemoteCommand(
 
 class IsaiConnectManager(private val context: Context) {
 
+    private val ioScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val prefs: SharedPreferences = context.getSharedPreferences("isai_connect_prefs", Context.MODE_PRIVATE)
     private val database: FirebaseDatabase = FirebaseDatabase.getInstance("https://isai-49b51-default-rtdb.firebaseio.com")
 
@@ -461,42 +462,10 @@ class IsaiConnectManager(private val context: Context) {
         if (userId.isEmpty()) return
         val stateRef = database.getReference("connect/$userId/playbackState")
         val current = _playbackState.value ?: PlaybackStateSync()
-
-        val updates = mutableMapOf<String, Any>(
-            "updatedAt" to System.currentTimeMillis(),
-            "updatedByDeviceId" to deviceId
-        )
-
         val targetDevice = currentDeviceId ?: current.currentDeviceId.ifBlank { deviceId }
-        updates["currentDeviceId"] = targetDevice
-
-        song?.let {
-            updates["currentSongId"] = it.videoId
-            updates["currentTitle"] = it.title
-            updates["currentArtist"] = it.channelTitle
-            updates["currentArtwork"] = it.thumbnailUrl
-            it.audioUrl?.let { url -> if (url.isNotBlank()) updates["currentAudioUrl"] = url }
-        }
-        isPlaying?.let { updates["isPlaying"] = it }
-        positionMs?.let { updates["positionMs"] = it }
-        durationMs?.let { updates["durationMs"] = it }
-        volume?.let { updates["volume"] = it }
-        queueIndex?.let { updates["queueIndex"] = it }
-        queue?.let { qList ->
-            updates["queue"] = qList.map {
-                mapOf(
-                    "id" to it.videoId,
-                    "title" to it.title,
-                    "artist" to it.channelTitle,
-                    "artwork" to it.thumbnailUrl,
-                    "audioUrl" to (it.audioUrl ?: "")
-                )
-            }
-        }
-
-        // Optimistically update local playbackState so isMyDeviceActive() is immediately accurate
+        val now = System.currentTimeMillis()
         val updatedLocal = current.copy(
-            updatedAt = updates["updatedAt"] as Long,
+            updatedAt = now,
             updatedByDeviceId = deviceId,
             currentDeviceId = targetDevice,
             currentSongId = song?.videoId ?: current.currentSongId,
@@ -509,7 +478,7 @@ class IsaiConnectManager(private val context: Context) {
             durationMs = durationMs ?: current.durationMs,
             volume = volume ?: current.volume,
             queueIndex = queueIndex ?: current.queueIndex,
-            queue = queue?.map {
+            queue = queue?.take(25)?.map {
                 SyncSong(
                     id = it.videoId,
                     title = it.title,
@@ -521,7 +490,41 @@ class IsaiConnectManager(private val context: Context) {
         )
         _playbackState.value = updatedLocal
 
-        stateRef.updateChildren(updates)
+        ioScope.launch {
+            try {
+                val updates: MutableMap<String, Any> = mutableMapOf(
+                    "updatedAt" to now,
+                    "updatedByDeviceId" to deviceId,
+                    "currentDeviceId" to targetDevice
+                )
+                song?.let {
+                    updates["currentSongId"] = it.videoId
+                    updates["currentTitle"] = it.title
+                    updates["currentArtist"] = it.channelTitle
+                    updates["currentArtwork"] = it.thumbnailUrl
+                    it.audioUrl?.let { url -> if (url.isNotBlank()) updates["currentAudioUrl"] = url }
+                }
+                isPlaying?.let { updates["isPlaying"] = it }
+                positionMs?.let { updates["positionMs"] = it }
+                durationMs?.let { updates["durationMs"] = it }
+                volume?.let { updates["volume"] = it }
+                queueIndex?.let { updates["queueIndex"] = it }
+                queue?.let { qList ->
+                    updates["queue"] = qList.take(20).map {
+                        mapOf(
+                            "id" to it.videoId,
+                            "title" to it.title,
+                            "artist" to it.channelTitle,
+                            "artwork" to it.thumbnailUrl,
+                            "audioUrl" to (it.audioUrl ?: "")
+                        )
+                    }
+                }
+                stateRef.updateChildren(updates)
+            } catch (e: Exception) {
+                Log.w("IsaiConnect", "updatePlaybackState background error: ${e.message}")
+            }
+        }
     }
 
     fun transferPlaybackToDevice(

@@ -1,8 +1,10 @@
 package com.saavn.music.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -10,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -53,6 +56,7 @@ fun AddToPlaylistDialog(
     val playlists by viewModel.playlists.collectAsState()
     var isCreatingNew by remember { mutableStateOf(false) }
     var newPlaylistName by remember { mutableStateOf("") }
+    var isPublic by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -79,6 +83,7 @@ fun AddToPlaylistDialog(
                         value = newPlaylistName,
                         onValueChange = { newPlaylistName = it },
                         label = { Text("New Playlist Name") },
+                        placeholder = { Text("e.g. My Favorites") },
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = NeonCyan,
@@ -88,6 +93,90 @@ fun AddToPlaylistDialog(
                         ),
                         modifier = Modifier.fillMaxWidth()
                     )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Text(
+                        text = "Privacy Setting:",
+                        color = TextSecondary,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // Private Option
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (!isPublic) NeonCyan.copy(alpha = 0.15f) else DarkSurfaceVariant)
+                                .border(
+                                    1.2.dp,
+                                    if (!isPublic) NeonCyan else DarkBorder,
+                                    RoundedCornerShape(10.dp)
+                                )
+                                .clickable { isPublic = false }
+                                .padding(8.dp)
+                        ) {
+                            Column {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(text = "🔒", fontSize = 14.sp)
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "Private",
+                                        color = if (!isPublic) NeonCyan else TextPrimary,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "Only you can see",
+                                    color = TextMuted,
+                                    fontSize = 10.sp
+                                )
+                            }
+                        }
+
+                        // Public Option
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (isPublic) NeonCyan.copy(alpha = 0.15f) else DarkSurfaceVariant)
+                                .border(
+                                    1.2.dp,
+                                    if (isPublic) NeonCyan else DarkBorder,
+                                    RoundedCornerShape(10.dp)
+                                )
+                                .clickable { isPublic = true }
+                                .padding(8.dp)
+                        ) {
+                            Column {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(text = "🌐", fontSize = 14.sp)
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "Public",
+                                        color = if (isPublic) NeonCyan else TextPrimary,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "Shared with app users",
+                                    color = TextMuted,
+                                    fontSize = 10.sp
+                                )
+                            }
+                        }
+                    }
                 } else {
                     if (playlists.isEmpty()) {
                         Text(
@@ -132,7 +221,7 @@ fun AddToPlaylistDialog(
                 TextButton(
                     onClick = {
                         if (newPlaylistName.isNotBlank()) {
-                            val created = viewModel.localStorage.createPlaylist(newPlaylistName.trim())
+                            val created = viewModel.createPlaylist(newPlaylistName.trim(), isPublic = isPublic)
                             viewModel.addSongToPlaylist(created.id, song)
                             onDismiss()
                         }

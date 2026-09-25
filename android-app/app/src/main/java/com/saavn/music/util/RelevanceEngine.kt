@@ -689,8 +689,13 @@ object RelevanceEngine {
     fun deduplicateSongs(songs: List<YouTubeSong>): List<YouTubeSong> {
         if (songs.isEmpty()) return emptyList()
         val result = mutableListOf<YouTubeSong>()
+        val seenIds = HashSet<String>(songs.size)
+        val seenBaseTitles = HashSet<String>(songs.size)
         for (song in songs) {
             if (song.title.isBlank() || isPlaylistOrCompilation(song)) continue
+            if (song.videoId.isNotBlank() && !seenIds.add(song.videoId)) continue
+            val base = cleanBaseTitle(song.title)
+            if (base.isNotBlank() && !seenBaseTitles.add(base)) continue
             if (result.none { isSameSongOrDuplicate(it, song) }) {
                 result.add(song)
             }

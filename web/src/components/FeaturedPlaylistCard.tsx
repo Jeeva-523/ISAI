@@ -104,7 +104,7 @@ export const FeaturedPlaylistCard: React.FC<FeaturedPlaylistCardProps> = ({
           {playlist.language}
         </div>
 
-        {/* Floating Spotify-Style Circular Play Button */}
+        {/* Floating Circular Play Button */}
         <div
           onClick={(e) => {
             e.stopPropagation()

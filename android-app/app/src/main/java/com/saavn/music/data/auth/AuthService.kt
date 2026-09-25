@@ -181,6 +181,24 @@ class AuthService private constructor(context: Context) {
     }
 
     private fun mapFirebaseError(e: Exception): String {
+        val rawMessage = e.message ?: ""
+        val errorCauses = buildString {
+            append(rawMessage)
+            var current: Throwable? = e.cause
+            while (current != null) {
+                append(" ")
+                append(current.message ?: "")
+                current = current.cause
+            }
+        }
+
+        if (errorCauses.contains("CertPathValidatorException", ignoreCase = true) ||
+            errorCauses.contains("Trust anchor", ignoreCase = true) ||
+            errorCauses.contains("certification path", ignoreCase = true)
+        ) {
+            return "Security Certificate Error: Please check your phone's Date & Time, or switch from Wi-Fi to Mobile Data (Wi-Fi proxy / firewall is blocking secure connection)."
+        }
+
         if (e is FirebaseAuthException) {
             return when (e.errorCode) {
                 "ERROR_EMAIL_ALREADY_IN_USE", "auth/email-already-in-use" ->

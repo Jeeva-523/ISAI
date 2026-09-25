@@ -49,15 +49,48 @@ import com.saavn.music.data.trending.TrendingService
 import com.saavn.music.util.RelevanceEngine
 import com.saavn.music.util.SongMood
 import com.saavn.music.data.repository.UpdateDownloadState
+import com.google.firebase.database.DataSnapshot
+import com.google.firebase.database.DatabaseError
+import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.database.ValueEventListener
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
+import com.saavn.music.data.model.SearchPlaylistItem
+import com.saavn.music.data.repository.EditorialPlaylistsCatalog
+import com.saavn.music.data.repository.KadhalVibesCatalog
+import com.saavn.music.data.repository.IdhayamPesutheyCatalog
+import com.saavn.music.data.repository.SemmaKuthuCatalog
+import com.saavn.music.data.repository.MassModeCatalog
+import com.saavn.music.data.repository.GaanaPettaiCatalog
+import com.saavn.music.data.repository.JannalOraPayanamCatalog
+import com.saavn.music.data.repository.IravuMelodiesCatalog
+import com.saavn.music.data.repository.PudhuUdhayamCatalog
+import com.saavn.music.data.repository.IraiIsaiCatalog
+import com.saavn.music.data.repository.SchoolDaysMemoriesCatalog
 
 enum class AppScreen {
     HOME,
     SEARCH,
     LIBRARY,
-    PROFILE
+    PROFILE,
+    PLAYLIST_DETAIL
 }
 
-data class SpotifyDailyMix(
+data class PlaylistDetailState(
+    val id: String = "",
+    val title: String = "",
+    val subtitle: String = "",
+    val language: String = "",
+    val coverUrl: String = "",
+    val searchQuery: String = "",
+    val songs: List<YouTubeSong> = emptyList(),
+    val isLoading: Boolean = false,
+    val creatorName: String = "",
+    val isPublic: Boolean = false,
+    val isCustomPlaylist: Boolean = false
+)
+
+data class IsaiDailyMix(
     val id: String,
     val title: String,
     val subtitle: String,
@@ -258,7 +291,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _updateDownloadState = MutableStateFlow<UpdateDownloadState>(UpdateDownloadState.Idle)
     val updateDownloadState: StateFlow<UpdateDownloadState> = _updateDownloadState.asStateFlow()
 
-    // Multi-Device Playback Mode: Separate (independent on 2+ devices) vs Sync (Spotify Connect)
+    // Multi-Device Playback Mode: Separate (independent on 2+ devices) vs Sync (ISAI Connect)
     val isMultiDevicePlaybackSeparate: StateFlow<Boolean> = localStorage.isMultiDevicePlaybackSeparate
 
     fun setMultiDevicePlaybackSeparate(enabled: Boolean) {
@@ -268,7 +301,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     val dynamicUiConfig: StateFlow<com.saavn.music.data.model.DynamicUiConfig> = dynamicUiService.uiConfig
 
-    // Spotify-like Recommendation Context & Session Seed
+    // Recommendation Context & Session Seed
     var sessionSeedSong: YouTubeSong? = null
     var recommendationGeneration: Long = 0L
 
@@ -423,28 +456,34 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // Navigation Screen
     private val _currentScreen = MutableStateFlow(AppScreen.HOME)
     val currentScreen: StateFlow<AppScreen> = _currentScreen.asStateFlow()
+    private var previousScreen: AppScreen = AppScreen.HOME
+
+    // Playlist Detail Screen State & In-Memory Fast Cache
+    private val playlistSongsCache = java.util.concurrent.ConcurrentHashMap<String, List<YouTubeSong>>()
+    private val _playlistDetail = MutableStateFlow<PlaylistDetailState?>(null)
+    val playlistDetail: StateFlow<PlaylistDetailState?> = _playlistDetail.asStateFlow()
 
     // Active Tamil Music Category
     private val _selectedCategory = MutableStateFlow("Most Played")
     val selectedCategory: StateFlow<String> = _selectedCategory.asStateFlow()
 
-    // Home Categorized Songs (Pre-seeded with CURATED_TAMIL_SONGS so Home is never empty)
-    private val _trendingSongs = MutableStateFlow<List<YouTubeSong>>(YouTubeMusicRepository.CURATED_TAMIL_SONGS)
+    // Home Categorized Songs (Starts empty and dynamically populates from live APIs)
+    private val _trendingSongs = MutableStateFlow<List<YouTubeSong>>(emptyList())
     val trendingSongs: StateFlow<List<YouTubeSong>> = _trendingSongs.asStateFlow()
 
     private val _popularArtists = MutableStateFlow<List<com.saavn.music.data.trending.TopArtistData>>(emptyList())
     val popularArtists: StateFlow<List<com.saavn.music.data.trending.TopArtistData>> = _popularArtists.asStateFlow()
 
-    private val _categorySongs = MutableStateFlow<List<YouTubeSong>>(YouTubeMusicRepository.CURATED_TAMIL_SONGS)
+    private val _categorySongs = MutableStateFlow<List<YouTubeSong>>(emptyList())
     val categorySongs: StateFlow<List<YouTubeSong>> = _categorySongs.asStateFlow()
 
-    private val _latestReleases = MutableStateFlow<List<YouTubeSong>>(YouTubeMusicRepository.CURATED_TAMIL_SONGS.take(35))
+    private val _latestReleases = MutableStateFlow<List<YouTubeSong>>(emptyList())
     val latestReleases: StateFlow<List<YouTubeSong>> = _latestReleases.asStateFlow()
 
-    private val _picksSongs = MutableStateFlow<List<YouTubeSong>>(YouTubeMusicRepository.CURATED_TAMIL_SONGS.take(35))
+    private val _picksSongs = MutableStateFlow<List<YouTubeSong>>(emptyList())
     val picksSongs: StateFlow<List<YouTubeSong>> = _picksSongs.asStateFlow()
 
-    private val _mostPlayedSongs = MutableStateFlow<List<YouTubeSong>>(YouTubeMusicRepository.CURATED_TAMIL_SONGS.take(35))
+    private val _mostPlayedSongs = MutableStateFlow<List<YouTubeSong>>(emptyList())
     val mostPlayedSongs: StateFlow<List<YouTubeSong>> = _mostPlayedSongs.asStateFlow()
 
     private val _isLoadingHome = MutableStateFlow(false)
@@ -456,6 +495,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _searchResults = MutableStateFlow<List<YouTubeSong>>(emptyList())
     val searchResults: StateFlow<List<YouTubeSong>> = _searchResults.asStateFlow()
+
+    private val _searchPlaylists = MutableStateFlow<List<SearchPlaylistItem>>(emptyList())
+    val searchPlaylists: StateFlow<List<SearchPlaylistItem>> = _searchPlaylists.asStateFlow()
 
     private val _isSearching = MutableStateFlow(false)
     val isSearching: StateFlow<Boolean> = _isSearching.asStateFlow()
@@ -524,21 +566,35 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _recommendedReason = MutableStateFlow("✨ Based on your listening")
     val recommendedReason: StateFlow<String> = _recommendedReason.asStateFlow()
 
+    private val _similarToRecentSongs = MutableStateFlow<List<YouTubeSong>>(emptyList())
+    val similarToRecentSongs: StateFlow<List<YouTubeSong>> = _similarToRecentSongs.asStateFlow()
+
+    private val _similarToRecentTitle = MutableStateFlow<String>("")
+    val similarToRecentTitle: StateFlow<String> = _similarToRecentTitle.asStateFlow()
+
     private val _isLoadingSuggestions = MutableStateFlow(false)
     val isLoadingSuggestions: StateFlow<Boolean> = _isLoadingSuggestions.asStateFlow()
 
-    // Spotify-Style Daily Mixes
-    private val _spotifyDailyMixes = MutableStateFlow<List<SpotifyDailyMix>>(emptyList())
-    val spotifyDailyMixes: StateFlow<List<SpotifyDailyMix>> = _spotifyDailyMixes.asStateFlow()
+    // ISAI Daily Mixes
+    private val _isaiDailyMixes = MutableStateFlow<List<IsaiDailyMix>>(emptyList())
+    val isaiDailyMixes: StateFlow<List<IsaiDailyMix>> = _isaiDailyMixes.asStateFlow()
 
     // Storage references
     val favorites: StateFlow<List<YouTubeSong>> = localStorage.favorites
     val playlists: StateFlow<List<UserPlaylist>> = localStorage.playlists
     val recentlyPlayed: StateFlow<List<YouTubeSong>> = localStorage.recentlyPlayed
 
+    // Community / Public Playlists
+    private val gson = Gson()
+    private val _publicPlaylists = MutableStateFlow<List<UserPlaylist>>(emptyList())
+    val publicPlaylists: StateFlow<List<UserPlaylist>> = _publicPlaylists.asStateFlow()
+
     private var searchJob: Job? = null
 
     init {
+        // Listen to Community Public Playlists
+        listenToPublicPlaylists()
+
         // Pre-fill audio cache with curated Tamil songs for instant 0ms playback
         YouTubeMusicRepository.CURATED_TAMIL_SONGS.forEach { curated ->
             if (!curated.audioUrl.isNullOrBlank()) {
@@ -600,10 +656,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             localStorage.recentlyPlayed.collect { list ->
                 if (list.isNotEmpty()) {
                     isaiConnectManager.syncRecentlyPlayed(list)
-                }
-                // Only trigger initial recommendation load if list is currently empty to prevent reshuffling on every track change
-                if (_personalizedRecommendations.value.isEmpty()) {
-                    loadPersonalizedRecommendations()
+                    // Live YouTube Music dynamic adaptation: Update recommendations based on what the user listens to
+                    loadPersonalizedRecommendations(force = true)
                 }
             }
         }
@@ -837,7 +891,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        // Remote command listener: Spotify Connect commands received from Web or other devices
+        // Remote command listener: ISAI Connect commands received from Web or other devices
         viewModelScope.launch {
             isaiConnectManager.remoteCommand.collect { cmd ->
                 if (cmd.issuedByDeviceId != isaiConnectManager.deviceId) {
@@ -961,7 +1015,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun loadPersonalizedRecommendations(force: Boolean = false) {
         val now = System.currentTimeMillis()
-        if (!force && _personalizedRecommendations.value.isNotEmpty() && (now - lastRecommendedFetchTime < 15 * 60 * 1000L)) {
+        if (!force && _personalizedRecommendations.value.isNotEmpty() && (now - lastRecommendedFetchTime < 3000L)) {
             return
         }
 
@@ -973,20 +1027,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val favList = localStorage.favorites.value
                 val allUserSongs = (recentList + favList).distinctBy { it.videoId }
 
-                if (allUserSongs.isNotEmpty()) {
-                    // Score each song based on actual listening count + favorites (+6) + recency bonus
+                if (recentList.isNotEmpty() || allUserSongs.isNotEmpty()) {
+                    // Massive recency weight so newly played songs immediately reshape recommendations
                     val scoredSongs = allUserSongs.map { song ->
                         val playCount = songPlayCounts[song.videoId] ?: 0
                         val isFav = favList.any { it.videoId == song.videoId }
                         val recencyIndex = recentList.indexOfFirst { it.videoId == song.videoId }
-                        val recencyBonus = if (recencyIndex >= 0) maxOf(0, 10 - recencyIndex) else 0
-                        val score = (playCount * 3) + (if (isFav) 6 else 0) + recencyBonus
+                        val recencyBonus = if (recencyIndex >= 0) maxOf(0, 50 - (recencyIndex * 5)) else 0
+                        val score = (playCount * 3) + (if (isFav) 10 else 0) + recencyBonus
                         song to score
                     }.sortedByDescending { it.second }
 
                     val topSong = scoredSongs.firstOrNull()?.first
+                    val latestSong = recentList.firstOrNull() ?: topSong
 
-                    // Aggregate artist affinity from artist play counts + song scores
+                    // Aggregate artist affinity
                     val aggregatedArtistScores = mutableMapOf<String, Int>()
                     for ((art, cnt) in artistPlayCounts) {
                         aggregatedArtistScores[art] = cnt * 3
@@ -1005,65 +1060,65 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     }
 
                     val topArtist = aggregatedArtistScores.maxByOrNull { it.value }?.key
-                    val currentAnchor = "$topArtist|${topSong?.videoId}"
+                    val activeLangs = _preferredLanguages.value.ifEmpty { listOf("tamil") }
+                    val primaryLang = activeLangs.first().lowercase()
 
-                    if (!force && currentAnchor == lastRecommendedAnchor && _personalizedRecommendations.value.isNotEmpty()) {
-                        return@launch
+                    val latestArtist = latestSong?.channelTitle
+                        ?.replace(" - Topic", "")
+                        ?.replace(" Official", "")
+                        ?.split("•")?.first()
+                        ?.split(",")?.first()
+                        ?.split("&")?.first()
+                        ?.trim() ?: ""
+
+                    val cleanLatestTitle = latestSong?.title
+                        ?.replace(Regex("\\s*[|•].*$"), "")
+                        ?.replace(Regex("\\s*\\(.*?(official|video|audio|lyrics|hd|4k|song|teaser|trailer|promo).*?\\)", RegexOption.IGNORE_CASE), "")
+                        ?.replace(Regex("\\s*\\[.*?(official|video|audio|lyrics|hd|4k|song|teaser|trailer|promo).*?\\]", RegexOption.IGNORE_CASE), "")
+                        ?.trim() ?: ""
+
+                    // Build dynamic queries based on what the user listened to
+                    val queries = mutableListOf<String>()
+                    if (cleanLatestTitle.isNotBlank()) {
+                        queries.add("$cleanLatestTitle $primaryLang")
+                        latestSong?.let { queries.add(RelevanceEngine.getRelevantSearchQuery(it, primaryLang)) }
+                    }
+                    if (latestArtist.isNotBlank() && latestArtist != "Tamil Artist") {
+                        queries.add("$latestArtist $primaryLang hits")
+                    }
+                    if (!topArtist.isNullOrBlank() && topArtist != latestArtist) {
+                        queries.add("$topArtist $primaryLang songs")
                     }
 
-                    if (topSong != null || !topArtist.isNullOrBlank()) {
-                        val activeLangs = _preferredLanguages.value.ifEmpty { listOf("tamil") }
-                        val dominantMood = topSong?.let { RelevanceEngine.detectSongMood(it) } ?: SongMood.MELODY_ROMANCE
+                    if (cleanLatestTitle.isNotBlank()) {
+                        _recommendedReason.value = "Because you listened to ${cleanLatestTitle.take(26)}"
+                        _similarToRecentTitle.value = "Similar to ${cleanLatestTitle.take(24)}"
+                    } else if (!topArtist.isNullOrBlank()) {
+                        _recommendedReason.value = "Because you frequently listen to $topArtist"
+                        _similarToRecentTitle.value = "More from $topArtist"
+                    }
 
-                        val searchTarget = if (!topArtist.isNullOrBlank()) {
-                            "$topArtist ${activeLangs.first()} songs"
-                        } else {
-                            RelevanceEngine.getRelevantSearchQuery(topSong!!, activeLangs.first())
+                    val searchDeferred = queries.take(4).map { q ->
+                        async {
+                            musicRepo.search(q, limit = 25).getOrNull()?.map { it.toYouTubeSong() } ?: emptyList()
                         }
+                    }
+                    val fetched = searchDeferred.awaitAll().flatten()
+                    val deduped = ytRepo.deduplicateSongs(fetched)
+                        .filter { com.saavn.music.util.RelevanceEngine.isSongInLanguage(it, activeLangs) }
 
-                        if (!topArtist.isNullOrBlank()) {
-                            _recommendedReason.value = "Because you frequently listen to $topArtist"
-                        } else {
-                            _recommendedReason.value = "Based on your most played songs"
-                        }
+                    // Exclude the currently played song to give genuine discovery
+                    val freshRecs = deduped.filterNot { rec ->
+                        recentList.take(3).any { ytRepo.isSameSong(it, rec) }
+                    }
+                    val finalRecs = if (freshRecs.size >= 10) freshRecs else deduped
 
-                        val saavnResult = musicRepo.search(searchTarget, limit = 40)
-                        val rawRecSongs = saavnResult.getOrNull()?.map { it.toYouTubeSong() } ?: emptyList()
-
-                        // Also fetch related songs for topSong if available
-                        val extraRelated = if (topSong != null) {
-                            val relQ = RelevanceEngine.getRelevantSearchQuery(topSong, activeLangs.first())
-                            if (relQ != searchTarget) {
-                                musicRepo.search(relQ, limit = 20).getOrNull()?.map { it.toYouTubeSong() } ?: emptyList()
-                            } else emptyList()
-                        } else emptyList()
-
-                        val combinedCandidates = ytRepo.deduplicateSongs(rawRecSongs + extraRelated)
-                        if (combinedCandidates.isNotEmpty()) {
-                            val validCombined = combinedCandidates.filter { com.saavn.music.util.RelevanceEngine.isSongInLanguage(it, activeLangs) }
-                            // Filter candidate songs by relevance to user's most listened songs and mood
-                            val filtered = validCombined.filter { candidate ->
-                                val alreadyListened = allUserSongs.any { ytRepo.isSameSong(it, candidate) }
-                                if (alreadyListened) return@filter false
-
-                                if (topSong != null) {
-                                    RelevanceEngine.scoreSongRelevance(topSong, candidate, activeLangs) > 0
-                                } else {
-                                    RelevanceEngine.detectSongMood(candidate) == dominantMood
-                                }
-                            }
-
-                            val finalRecs = if (filtered.size >= 6) filtered else validCombined.filterNot { c ->
-                                allUserSongs.any { ytRepo.isSameSong(it, c) }
-                            }
-
-                            if (finalRecs.isNotEmpty()) {
-                                _personalizedRecommendations.value = finalRecs.take(35)
-                                lastRecommendedAnchor = currentAnchor
-                                lastRecommendedFetchTime = now
-                                return@launch
-                            }
-                        }
+                    if (finalRecs.isNotEmpty()) {
+                        _personalizedRecommendations.value = finalRecs.take(40)
+                        _picksSongs.value = finalRecs.take(40)
+                        _similarToRecentSongs.value = finalRecs.take(20)
+                        lastRecommendedFetchTime = now
+                        return@launch
                     }
                 }
 
@@ -1076,8 +1131,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val heroExclude = _trendingSongs.value.take(4).map { it.videoId }.toSet()
                 val distinctRec = dedupedRec.filterNot { heroExclude.contains(it.videoId) }
                 val recs = if (distinctRec.isNotEmpty()) distinctRec.take(35) else dedupedRec.take(35)
-                val curatedFallback = if (langs.contains("tamil")) YouTubeMusicRepository.CURATED_TAMIL_SONGS else emptyList()
-                _personalizedRecommendations.value = (recs + curatedFallback).distinctBy { it.videoId }.take(35)
+                val finalDefault = recs.distinctBy { it.videoId }.take(35)
+                _personalizedRecommendations.value = finalDefault
+                _picksSongs.value = finalDefault
+                _similarToRecentSongs.value = emptyList()
                 lastRecommendedFetchTime = now
             } catch (_: Exception) {}
         }
@@ -1096,11 +1153,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     val t = s.title.lowercase()
                     t.contains("trending") || t.contains("jukebox") || t.contains("full album") || t.contains("non stop")
                 }
-                val tamilFallback = if (langs.contains("tamil")) YouTubeMusicRepository.CURATED_TAMIL_SONGS else emptyList()
                 val mostPlayed: List<YouTubeSong>
                 if (cleanSaavn.isNotEmpty()) {
                     val deduped = ytRepo.deduplicateSongs(cleanSaavn)
-                    val pool = (deduped + tamilFallback).distinctBy { it.videoId }
+                    val pool = deduped.distinctBy { it.videoId }
                     mostPlayed = trendingService.getMostPlayedSongs(pool).filter { com.saavn.music.util.RelevanceEngine.isSongInLanguage(it, langs) }.take(40)
                     _trendingSongs.value = mostPlayed
                     _categorySongs.value = mostPlayed
@@ -1112,7 +1168,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         t.contains("trending") || t.contains("jukebox") || t.contains("full album") || t.contains("non stop")
                     }
                     val deduped = ytRepo.deduplicateSongs(trending)
-                    val pool = (deduped + tamilFallback).distinctBy { it.videoId }
+                    val pool = deduped.distinctBy { it.videoId }
                     mostPlayed = trendingService.getMostPlayedSongs(pool).filter { com.saavn.music.util.RelevanceEngine.isSongInLanguage(it, langs) }.take(40)
                     _trendingSongs.value = mostPlayed
                     _categorySongs.value = mostPlayed
@@ -1152,7 +1208,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     _popularArtists.value = artists
                 }
 
-                // Load Spotify-Style Daily Mixes (curated by preferred language with 30 songs each)
+                // Load Curated Daily Mixes (curated by preferred language with 30 songs each)
                 loadDailyMixes(_preferredLanguages.value)
 
                 // Load Popular New Releases (Released in last 30 days)
@@ -1188,11 +1244,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
                     val dedupedNew = ytRepo.deduplicateSongs(cleanNew)
                     val poolTrending = _trendingSongs.value.filter { com.saavn.music.util.RelevanceEngine.isSongInLanguage(it, langs) }
-                    _latestReleases.value = (dedupedNew + poolTrending.drop(5) + tamilFallback).distinctBy { it.videoId }.take(35)
+                    _latestReleases.value = (dedupedNew + poolTrending.drop(5)).distinctBy { it.videoId }.take(35)
                 } catch (_: Exception) {
                     if (_latestReleases.value.isEmpty()) {
                         val poolTrending = _trendingSongs.value.filter { com.saavn.music.util.RelevanceEngine.isSongInLanguage(it, langs) }
-                        _latestReleases.value = (poolTrending.drop(5) + tamilFallback).distinctBy { it.videoId }.take(35)
+                        _latestReleases.value = poolTrending.drop(5).distinctBy { it.videoId }.take(35)
                     }
                 }
 
@@ -1200,7 +1256,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 loadPersonalizedRecommendations(force = true)
                 val validRecs = _personalizedRecommendations.value.filter { com.saavn.music.util.RelevanceEngine.isSongInLanguage(it, langs) }
                 val poolTrending = _trendingSongs.value.filter { com.saavn.music.util.RelevanceEngine.isSongInLanguage(it, langs) }
-                val picks = (validRecs + poolTrending + tamilFallback).distinctBy { it.videoId }.take(35)
+                val picks = (validRecs + poolTrending).distinctBy { it.videoId }.take(35)
                 _picksSongs.value = picks
 
                 // Sync unified authoritative feed revision to Firebase RTDB for web & mobile consistency
@@ -1215,29 +1271,30 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     mostPlayed = _mostPlayedSongs.value
                 )
                 isaiConnectManager.syncHomeFeed(authoritativeFeed)
+
+                // Pre-warm top featured playlists in background so clicking them opens instantly with 0ms delay
+                viewModelScope.launch(Dispatchers.IO) {
+                    preWarmFeaturedPlaylists(primaryLang)
+                }
             } catch (e: Exception) {
                 try {
                     val langs = _preferredLanguages.value.ifEmpty { listOf("tamil") }
-                    val tamilFallback = if (langs.contains("tamil")) YouTubeMusicRepository.CURATED_TAMIL_SONGS else emptyList()
                     val trending = ytRepo.getTrendingSongs(langs).filterNot { s ->
                         val t = s.title.lowercase()
                         t.contains("trending") || t.contains("jukebox") || t.contains("full album") || t.contains("non stop")
                     }
                     val deduped = ytRepo.deduplicateSongs(trending)
-                    val pool = (deduped + tamilFallback).distinctBy { it.videoId }
+                    val pool = deduped.distinctBy { it.videoId }
                     val mostPlayed = trendingService.getMostPlayedSongs(pool).take(40)
-                    _trendingSongs.value = mostPlayed
-                    _categorySongs.value = mostPlayed
-                    _mostPlayedSongs.value = mostPlayed
-                    _picksSongs.value = pool.take(35)
-                    _latestReleases.value = (pool.drop(5) + tamilFallback).distinctBy { it.videoId }.take(35)
+                    if (mostPlayed.isNotEmpty()) {
+                        _trendingSongs.value = mostPlayed
+                        _categorySongs.value = mostPlayed
+                        _mostPlayedSongs.value = mostPlayed
+                        _picksSongs.value = pool.take(35)
+                        _latestReleases.value = pool.drop(5).distinctBy { it.videoId }.take(35)
+                    }
                 } catch (_: Exception) {
-                    val fallback = if (_preferredLanguages.value.any { it != "tamil" }) emptyList() else YouTubeMusicRepository.CURATED_TAMIL_SONGS
-                    _trendingSongs.value = fallback
-                    _categorySongs.value = fallback
-                    _mostPlayedSongs.value = fallback
-                    _picksSongs.value = fallback.take(10)
-                    _latestReleases.value = fallback.drop(4).take(12)
+                    // Retain dynamic in-memory results during network interruptions
                 }
             } finally {
                 _isLoadingHome.value = false
@@ -1250,6 +1307,734 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _searchQuery.value = category
         setScreen(AppScreen.SEARCH)
         onSearchQueryChanged(category)
+    }
+
+    fun openFeaturedPlaylist(
+        id: String,
+        title: String,
+        subtitle: String,
+        language: String,
+        coverUrl: String,
+        searchQuery: String
+    ) {
+        if (_currentScreen.value != AppScreen.PLAYLIST_DETAIL) {
+            previousScreen = _currentScreen.value
+        }
+
+        val idNorm = id.lowercase().trim()
+        val langNorm = language.ifBlank { "tamil" }.lowercase().trim()
+        val cacheKey = "${idNorm}_$langNorm"
+
+        // 1. FAST IN-MEMORY CACHE (0ms Instant Load)
+        val cached = playlistSongsCache[cacheKey]
+            ?: playlistSongsCache[idNorm]
+            ?: playlistSongsCache[title.lowercase().trim()]
+
+        if (cached != null && cached.isNotEmpty()) {
+            _playlistDetail.value = PlaylistDetailState(
+                id = id,
+                title = title,
+                subtitle = subtitle,
+                language = language,
+                coverUrl = coverUrl,
+                searchQuery = searchQuery,
+                songs = cached,
+                isLoading = false
+            )
+            _currentScreen.value = AppScreen.PLAYLIST_DETAIL
+            return
+        }
+
+        // 2. INSTANT PRE-SEEDING from in-memory pools (User NEVER sees a blank screen)
+        val preSeeded = getPreSeededPlaylistSongs(id, title, language)
+
+        _playlistDetail.value = PlaylistDetailState(
+            id = id,
+            title = title,
+            subtitle = subtitle,
+            language = language,
+            coverUrl = coverUrl,
+            searchQuery = searchQuery,
+            songs = preSeeded,
+            isLoading = preSeeded.isEmpty()
+        )
+        _currentScreen.value = AppScreen.PLAYLIST_DETAIL
+        loadPlaylistSongs(id, title, searchQuery, language)
+    }
+
+    private fun cleanPlaylistQuery(text: String): String {
+        return text
+            .replace(Regex("[\\p{So}\\p{Cn}]"), " ")
+            .replace(Regex("(?i)\\b(50\\+\\s*songs|isai\\s*editorial|curated|playlist|tracks)\\b"), " ")
+            .replace(Regex("[^\\p{L}\\p{N}\\s]"), " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+    }
+
+    private fun getPreSeededPlaylistSongs(playlistId: String, title: String, language: String): List<YouTubeSong> {
+        val idNorm = playlistId.lowercase().trim()
+        val titleNorm = title.lowercase().trim()
+
+        // Kadhal Vibes: Exact 50 fixed Tamil romantic classics
+        if (idNorm == "kadhal-vibes" || idNorm.contains("kadhal-vibes") || titleNorm.contains("kadhal vibes") || titleNorm.contains("kadhal vibe")) {
+            return KadhalVibesCatalog.SONGS
+        }
+
+        // Idhayam Pesuthey: Exact 50 fixed soulful emotional melodies
+        if (idNorm == "idhayam-pesuthey" || idNorm.contains("idhayam-pesuthey") || titleNorm.contains("idhayam pesuthey") || titleNorm.contains("idhayam pesuthe")) {
+            return IdhayamPesutheyCatalog.SONGS
+        }
+
+        // Semma Kuthu: Exact 50 fixed high-energy kuthu party tracks
+        if (idNorm == "semma-kuthu" || idNorm.contains("semma-kuthu") || titleNorm.contains("semma kuthu")) {
+            return SemmaKuthuCatalog.SONGS
+        }
+
+        // Mass Mode: Exact 50 fixed high-octane mass/hero anthems
+        if (idNorm == "mass-mode" || idNorm.contains("mass-mode") || titleNorm.contains("mass mode")) {
+            return MassModeCatalog.SONGS
+        }
+
+        // Gaana Pettai: Exact 50 fixed Chennai gaana & folk tracks
+        if (idNorm == "gaana-pettai" || idNorm.contains("gaana-pettai") || titleNorm.contains("gaana pettai")) {
+            return GaanaPettaiCatalog.SONGS
+        }
+
+        // Jannal Ora Payanam: Exact 50 fixed breezy travel songs
+        if (idNorm == "jannal-ora-payanam" || idNorm.contains("jannal-ora-payanam") || titleNorm.contains("jannal ora payanam")) {
+            return JannalOraPayanamCatalog.SONGS
+        }
+
+        // Iravu Melodies: Exact 50 fixed peaceful night melodies
+        if (idNorm == "iravu-melodies" || idNorm.contains("iravu-melodies") || titleNorm.contains("iravu melodies") || titleNorm.contains("iravu melody")) {
+            return IravuMelodiesCatalog.SONGS
+        }
+
+        // Pudhu Udhayam: Exact 50 fixed motivation, resilience & hope anthems
+        if (idNorm == "pudhu-udhayam" || idNorm.contains("pudhu-udhayam") || titleNorm.contains("pudhu udhayam") || titleNorm.contains("pudhu udhayam")) {
+            return PudhuUdhayamCatalog.SONGS
+        }
+
+        // Irai Isai: Exact 50 fixed divine Tamil prayers & hymns
+        if (idNorm == "irai-isai" || idNorm.contains("irai-isai") || titleNorm.contains("irai isai") || titleNorm.contains("irai isai")) {
+            return IraiIsaiCatalog.SONGS
+        }
+
+        // School Days Memories: Exact 50 fixed late 90s & 2000s nostalgia songs
+        if (idNorm == "school-days-memories" || idNorm.contains("school-days-memories") || titleNorm.contains("school days memories") || titleNorm.contains("school days")) {
+            return SchoolDaysMemoriesCatalog.SONGS
+        }
+
+        val lang = language.ifBlank { "tamil" }.lowercase().trim()
+        val targetLangs = listOf(lang)
+
+        val candidatePool = (
+            YouTubeMusicRepository.CURATED_TAMIL_SONGS +
+            _trendingSongs.value +
+            _mostPlayedSongs.value +
+            _picksSongs.value +
+            _latestReleases.value
+        ).distinctBy { it.videoId }
+
+        val langMatches = candidatePool.filter { com.saavn.music.util.RelevanceEngine.isSongInLanguage(it, targetLangs) }
+        val pool = if (langMatches.size >= 8) langMatches else candidatePool
+
+        val matched = when {
+            idNorm.contains("romance") || titleNorm.contains("romance") || titleNorm.contains("love") -> {
+                pool.filter { s ->
+                    val t = s.title.lowercase()
+                    val c = s.channelTitle.lowercase()
+                    t.contains("love") || t.contains("kadhal") || t.contains("kaadhal") || t.contains("melody") ||
+                    t.contains("duet") || t.contains("romantic") || t.contains("anbe") || t.contains("kanmani") ||
+                    c.contains("sid sriram") || c.contains("harris jayaraj") || c.contains("a.r. rahman") || c.contains("ar rahman")
+                }
+            }
+            idNorm.contains("kuthu") || titleNorm.contains("kuthu") || titleNorm.contains("dance") || titleNorm.contains("party") -> {
+                pool.filter { s ->
+                    val t = s.title.lowercase()
+                    val c = s.channelTitle.lowercase()
+                    t.contains("kuthu") || t.contains("party") || t.contains("dance") || t.contains("beat") ||
+                    t.contains("arabic") || t.contains("hukum") || t.contains("naa ready") || t.contains("kaavaalaa") ||
+                    t.contains("gana") || t.contains("dappan") || t.contains("vaathi") || c.contains("anirudh")
+                }
+            }
+            idNorm.contains("chill") || titleNorm.contains("chill") || titleNorm.contains("lofi") || titleNorm.contains("lo-fi") -> {
+                pool.filter { s ->
+                    val t = s.title.lowercase()
+                    t.contains("chill") || t.contains("lofi") || t.contains("acoustic") || t.contains("rain") ||
+                    t.contains("midnight") || t.contains("peace") || t.contains("guitar")
+                }
+            }
+            idNorm.contains("mass") || titleNorm.contains("mass") || titleNorm.contains("gym") || titleNorm.contains("workout") -> {
+                pool.filter { s ->
+                    val t = s.title.lowercase()
+                    val c = s.channelTitle.lowercase()
+                    t.contains("mass") || t.contains("gym") || t.contains("leo") || t.contains("jailer") ||
+                    t.contains("beast") || t.contains("master") || t.contains("vikram") || t.contains("badass") ||
+                    t.contains("hukum") || t.contains("energy") || c.contains("anirudh")
+                }
+            }
+            idNorm.contains("90s") || titleNorm.contains("90s") || idNorm.contains("retro") || titleNorm.contains("retro") -> {
+                pool.filter { s ->
+                    val c = s.channelTitle.lowercase()
+                    c.contains("spb") || c.contains("ilaiyaraaja") || c.contains("ilayaraja") || c.contains("rahman") || s.viewCountFormatted.contains("Year 199") || s.viewCountFormatted.contains("Year 198")
+                }
+            }
+            titleNorm.contains("anirudh") -> pool.filter { it.channelTitle.contains("anirudh", ignoreCase = true) || it.title.contains("anirudh", ignoreCase = true) }
+            titleNorm.contains("rahman") -> pool.filter { it.channelTitle.contains("rahman", ignoreCase = true) || it.title.contains("rahman", ignoreCase = true) }
+            titleNorm.contains("harris") -> pool.filter { it.channelTitle.contains("harris", ignoreCase = true) || it.title.contains("harris", ignoreCase = true) }
+            titleNorm.contains("yuvan") -> pool.filter { it.channelTitle.contains("yuvan", ignoreCase = true) || it.title.contains("yuvan", ignoreCase = true) }
+            titleNorm.contains("sid sriram") -> pool.filter { it.channelTitle.contains("sid sriram", ignoreCase = true) || it.title.contains("sid sriram", ignoreCase = true) }
+            titleNorm.contains("dsp") || titleNorm.contains("devi sri prasad") -> pool.filter { it.channelTitle.contains("dsp", ignoreCase = true) || it.channelTitle.contains("devi", ignoreCase = true) }
+            titleNorm.contains("ilayaraja") || titleNorm.contains("ilaiyaraaja") -> pool.filter { it.channelTitle.contains("ilayaraja", ignoreCase = true) || it.channelTitle.contains("ilaiyaraaja", ignoreCase = true) }
+            titleNorm.contains("spb") || titleNorm.contains("balasubrahmanyam") -> pool.filter { it.channelTitle.contains("spb", ignoreCase = true) || it.channelTitle.contains("balasubrahmanyam", ignoreCase = true) }
+            idNorm.contains("trending") || titleNorm.contains("trending") -> {
+                val recent2026 = pool.filter { s ->
+                    s.viewCountFormatted.contains("2026") || s.title.contains("2026") || s.channelTitle.contains("2026")
+                }
+                if (recent2026.size >= 8) (recent2026 + pool).distinctBy { it.videoId } else pool
+            }
+            else -> {
+                val cleanTokens = titleNorm.split(" ", "_", "-").filter { it.length > 2 }
+                val tokenMatches = if (cleanTokens.isNotEmpty()) {
+                    pool.filter { s -> cleanTokens.any { t -> s.title.lowercase().contains(t) || s.channelTitle.lowercase().contains(t) } }
+                } else emptyList()
+                if (tokenMatches.isNotEmpty()) tokenMatches else pool
+            }
+        }
+
+        return matched.take(30)
+    }
+
+    suspend fun fetchRelatedSongsForPlaylistName(name: String, language: String = "tamil"): List<YouTubeSong> {
+        val lang = language.ifBlank { "tamil" }
+        val cleanName = cleanPlaylistQuery(name).ifBlank { "$lang hits" }
+        val lower = cleanName.lowercase().trim()
+
+        // Kadhal Vibes: Return exact 50 fixed Tamil romantic classics
+        if (lower.contains("kadhal vibes") || lower.contains("kadhal vibe")) {
+            return KadhalVibesCatalog.SONGS
+        }
+
+        // Idhayam Pesuthey: Return exact 50 fixed soulful emotional melodies
+        if (lower.contains("idhayam pesuthey") || lower.contains("idhayam pesuthe")) {
+            return IdhayamPesutheyCatalog.SONGS
+        }
+
+        // Semma Kuthu: Return exact 50 fixed high-energy kuthu party tracks
+        if (lower.contains("semma kuthu")) {
+            return SemmaKuthuCatalog.SONGS
+        }
+
+        // Mass Mode: Return exact 50 fixed high-octane mass/hero anthems
+        if (lower.contains("mass mode")) {
+            return MassModeCatalog.SONGS
+        }
+
+        // Gaana Pettai: Return exact 50 fixed Chennai gaana & folk tracks
+        if (lower.contains("gaana pettai")) {
+            return GaanaPettaiCatalog.SONGS
+        }
+
+        // Jannal Ora Payanam: Return exact 50 fixed breezy travel songs
+        if (lower.contains("jannal ora payanam")) {
+            return JannalOraPayanamCatalog.SONGS
+        }
+
+        // Iravu Melodies: Return exact 50 fixed peaceful night melodies
+        if (lower.contains("iravu melodies") || lower.contains("iravu melody")) {
+            return IravuMelodiesCatalog.SONGS
+        }
+
+        // Pudhu Udhayam: Return exact 50 fixed motivation, resilience & hope anthems
+        if (lower.contains("pudhu udhayam")) {
+            return PudhuUdhayamCatalog.SONGS
+        }
+
+        // Irai Isai: Return exact 50 fixed divine Tamil prayers & hymns
+        if (lower.contains("irai isai")) {
+            return IraiIsaiCatalog.SONGS
+        }
+
+        // School Days Memories: Return exact 50 fixed late 90s & 2000s nostalgia songs
+        if (lower.contains("school days memories") || lower.contains("school days")) {
+            return SchoolDaysMemoriesCatalog.SONGS
+        }
+
+        val queryCandidates = mutableListOf<String>()
+
+        queryCandidates.add(cleanName)
+
+        when {
+            lower.contains("trending") || lower.contains("latest") || lower.contains("recent") -> {
+                queryCandidates.add("$lang latest songs 2026")
+                queryCandidates.add("$lang trending hits 2026")
+                queryCandidates.add("$lang new songs 2026")
+                queryCandidates.add("$lang latest releases 2026")
+                queryCandidates.add("$lang chartbusters 2026")
+                queryCandidates.add("Latest $lang songs")
+            }
+            lower.contains("love") || lower.contains("romance") || lower.contains("kadhal") || lower.contains("kaadhal") -> {
+                queryCandidates.add("$lang romantic love melody songs")
+                queryCandidates.add("$lang love duet hit songs")
+                queryCandidates.add("Sid Sriram $lang romantic melodies")
+            }
+            lower.contains("kuthu") || lower.contains("dance") || lower.contains("party") || lower.contains("dappan") || lower.contains("fast") -> {
+                queryCandidates.add("$lang kuthu dance party songs")
+                queryCandidates.add("Anirudh $lang kuthu dance hits")
+                queryCandidates.add("$lang dappankuthu fast beat hits")
+            }
+            lower.contains("chill") || lower.contains("lofi") || lower.contains("relax") || lower.contains("sleep") || lower.contains("midnight") -> {
+                queryCandidates.add("$lang acoustic chill lofi songs")
+                queryCandidates.add("$lang midnight chill relaxing songs")
+            }
+            lower.contains("gym") || lower.contains("workout") || lower.contains("mass") || lower.contains("motivation") -> {
+                queryCandidates.add("$lang mass gym workout motivation songs")
+                queryCandidates.add("Anirudh $lang mass energetic hits")
+            }
+            lower.contains("90s") || lower.contains("90") -> {
+                queryCandidates.add("$lang 90s golden melody super hits")
+                queryCandidates.add("AR Rahman 90s $lang hits")
+            }
+            lower.contains("2k") || lower.contains("2000s") -> {
+                queryCandidates.add("$lang 2000s evergreen super hit songs")
+                queryCandidates.add("Harris Jayaraj $lang 2000s evergreen hits")
+            }
+            lower.contains("2010s") -> {
+                queryCandidates.add("$lang 2010 to 2019 blockbuster hits")
+                queryCandidates.add("Anirudh $lang 2010 to 2019 hits")
+            }
+            lower.contains("2020s") -> {
+                queryCandidates.add("$lang 2020 to 2025 blockbuster hit songs")
+            }
+            lower.contains("retro") || lower.contains("80s") || lower.contains("70s") || lower.contains("vintage") -> {
+                queryCandidates.add("$lang 80s 70s vintage classic hit songs")
+                queryCandidates.add("Ilaiyaraaja vintage evergreen classics $lang")
+            }
+            lower.contains("sad") || lower.contains("breakup") || lower.contains("vali") -> {
+                queryCandidates.add("$lang sad heartbreak melody songs")
+                queryCandidates.add("$lang emotional breakup songs")
+            }
+            lower.contains("devotional") || lower.contains("bakthi") || lower.contains("god") -> {
+                queryCandidates.add("$lang devotional bakthi padalgal")
+            }
+            lower.contains("melody") || lower.contains("melodies") -> {
+                queryCandidates.add("$lang evergreen melody super hits")
+                queryCandidates.add("$cleanName $lang")
+            }
+            else -> {
+                if (!lower.contains(lang.lowercase())) {
+                    queryCandidates.add("$cleanName $lang hit songs")
+                    queryCandidates.add("$cleanName $lang songs")
+                } else {
+                    queryCandidates.add("$cleanName hit songs")
+                }
+            }
+        }
+        queryCandidates.add("$lang top trending hits")
+
+        val list = mutableListOf<YouTubeSong>()
+
+        // 1. Multi-query search via JioSaavn
+        for (q in queryCandidates.distinct().take(3)) {
+            if (list.size >= 40) break
+            try {
+                val results = musicRepo.search(q, limit = 35).getOrNull()?.map { it.toYouTubeSong() } ?: emptyList()
+                list.addAll(results)
+            } catch (_: Exception) {}
+        }
+
+        // 2. Multi-query fallback / supplement via YouTube Music scraper
+        if (list.size < 25) {
+            for (q in queryCandidates.distinct().take(2)) {
+                if (list.size >= 40) break
+                try {
+                    val ytResults = ytRepo.searchSongs(q, maxResults = 35).getOrDefault(emptyList())
+                    list.addAll(ytResults)
+                } catch (_: Exception) {}
+            }
+        }
+
+        // 3. Fallback to candidate pre-seeded pool if still empty
+        if (list.isEmpty()) {
+            val fallbackPool = getPreSeededPlaylistSongs("fallback_$lower", cleanName, lang)
+            list.addAll(fallbackPool)
+        }
+
+        return com.saavn.music.util.RelevanceEngine.deduplicateSongs(list).take(45)
+    }
+
+    fun autoAddRelatedSongsToPlaylist(playlistId: String, title: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            withContext(Dispatchers.Main) {
+                _playlistDetail.value = _playlistDetail.value?.copy(isLoading = true)
+            }
+            val lang = _preferredLanguages.value.firstOrNull() ?: "tamil"
+            val songs = fetchRelatedSongsForPlaylistName(title, lang)
+            if (songs.isNotEmpty()) {
+                val isCustom = localStorage.playlists.value.any { it.id == playlistId }
+                if (isCustom) {
+                    localStorage.addSongsToPlaylist(playlistId, songs)
+                }
+                val currentSongs = _playlistDetail.value?.songs ?: emptyList()
+                val merged = com.saavn.music.util.RelevanceEngine.deduplicateSongs(currentSongs + songs)
+                val cacheKey = "${playlistId.lowercase().trim()}_${lang.lowercase().trim()}"
+                playlistSongsCache[cacheKey] = merged
+
+                val pl = localStorage.playlists.value.find { it.id == playlistId }
+                if (pl != null && pl.isPublic) {
+                    syncPublicPlaylistToFirebase(pl)
+                }
+                withContext(Dispatchers.Main) {
+                    if (_playlistDetail.value?.id == playlistId) {
+                        _playlistDetail.value = _playlistDetail.value?.copy(
+                            songs = if (isCustom) (pl?.songs ?: merged) else merged,
+                            isLoading = false
+                        )
+                    }
+                }
+            } else {
+                withContext(Dispatchers.Main) {
+                    if (_playlistDetail.value?.id == playlistId) {
+                        _playlistDetail.value = _playlistDetail.value?.copy(isLoading = false)
+                    }
+                }
+            }
+        }
+    }
+
+    private suspend fun preWarmFeaturedPlaylists(language: String) {
+        val lang = language.lowercase().trim()
+        val popular = listOf(
+            "romance-$lang" to "$lang romantic love melody songs",
+            "kuthu-$lang" to "$lang kuthu dance party songs",
+            "chill-$lang" to "$lang acoustic chill lofi songs",
+            "mass-$lang" to "$lang mass gym workout motivation songs",
+            "90s-$lang" to "$lang 90s golden melody super hits"
+        )
+        for ((id, query) in popular) {
+            val cacheKey = "${id}_$lang"
+            if (playlistSongsCache.containsKey(cacheKey)) continue
+            try {
+                val songs = musicRepo.search(query, limit = 35).getOrNull()?.map { it.toYouTubeSong() } ?: emptyList()
+                if (songs.isNotEmpty()) {
+                    playlistSongsCache[cacheKey] = com.saavn.music.util.RelevanceEngine.deduplicateSongs(songs)
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
+    fun openCustomPlaylist(playlist: UserPlaylist) {
+        if (_currentScreen.value != AppScreen.PLAYLIST_DETAIL) {
+            previousScreen = _currentScreen.value
+        }
+        val isCreator = (playlist.creatorId.isNotBlank() && playlist.creatorId == getCurrentUserId()) ||
+                (playlist.creatorName.isNotBlank() && playlist.creatorName.equals(getCurrentUserName(), ignoreCase = true))
+        val displayCreator = if (isCreator) {
+            "You"
+        } else if (playlist.creatorName.isNotBlank()) {
+            playlist.creatorName
+        } else {
+            "ISAI Listener"
+        }
+
+        val lang = _preferredLanguages.value.firstOrNull() ?: "tamil"
+        val cacheKey = "${playlist.id.lowercase().trim()}_${lang.lowercase().trim()}"
+        val cached = playlistSongsCache[cacheKey] ?: emptyList()
+        val preSeeded = if (playlist.songs.isEmpty() && cached.isEmpty()) getPreSeededPlaylistSongs(playlist.id, playlist.name, lang) else emptyList()
+        val effectiveSongs = if (playlist.songs.isNotEmpty()) playlist.songs else (if (cached.isNotEmpty()) cached else preSeeded)
+        val hasExistingSongs = effectiveSongs.isNotEmpty()
+
+        _playlistDetail.value = PlaylistDetailState(
+            id = playlist.id,
+            title = playlist.name,
+            subtitle = if (hasExistingSongs) "${effectiveSongs.size} tracks" else "Finding songs for \"${playlist.name}\"...",
+            language = lang,
+            coverUrl = effectiveSongs.firstOrNull()?.thumbnailUrl ?: "",
+            searchQuery = playlist.name,
+            songs = effectiveSongs,
+            isLoading = !hasExistingSongs,
+            creatorName = displayCreator,
+            isPublic = playlist.isPublic,
+            isCustomPlaylist = true
+        )
+        _currentScreen.value = AppScreen.PLAYLIST_DETAIL
+
+        if (playlist.songs.isEmpty()) {
+            // Automatically find and add songs related to the playlist name!
+            autoAddRelatedSongsToPlaylist(playlist.id, playlist.name)
+        }
+    }
+
+    fun loadPlaylistSongs(
+        playlistId: String,
+        title: String,
+        searchQuery: String,
+        language: String,
+        autoSaveToCustomPlaylist: Boolean = false
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val idNorm = playlistId.lowercase().trim()
+                val lang = language.ifBlank { "tamil" }.lowercase().trim()
+                val cacheKey = "${idNorm}_$lang"
+
+                val queryText = if (searchQuery.isNotBlank()) searchQuery else title
+
+                // Kadhal Vibes: Instant 50 fixed songs without external search
+                if (idNorm == "kadhal-vibes" || queryText.lowercase().contains("kadhal vibes")) {
+                    playlistSongsCache[cacheKey] = KadhalVibesCatalog.SONGS
+                    withContext(Dispatchers.Main) {
+                        if (_playlistDetail.value?.id == playlistId) {
+                            _playlistDetail.value = _playlistDetail.value?.copy(
+                                songs = KadhalVibesCatalog.SONGS,
+                                isLoading = false
+                            )
+                        }
+                    }
+                    if (autoSaveToCustomPlaylist) {
+                        localStorage.addSongsToPlaylist(playlistId, KadhalVibesCatalog.SONGS)
+                        val pl = localStorage.playlists.value.find { it.id == playlistId }
+                        if (pl != null && pl.isPublic) {
+                            syncPublicPlaylistToFirebase(pl)
+                        }
+                    }
+                    return@launch
+                }
+
+                // Idhayam Pesuthey: Instant 50 fixed songs without external search
+                if (idNorm == "idhayam-pesuthey" || queryText.lowercase().contains("idhayam pesuthey")) {
+                    playlistSongsCache[cacheKey] = IdhayamPesutheyCatalog.SONGS
+                    withContext(Dispatchers.Main) {
+                        if (_playlistDetail.value?.id == playlistId) {
+                            _playlistDetail.value = _playlistDetail.value?.copy(
+                                songs = IdhayamPesutheyCatalog.SONGS,
+                                isLoading = false
+                            )
+                        }
+                    }
+                    if (autoSaveToCustomPlaylist) {
+                        localStorage.addSongsToPlaylist(playlistId, IdhayamPesutheyCatalog.SONGS)
+                        val pl = localStorage.playlists.value.find { it.id == playlistId }
+                        if (pl != null && pl.isPublic) {
+                            syncPublicPlaylistToFirebase(pl)
+                        }
+                    }
+                    return@launch
+                }
+
+                // Semma Kuthu: Instant 50 fixed songs without external search
+                if (idNorm == "semma-kuthu" || queryText.lowercase().contains("semma kuthu")) {
+                    playlistSongsCache[cacheKey] = SemmaKuthuCatalog.SONGS
+                    withContext(Dispatchers.Main) {
+                        if (_playlistDetail.value?.id == playlistId) {
+                            _playlistDetail.value = _playlistDetail.value?.copy(
+                                songs = SemmaKuthuCatalog.SONGS,
+                                isLoading = false
+                            )
+                        }
+                    }
+                    if (autoSaveToCustomPlaylist) {
+                        localStorage.addSongsToPlaylist(playlistId, SemmaKuthuCatalog.SONGS)
+                        val pl = localStorage.playlists.value.find { it.id == playlistId }
+                        if (pl != null && pl.isPublic) {
+                            syncPublicPlaylistToFirebase(pl)
+                        }
+                    }
+                    return@launch
+                }
+
+                // Mass Mode: Instant 50 fixed songs without external search
+                if (idNorm == "mass-mode" || queryText.lowercase().contains("mass mode")) {
+                    playlistSongsCache[cacheKey] = MassModeCatalog.SONGS
+                    withContext(Dispatchers.Main) {
+                        if (_playlistDetail.value?.id == playlistId) {
+                            _playlistDetail.value = _playlistDetail.value?.copy(
+                                songs = MassModeCatalog.SONGS,
+                                isLoading = false
+                            )
+                        }
+                    }
+                    if (autoSaveToCustomPlaylist) {
+                        localStorage.addSongsToPlaylist(playlistId, MassModeCatalog.SONGS)
+                        val pl = localStorage.playlists.value.find { it.id == playlistId }
+                        if (pl != null && pl.isPublic) {
+                            syncPublicPlaylistToFirebase(pl)
+                        }
+                    }
+                    return@launch
+                }
+
+                // Gaana Pettai: Instant 50 fixed songs without external search
+                if (idNorm == "gaana-pettai" || queryText.lowercase().contains("gaana pettai")) {
+                    playlistSongsCache[cacheKey] = GaanaPettaiCatalog.SONGS
+                    withContext(Dispatchers.Main) {
+                        if (_playlistDetail.value?.id == playlistId) {
+                            _playlistDetail.value = _playlistDetail.value?.copy(
+                                songs = GaanaPettaiCatalog.SONGS,
+                                isLoading = false
+                            )
+                        }
+                    }
+                    if (autoSaveToCustomPlaylist) {
+                        localStorage.addSongsToPlaylist(playlistId, GaanaPettaiCatalog.SONGS)
+                        val pl = localStorage.playlists.value.find { it.id == playlistId }
+                        if (pl != null && pl.isPublic) {
+                            syncPublicPlaylistToFirebase(pl)
+                        }
+                    }
+                    return@launch
+                }
+
+                // Jannal Ora Payanam: Instant 50 fixed songs without external search
+                if (idNorm == "jannal-ora-payanam" || queryText.lowercase().contains("jannal ora payanam")) {
+                    playlistSongsCache[cacheKey] = JannalOraPayanamCatalog.SONGS
+                    withContext(Dispatchers.Main) {
+                        if (_playlistDetail.value?.id == playlistId) {
+                            _playlistDetail.value = _playlistDetail.value?.copy(
+                                songs = JannalOraPayanamCatalog.SONGS,
+                                isLoading = false
+                            )
+                        }
+                    }
+                    if (autoSaveToCustomPlaylist) {
+                        localStorage.addSongsToPlaylist(playlistId, JannalOraPayanamCatalog.SONGS)
+                        val pl = localStorage.playlists.value.find { it.id == playlistId }
+                        if (pl != null && pl.isPublic) {
+                            syncPublicPlaylistToFirebase(pl)
+                        }
+                    }
+                    return@launch
+                }
+
+                // Iravu Melodies: Instant 50 fixed songs without external search
+                if (idNorm == "iravu-melodies" || queryText.lowercase().contains("iravu melodies") || queryText.lowercase().contains("iravu melody")) {
+                    playlistSongsCache[cacheKey] = IravuMelodiesCatalog.SONGS
+                    withContext(Dispatchers.Main) {
+                        if (_playlistDetail.value?.id == playlistId) {
+                            _playlistDetail.value = _playlistDetail.value?.copy(
+                                songs = IravuMelodiesCatalog.SONGS,
+                                isLoading = false
+                            )
+                        }
+                    }
+                    if (autoSaveToCustomPlaylist) {
+                        localStorage.addSongsToPlaylist(playlistId, IravuMelodiesCatalog.SONGS)
+                        val pl = localStorage.playlists.value.find { it.id == playlistId }
+                        if (pl != null && pl.isPublic) {
+                            syncPublicPlaylistToFirebase(pl)
+                        }
+                    }
+                    return@launch
+                }
+
+                // Pudhu Udhayam: Instant 50 fixed songs without external search
+                if (idNorm == "pudhu-udhayam" || queryText.lowercase().contains("pudhu udhayam")) {
+                    playlistSongsCache[cacheKey] = PudhuUdhayamCatalog.SONGS
+                    withContext(Dispatchers.Main) {
+                        if (_playlistDetail.value?.id == playlistId) {
+                            _playlistDetail.value = _playlistDetail.value?.copy(
+                                songs = PudhuUdhayamCatalog.SONGS,
+                                isLoading = false
+                            )
+                        }
+                    }
+                    if (autoSaveToCustomPlaylist) {
+                        localStorage.addSongsToPlaylist(playlistId, PudhuUdhayamCatalog.SONGS)
+                        val pl = localStorage.playlists.value.find { it.id == playlistId }
+                        if (pl != null && pl.isPublic) {
+                            syncPublicPlaylistToFirebase(pl)
+                        }
+                    }
+                    return@launch
+                }
+
+                // Irai Isai: Instant 50 fixed songs without external search
+                if (idNorm == "irai-isai" || queryText.lowercase().contains("irai isai")) {
+                    playlistSongsCache[cacheKey] = IraiIsaiCatalog.SONGS
+                    withContext(Dispatchers.Main) {
+                        if (_playlistDetail.value?.id == playlistId) {
+                            _playlistDetail.value = _playlistDetail.value?.copy(
+                                songs = IraiIsaiCatalog.SONGS,
+                                isLoading = false
+                            )
+                        }
+                    }
+                    if (autoSaveToCustomPlaylist) {
+                        localStorage.addSongsToPlaylist(playlistId, IraiIsaiCatalog.SONGS)
+                        val pl = localStorage.playlists.value.find { it.id == playlistId }
+                        if (pl != null && pl.isPublic) {
+                            syncPublicPlaylistToFirebase(pl)
+                        }
+                    }
+                    return@launch
+                }
+
+                // School Days Memories: Instant 50 fixed songs without external search
+                if (idNorm == "school-days-memories" || queryText.lowercase().contains("school days memories") || queryText.lowercase().contains("school days")) {
+                    playlistSongsCache[cacheKey] = SchoolDaysMemoriesCatalog.SONGS
+                    withContext(Dispatchers.Main) {
+                        if (_playlistDetail.value?.id == playlistId) {
+                            _playlistDetail.value = _playlistDetail.value?.copy(
+                                songs = SchoolDaysMemoriesCatalog.SONGS,
+                                isLoading = false
+                            )
+                        }
+                    }
+                    if (autoSaveToCustomPlaylist) {
+                        localStorage.addSongsToPlaylist(playlistId, SchoolDaysMemoriesCatalog.SONGS)
+                        val pl = localStorage.playlists.value.find { it.id == playlistId }
+                        if (pl != null && pl.isPublic) {
+                            syncPublicPlaylistToFirebase(pl)
+                        }
+                    }
+                    return@launch
+                }
+
+                val fetched = fetchRelatedSongsForPlaylistName(queryText, lang)
+                val cleanResults = com.saavn.music.util.RelevanceEngine.deduplicateSongs(fetched)
+
+                if (cleanResults.isNotEmpty()) {
+                    playlistSongsCache[cacheKey] = cleanResults
+                    withContext(Dispatchers.Main) {
+                        if (_playlistDetail.value?.id == playlistId) {
+                            _playlistDetail.value = _playlistDetail.value?.copy(
+                                songs = cleanResults,
+                                isLoading = false
+                            )
+                        }
+                    }
+
+                    if (autoSaveToCustomPlaylist) {
+                        localStorage.addSongsToPlaylist(playlistId, cleanResults)
+                        val pl = localStorage.playlists.value.find { it.id == playlistId }
+                        if (pl != null && pl.isPublic) {
+                            syncPublicPlaylistToFirebase(pl)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("ISAI_PLAYLIST", "Error loading playlist songs", e)
+            } finally {
+                withContext(Dispatchers.Main) {
+                    if (_playlistDetail.value?.id == playlistId && _playlistDetail.value?.isLoading == true) {
+                        _playlistDetail.value = _playlistDetail.value?.copy(isLoading = false)
+                    }
+                }
+            }
+        }
+    }
+
+    fun playPlaylistAll(shuffle: Boolean = false) {
+        val songs = _playlistDetail.value?.songs ?: return
+        if (songs.isEmpty()) return
+        val list = if (shuffle) songs.shuffled() else songs
+        playSong(list.first(), list, openFullPlayer = false)
+    }
+
+    fun closePlaylistDetail() {
+        _playlistDetail.value = null
+        _currentScreen.value = if (previousScreen == AppScreen.PLAYLIST_DETAIL) AppScreen.HOME else previousScreen
     }
 
     fun refreshCategorySongs() {
@@ -1293,7 +2078,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
                 val filteredByLang = combined.filter { com.saavn.music.util.RelevanceEngine.isSongInLanguage(it, langs) }
                 val deduped = ytRepo.deduplicateSongs(if (filteredByLang.isNotEmpty()) filteredByLang else combined)
-                val fullPool = (deduped + YouTubeMusicRepository.CURATED_TAMIL_SONGS).distinctBy { it.videoId }
+                val fullPool = deduped.distinctBy { it.videoId }
                 val shuffledFresh = fullPool.shuffled()
                 val reRanked = trendingService.getMostPlayedSongs(shuffledFresh).take(40)
 
@@ -1359,10 +2144,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     async {
                         val (id, title, subtitle) = info
                         val rawSongs = musicRepo.search(query, limit = 35).getOrNull()?.map { it.toYouTubeSong() } ?: emptyList()
-                        val dedupedSongs = ytRepo.deduplicateSongs(rawSongs).take(30)
+                        val songs = if (rawSongs.size < 10) {
+                            val cleanQ = query.replace("2025", "").replace("2026", "").trim()
+                            val ytSongs = ytRepo.searchSongs(cleanQ, maxResults = 30).getOrDefault(emptyList())
+                            (rawSongs + ytSongs).distinctBy { it.videoId }
+                        } else {
+                            rawSongs
+                        }
+                        val dedupedSongs = ytRepo.deduplicateSongs(songs).take(30)
                         val cover = dedupedSongs.firstOrNull()?.thumbnailUrl ?: "https://c.saavncdn.com/187/Jailer-Tamil-2023-20230728081443-500x500.jpg"
                         if (dedupedSongs.isNotEmpty()) {
-                            SpotifyDailyMix(
+                            IsaiDailyMix(
                                 id = id,
                                 title = title,
                                 subtitle = "$subtitle • ${dedupedSongs.size} Songs",
@@ -1375,7 +2167,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val loadedMixes = deferredMixes.awaitAll().filterNotNull()
 
                 if (loadedMixes.isNotEmpty()) {
-                    _spotifyDailyMixes.value = loadedMixes
+                    _isaiDailyMixes.value = loadedMixes
                 }
             } catch (e: Exception) {
                 android.util.Log.e("ISAI_PLAYER", "Failed loading daily mixes: ${e.message}")
@@ -1462,12 +2254,109 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return matchCount > 0 && (matchCount.toDouble() / songs.size) >= 0.15
     }
 
+    fun searchMatchingPlaylists(query: String, langFilter: String, sampleSongs: List<YouTubeSong>): List<SearchPlaylistItem> {
+        if (query.isBlank()) return emptyList()
+        val clean = query.trim().lowercase()
+        val cleanTokens = clean.split(" ", "_", "-", ",", "&").filter { it.length > 1 }
+        val results = mutableListOf<SearchPlaylistItem>()
+
+        // 1. User's Own Playlists + Community Public Playlists
+        val allUserPlaylists = (localStorage.playlists.value + _publicPlaylists.value).distinctBy { it.id }
+        for (pl in allUserPlaylists) {
+            val nameNorm = pl.name.lowercase()
+            val creatorNorm = pl.creatorName.lowercase()
+            val isMatch = cleanTokens.isEmpty() || cleanTokens.any { token -> nameNorm.contains(token) || creatorNorm.contains(token) }
+            if (isMatch) {
+                results.add(
+                    SearchPlaylistItem(
+                        id = pl.id,
+                        title = pl.name,
+                        subtitle = if (pl.isPublic) "🌐 Public by ${pl.creatorName.ifBlank { "User" }} • ${pl.songs.size} tracks" else "🔒 Private • ${pl.songs.size} tracks",
+                        coverUrl = pl.songs.firstOrNull()?.thumbnailUrl ?: "",
+                        songCount = pl.songs.size,
+                        isUserPlaylist = true,
+                        creatorName = pl.creatorName.ifBlank { "User" },
+                        isPublic = pl.isPublic,
+                        userPlaylist = pl
+                    )
+                )
+            }
+        }
+
+        // 2. Curated Editorial Catalog
+        for (item in EditorialPlaylistsCatalog.ALL_PLAYLISTS) {
+            val tNorm = item.title.lowercase()
+            val sNorm = item.searchQuery.lowercase()
+            val lNorm = item.language.lowercase()
+
+            val matchesTokens = cleanTokens.any { token ->
+                tNorm.contains(token) || sNorm.contains(token)
+            }
+            val matchesLang = langFilter == "All" || lNorm.contains(langFilter.lowercase())
+
+            if (matchesTokens && matchesLang) {
+                results.add(item)
+            }
+        }
+
+        // 3. Dynamic Smart Mixes tailored specifically for this query
+        val displayTitle = query.trim().split(" ").joinToString(" ") { word -> word.replaceFirstChar { it.uppercase() } }
+        val fallbackCover1 = sampleSongs.getOrNull(0)?.thumbnailUrl ?: "https://c.saavncdn.com/187/Jailer-Tamil-2023-20230728081443-500x500.jpg"
+        val fallbackCover2 = sampleSongs.getOrNull(1)?.thumbnailUrl ?: fallbackCover1
+        val fallbackCover3 = sampleSongs.getOrNull(2)?.thumbnailUrl ?: fallbackCover1
+
+        val queryMixId1 = "search_mix_hits_${clean.replace(Regex("[^a-z0-9]"), "_")}"
+        if (results.none { it.id == queryMixId1 }) {
+            results.add(
+                SearchPlaylistItem(
+                    id = queryMixId1,
+                    title = "$displayTitle • Best of Hits 🎶",
+                    subtitle = "Curated Mix • ISAI Editorial • 35+ Songs",
+                    coverUrl = fallbackCover1,
+                    searchQuery = "$clean super hit songs",
+                    language = langFilter.takeIf { it != "All" } ?: ""
+                )
+            )
+        }
+
+        val queryMixId2 = "search_mix_melodies_${clean.replace(Regex("[^a-z0-9]"), "_")}"
+        if (results.none { it.id == queryMixId2 }) {
+            results.add(
+                SearchPlaylistItem(
+                    id = queryMixId2,
+                    title = "$displayTitle • Radio & Melodies 📻",
+                    subtitle = "Soulful melodies & classic tracks",
+                    coverUrl = fallbackCover2,
+                    searchQuery = "$clean romantic melody songs",
+                    language = langFilter.takeIf { it != "All" } ?: ""
+                )
+            )
+        }
+
+        val queryMixId3 = "search_mix_party_${clean.replace(Regex("[^a-z0-9]"), "_")}"
+        if (results.none { it.id == queryMixId3 }) {
+            results.add(
+                SearchPlaylistItem(
+                    id = queryMixId3,
+                    title = "$displayTitle • Mass & Party Mix 🔥",
+                    subtitle = "High energy beats & fast dance hits",
+                    coverUrl = fallbackCover3,
+                    searchQuery = "$clean mass dance party songs",
+                    language = langFilter.takeIf { it != "All" } ?: ""
+                )
+            )
+        }
+
+        return results.distinctBy { it.id }
+    }
+
     fun onSearchQueryChanged(newQuery: String) {
         _searchQuery.value = newQuery
         searchJob?.cancel()
 
         if (newQuery.isBlank()) {
             _searchResults.value = emptyList()
+            _searchPlaylists.value = emptyList()
             _searchError.value = null
             _isSearching.value = false
             return
@@ -1479,15 +2368,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             delay(350)
             try {
                 val clean = newQuery.trim().lowercase()
+                val activeLangFilter = _searchLanguageFilter.value
 
                 // Special direct commands
                 if (clean == "trending" || clean == "trends" || clean == "charts") {
                     _searchResults.value = _trendingSongs.value
+                    _searchPlaylists.value = searchMatchingPlaylists(newQuery, activeLangFilter, _trendingSongs.value)
                     _searchError.value = null
                     return@launch
                 }
 
-                val activeLangFilter = _searchLanguageFilter.value
                 val userLangs = if (activeLangFilter != "All") {
                     listOf(activeLangFilter.lowercase())
                 } else {
@@ -1626,18 +2516,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         rawResults
                     }
                     _searchResults.value = finalResults
+                    _searchPlaylists.value = searchMatchingPlaylists(newQuery, activeLangFilter, finalResults)
                     _searchError.value = null
                 } else {
                     _searchResults.value = emptyList()
+                    _searchPlaylists.value = searchMatchingPlaylists(newQuery, activeLangFilter, emptyList())
                     _searchError.value = "No songs found for '$newQuery'"
                 }
             } catch (e: Exception) {
                 try {
                     val result = ytRepo.searchSongs(newQuery)
-                    _searchResults.value = result.getOrDefault(emptyList()).filter { !com.saavn.music.util.RelevanceEngine.isPlaylistOrCompilation(it) }
+                    val ytSongs = result.getOrDefault(emptyList()).filter { !com.saavn.music.util.RelevanceEngine.isPlaylistOrCompilation(it) }
+                    _searchResults.value = ytSongs
+                    _searchPlaylists.value = searchMatchingPlaylists(newQuery, _searchLanguageFilter.value, ytSongs)
                     _searchError.value = null
                 } catch (_: Exception) {
                     _searchResults.value = emptyList()
+                    _searchPlaylists.value = searchMatchingPlaylists(newQuery, _searchLanguageFilter.value, emptyList())
                     _searchError.value = e.localizedMessage ?: "An error occurred while searching"
                 }
             } finally {
@@ -1747,10 +2642,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             ?: run {
                 YouTubeMusicRepository.CURATED_TAMIL_SONGS.firstOrNull { curated ->
                     curated.videoId == song.videoId ||
-                    curated.title.equals(song.title, ignoreCase = true) ||
-                    (song.title.length >= 4 && curated.title.contains(song.title, ignoreCase = true)) ||
-                    (curated.title.length >= 4 && song.title.contains(curated.title, ignoreCase = true)) ||
-                    com.saavn.music.util.RelevanceEngine.isSameSongOrDuplicate(curated, song)
+                    curated.title.equals(song.title, ignoreCase = true)
                 }?.audioUrl
             }
 
@@ -1761,20 +2653,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         // Fast initial queue so player starts with 0ms UI delay
         val isAdvancingInCurrentPlaybackQueue = !queue.isNullOrEmpty() &&
-            queue == ytPlayerController.playbackQueue.value &&
-            queue.any { it.videoId == song.videoId }
+            queue.any { it.videoId == song.videoId } &&
+            (queue == ytPlayerController.playbackQueue.value || ytPlayerController.playbackQueue.value.any { it.videoId == song.videoId })
 
         val targetSongLang = song.language.ifBlank { com.saavn.music.util.RelevanceEngine.detectSongLanguage(song) }.ifBlank { _preferredLanguages.value.firstOrNull() ?: "tamil" }
-        val targetQueueLangs = listOf(targetSongLang)
-
         val hasExplicitQueue = !queue.isNullOrEmpty()
-        val initialQueue = if (isAdvancingInCurrentPlaybackQueue) {
+        val initialQueue = if (isAdvancingInCurrentPlaybackQueue && queue == ytPlayerController.playbackQueue.value) {
             queue!!
         } else if (hasExplicitQueue && queue!!.size > 1) {
             recommendationGeneration++
             sessionSeedSong = song
-            val songIdx = queue!!.indexOfFirst { it.videoId == song.videoId }
-            if (songIdx >= 0) queue!! else (listOf(immediateSong) + queue!!).distinctBy { it.videoId }
+            val explicitQ = queue!!
+            val songIdx = explicitQ.indexOfFirst { it.videoId == song.videoId }
+            if (songIdx >= 0) explicitQ else (listOf(immediateSong) + explicitQ).distinctBy { it.videoId }
         } else {
             // New Recommendation Context: User tapped a single track or search result
             recommendationGeneration++
@@ -1791,6 +2682,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             loadSuggestionsForSong(song, currentGen)
         }
 
+        val currentQueueIdx = initialQueue.indexOfFirst { it.videoId == immediateSong.videoId }.coerceAtLeast(0)
+
         // Claim ISAI Connect active device status and sync song details and queue to Firebase
         if (!localStorage.isMultiDevicePlaybackSeparate.value) {
             isaiConnectManager.updatePlaybackState(
@@ -1799,11 +2692,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 positionMs = (startPositionSec * 1000).toLong(),
                 currentDeviceId = isaiConnectManager.deviceId,
                 queue = initialQueue,
-                queueIndex = 0
+                queueIndex = currentQueueIdx
             )
         }
-
-        ytPlayerController.prepareForPlayback(immediateSong, initialQueue)
 
         if (!immediateSong.audioUrl.isNullOrBlank()) {
             ytPlayerController.playSong(immediateSong, initialQueue, startPositionSec, autoPlay)
@@ -1877,6 +2768,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         val updatedQueue = ytPlayerController.playbackQueue.value.map { if (it.videoId == song.videoId) updatedSong else it }
                         ytPlayerController.playSong(updatedSong, updatedQueue, startPositionSec, autoPlay)
                         prefetchNextSongUrl(updatedQueue, updatedSong)
+                    } else {
+                        android.util.Log.w("ISAI_PLAYER", "[MainViewModel] Audio stream could not be resolved for '${song.title}'. Auto-advancing to next track...")
+                        ytPlayerController.playNext()
                     }
                 }
             }
@@ -2212,42 +3106,44 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val songLang = song.language.ifBlank { com.saavn.music.util.RelevanceEngine.detectSongLanguage(song) }.ifBlank { _preferredLanguages.value.firstOrNull() ?: "tamil" }
                 val activeLangs = listOf(songLang)
                 val primaryLang = songLang
-                val query = com.saavn.music.util.RelevanceEngine.getRelevantSearchQuery(song, primaryLang)
+                val cleanTitle = song.title
+                    .replace(Regex("\\s*[|•].*$"), "")
+                    .replace(Regex("\\s*\\(.*?(official|video|audio|lyrics|hd|4k|song|teaser|trailer|promo).*?\\)", RegexOption.IGNORE_CASE), "")
+                    .replace(Regex("\\s*\\[.*?(official|video|audio|lyrics|hd|4k|song|teaser|trailer|promo).*?\\]", RegexOption.IGNORE_CASE), "")
+                    .replace(Regex("(?i)\\b(official\\s*(video|audio|lyric(al)?\\s*video)?|lyric(al)?\\s*video|video\\s*song|full\\s*song|audio\\s*song|hd\\s*video)\\b"), "")
+                    .trim()
+
                 val primaryArtist = com.saavn.music.util.RelevanceEngine.extractPrimaryArtist(song.channelTitle)
-                val songMood = com.saavn.music.util.RelevanceEngine.detectSongMood(song)
-                val songEra = com.saavn.music.util.RelevanceEngine.detectSongEra(song)?.let { "$it " } ?: ""
-                val moodKeyword = when (songMood) {
-                    com.saavn.music.util.SongMood.MOTIVATION_INSPIRING -> "motivational inspiring"
-                    com.saavn.music.util.SongMood.MELODY_ROMANCE -> "love romantic melody"
-                    com.saavn.music.util.SongMood.DEVOTIONAL -> "devotional bakthi"
-                    com.saavn.music.util.SongMood.SAD_HEARTBREAK -> "sad breakup"
-                    com.saavn.music.util.SongMood.PARTY_KUTHU -> "kuthu dance party"
-                    com.saavn.music.util.SongMood.GANA_FOLK -> "gana folk"
-                    com.saavn.music.util.SongMood.INTRO_MASS -> "mass hero entry"
-                    else -> "top songs"
+
+                // Exact Home screen "Similar to [Track]" query builder
+                val dynamicQueries = mutableListOf<String>()
+                if (cleanTitle.isNotBlank()) {
+                    dynamicQueries.add("$cleanTitle $primaryLang")
+                    dynamicQueries.add(com.saavn.music.util.RelevanceEngine.getRelevantSearchQuery(song, primaryLang))
                 }
-                val artistQuery = if (primaryArtist.isNotBlank()) "$primaryArtist $primaryLang $songEra$moodKeyword songs" else "$primaryLang $songEra$moodKeyword songs"
-                val extraMoodQuery = if (songMood == com.saavn.music.util.SongMood.MELODY_ROMANCE) {
-                    "$primaryLang ${songEra}romantic love melody super hits"
+                if (primaryArtist.isNotBlank() && primaryArtist != "Tamil Artist") {
+                    dynamicQueries.add("$primaryArtist $primaryLang hits")
+                    dynamicQueries.add("$primaryArtist $primaryLang songs")
+                }
+
+                android.util.Log.i("ISAI_PLAYER", "[MainViewModel] Loading similar queue for: '${song.title}' with queries: $dynamicQueries")
+
+                val searchDeferred = dynamicQueries.take(4).map { q ->
+                    async {
+                        musicRepo.search(q, limit = 25).getOrNull()?.map { it.toYouTubeSong() } ?: emptyList()
+                    }
+                }
+                val rawFetched = searchDeferred.awaitAll().flatten()
+
+                val pool = if (rawFetched.size < 15 && cleanTitle.isNotBlank()) {
+                    val ytFallback = ytRepo.searchSongs("$cleanTitle $primaryLang", maxResults = 25).getOrDefault(emptyList())
+                    (rawFetched + ytFallback).distinctBy { it.videoId }
                 } else {
-                    "$primaryLang ${songEra}evergreen $moodKeyword songs"
-                }
-
-                android.util.Log.i("ISAI_PLAYER", "[MainViewModel] Loading era ($songEra) & mood ($songMood) suggestions: '$query' / '$artistQuery'")
-
-                val searchResultDeferred = async { musicRepo.search(query, limit = 40).getOrNull()?.map { it.toYouTubeSong() } ?: emptyList() }
-                val artistResultDeferred = async { musicRepo.search(artistQuery, limit = 35).getOrNull()?.map { it.toYouTubeSong() } ?: emptyList() }
-                val extraResultDeferred = async { musicRepo.search(extraMoodQuery, limit = 35).getOrNull()?.map { it.toYouTubeSong() } ?: emptyList() }
-
-                val searchResult = searchResultDeferred.await()
-                val artistResult = artistResultDeferred.await()
-                val extraResult = extraResultDeferred.await()
+                    rawFetched.distinctBy { it.videoId }
+                }.filter { !com.saavn.music.util.RelevanceEngine.isPlaylistOrCompilation(it) }
 
                 if (!isActive || recommendationGeneration != currentGen) return@launch
 
-                val pool = (searchResult + artistResult + extraResult)
-                    .distinctBy { it.videoId }
-                    .filter { !com.saavn.music.util.RelevanceEngine.isPlaylistOrCompilation(it) }
                 val currentQueue = ytPlayerController.playbackQueue.value
                 val curIdx = ytPlayerController.currentQueueIndex.value
                 val playedSoFar = currentQueue.take(curIdx + 1)
@@ -2257,34 +3153,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     !com.saavn.music.util.RelevanceEngine.isPlaylistOrCompilation(candidate) &&
                     !com.saavn.music.util.RelevanceEngine.isSameSongOrDuplicate(song, candidate) &&
                     playedSoFar.none { com.saavn.music.util.RelevanceEngine.isSameSongOrDuplicate(it, candidate) } &&
-                    com.saavn.music.util.RelevanceEngine.isSongInLanguage(candidate, activeLangs) &&
-                    com.saavn.music.util.RelevanceEngine.scoreSongRelevance(song, candidate, activeLangs, sessionSeedSong) > 0
+                    com.saavn.music.util.RelevanceEngine.isSongInLanguage(candidate, activeLangs)
                 }
 
                 val candidateMatches = if (filteredPool.isNotEmpty()) {
-                    com.saavn.music.util.RelevanceEngine.buildRelevantQueue(song, filteredPool, activeLangs, maxItems = 50, minItems = 25, sessionSeed = sessionSeedSong).filter { it.videoId != song.videoId && !com.saavn.music.util.RelevanceEngine.isPlaylistOrCompilation(it) }
+                    com.saavn.music.util.RelevanceEngine.buildRelevantQueue(song, filteredPool, activeLangs, maxItems = 45, minItems = 20, sessionSeed = sessionSeedSong).filter { it.videoId != song.videoId && !com.saavn.music.util.RelevanceEngine.isPlaylistOrCompilation(it) }
                 } else {
-                    val ytResult = ytRepo.searchSongs(query, maxResults = 35).getOrDefault(emptyList())
-                    val filteredYt = ytResult.filter { candidate ->
-                        candidate.videoId != song.videoId &&
-                        !com.saavn.music.util.RelevanceEngine.isPlaylistOrCompilation(candidate) &&
-                        !com.saavn.music.util.RelevanceEngine.isSameSongOrDuplicate(song, candidate) &&
-                        playedSoFar.none { com.saavn.music.util.RelevanceEngine.isSameSongOrDuplicate(it, candidate) } &&
-                        com.saavn.music.util.RelevanceEngine.isSongInLanguage(candidate, activeLangs) &&
-                        com.saavn.music.util.RelevanceEngine.scoreSongRelevance(song, candidate, activeLangs, sessionSeedSong) > 0
-                    }
-                    com.saavn.music.util.RelevanceEngine.buildRelevantQueue(song, filteredYt, activeLangs, maxItems = 50, minItems = 25, sessionSeed = sessionSeedSong).filter { it.videoId != song.videoId && !com.saavn.music.util.RelevanceEngine.isPlaylistOrCompilation(it) }
+                    emptyList()
                 }
 
                 // Strictly ensure minimum 25 upcoming songs in the song's exact language and mood
                 val relevantMatches = if (candidateMatches.size < 25) {
                     val backupPool = mutableListOf<YouTubeSong>()
-                    if (activeLangs.contains("tamil")) {
-                        backupPool.addAll(_trendingSongs.value)
-                        backupPool.addAll(_mostPlayedSongs.value)
-                        backupPool.addAll(_latestReleases.value)
-                        backupPool.addAll(YouTubeMusicRepository.CURATED_TAMIL_SONGS)
-                    }
+                    backupPool.addAll(_trendingSongs.value)
+                    backupPool.addAll(_mostPlayedSongs.value)
+                    backupPool.addAll(_latestReleases.value)
                     val backupCandidates = backupPool
                         .distinctBy { it.videoId }
                         .filter { candidate ->
@@ -2415,13 +3298,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 (currentSong == null || !com.saavn.music.util.RelevanceEngine.isSameSongOrDuplicate(currentSong, candidate)) &&
                 currentQueue.none { com.saavn.music.util.RelevanceEngine.isSameSongOrDuplicate(it, candidate) } &&
                 com.saavn.music.util.RelevanceEngine.isSongInLanguage(candidate, activeLangs)
-            } ?: if (activeLangs.contains("tamil")) {
-                YouTubeMusicRepository.CURATED_TAMIL_SONGS.firstOrNull { candidate ->
-                    (currentSong == null || !com.saavn.music.util.RelevanceEngine.isSameSongOrDuplicate(currentSong, candidate)) &&
-                    currentQueue.none { com.saavn.music.util.RelevanceEngine.isSameSongOrDuplicate(it, candidate) } &&
-                    com.saavn.music.util.RelevanceEngine.isSongInLanguage(candidate, activeLangs)
-                }
-            } else null
+            }
 
             if (candidate != null) {
                 android.util.Log.i("ISAI_PLAYER", "[MainViewModel] Auto-advancing to: '${candidate.title}'")
@@ -2597,22 +3474,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // 1. Instantly update in-memory digital volume on Main thread (0ms latency, butter smooth slider)
         ytPlayerController.setVolume(clamped)
 
-        // 2. Debounce heavy network and AudioService IPC calls to IO dispatcher (never blocks UI)
-        volumeDebounceJob?.cancel()
-        volumeDebounceJob = viewModelScope.launch(Dispatchers.IO) {
-            delay(120)
+        val syncState = isaiConnectManager.playbackState.value
+        val isRemoteActive = syncState != null && 
+            syncState.currentDeviceId.isNotBlank() && 
+            !isaiConnectManager.isMyDeviceActive() && 
+            (syncState.isPlaying || Math.abs(System.currentTimeMillis() - syncState.updatedAt) < 15 * 60_000L)
 
-            if (listenTogetherManager.isHost()) {
-                listenTogetherManager.hostSetVolume(clamped)
-            }
-
-            val syncState = isaiConnectManager.playbackState.value
-            val isRemoteActive = syncState != null && 
-                syncState.currentDeviceId.isNotBlank() && 
-                !isaiConnectManager.isMyDeviceActive() && 
-                (syncState.isPlaying || Math.abs(System.currentTimeMillis() - syncState.updatedAt) < 15 * 60_000L)
-
-            if (isRemoteActive && syncState != null) {
+        if (isRemoteActive && syncState != null) {
+            // Debounce heavy remote network commands so network/Firebase is not flooded during continuous dragging
+            volumeDebounceJob?.cancel()
+            volumeDebounceJob = viewModelScope.launch(Dispatchers.IO) {
+                delay(80)
                 val volFloat = clamped / 100f
                 android.util.Log.i("ISAI_CONNECT", "[MainViewModel] Sending remote volume $volFloat ($clamped%) to active device")
                 isaiConnectManager.sendCommand(
@@ -2622,7 +3494,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     targetDeviceId = syncState.currentDeviceId
                 )
                 isaiConnectManager.updatePlaybackState(volume = volFloat)
-            } else {
+            }
+        } else {
+            // 2. Local device: Instantly apply hardware stream volume on IO dispatcher without delay (0ms latency!)
+            viewModelScope.launch(Dispatchers.IO) {
                 try {
                     val am = getApplication<Application>().getSystemService(Context.AUDIO_SERVICE) as? AudioManager
                     if (am != null) {
@@ -2637,6 +3512,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 } catch (_: Exception) {}
             }
+
+            // 3. Debounce Listen Together room sync so we don't spam Firebase on every slider micro-tick
+            if (listenTogetherManager.isHost()) {
+                volumeDebounceJob?.cancel()
+                volumeDebounceJob = viewModelScope.launch(Dispatchers.IO) {
+                    delay(80)
+                    listenTogetherManager.hostSetVolume(clamped)
+                }
+            }
         }
     }
 
@@ -2649,19 +3533,173 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         isaiConnectManager.syncFavorites(localStorage.favorites.value)
     }
 
-    fun createPlaylist(name: String) {
-        localStorage.createPlaylist(name)
+    fun getCurrentUserName(): String {
+        val profile = userProfile.value
+        val name = profile?.displayName?.trim()?.takeIf { it.isNotBlank() && !it.equals("JEEVA ⚡", ignoreCase = true) }
+            ?: authService.getCurrentUser()?.displayName?.trim()?.takeIf { it.isNotBlank() && !it.equals("JEEVA ⚡", ignoreCase = true) }
+            ?: authService.getCurrentUser()?.email?.substringBefore("@")?.replaceFirstChar { it.uppercase() }
+            ?: "ISAI Listener"
+        return name
+    }
+
+    fun getCurrentUserId(): String {
+        return userProfile.value?.id?.ifBlank { null }
+            ?: authService.getCurrentUserId().ifBlank {
+                try {
+                    android.provider.Settings.Secure.getString(
+                        getApplication<Application>().contentResolver,
+                        android.provider.Settings.Secure.ANDROID_ID
+                    ) ?: "user_${System.currentTimeMillis()}"
+                } catch (_: Exception) {
+                    "user_${System.currentTimeMillis()}"
+                }
+            }
+    }
+
+    private fun syncPublicPlaylistToFirebase(playlist: UserPlaylist) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val rtdb = FirebaseDatabase.getInstance("https://isai-49b51-default-rtdb.firebaseio.com")
+                val ref = rtdb.getReference("publicPlaylists").child(playlist.id)
+                val data = hashMapOf<String, Any>(
+                    "id" to playlist.id,
+                    "name" to playlist.name,
+                    "creatorId" to playlist.creatorId,
+                    "creatorName" to playlist.creatorName.ifBlank { "ISAI Listener" },
+                    "createdAt" to playlist.createdAt,
+                    "isPublic" to true,
+                    "songCount" to playlist.songs.size,
+                    "coverUrl" to (playlist.songs.firstOrNull()?.thumbnailUrl ?: ""),
+                    "songsJson" to gson.toJson(playlist.songs)
+                )
+                ref.setValue(data)
+            } catch (e: Exception) {
+                android.util.Log.e("ISAI_PLAYLISTS", "Failed to sync public playlist", e)
+            }
+        }
+    }
+
+    private fun removePublicPlaylistFromFirebase(playlistId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val rtdb = FirebaseDatabase.getInstance("https://isai-49b51-default-rtdb.firebaseio.com")
+                rtdb.getReference("publicPlaylists").child(playlistId).removeValue()
+            } catch (e: Exception) {
+                android.util.Log.e("ISAI_PLAYLISTS", "Failed to remove public playlist from Firebase", e)
+            }
+        }
+    }
+
+    fun listenToPublicPlaylists() {
+        try {
+            val rtdb = FirebaseDatabase.getInstance("https://isai-49b51-default-rtdb.firebaseio.com")
+            val ref = rtdb.getReference("publicPlaylists").limitToLast(50)
+            ref.addValueEventListener(object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    viewModelScope.launch(Dispatchers.IO) {
+                        val list = mutableListOf<UserPlaylist>()
+                        for (child in snapshot.children) {
+                            try {
+                                val id = child.child("id").getValue(String::class.java) ?: child.key ?: continue
+                                val name = child.child("name").getValue(String::class.java) ?: "Public Playlist"
+                                val creatorId = child.child("creatorId").getValue(String::class.java) ?: ""
+                                val creatorName = child.child("creatorName").getValue(String::class.java) ?: "ISAI User"
+                                val createdAt = child.child("createdAt").getValue(Long::class.java) ?: 0L
+                                val songsJson = child.child("songsJson").getValue(String::class.java)
+                                val songs: List<YouTubeSong> = if (!songsJson.isNullOrBlank()) {
+                                    try {
+                                        val type = object : TypeToken<List<YouTubeSong>>() {}.type
+                                        gson.fromJson(songsJson, type) ?: emptyList()
+                                    } catch (_: Exception) {
+                                        emptyList()
+                                    }
+                                } else emptyList()
+
+                                list.add(
+                                    UserPlaylist(
+                                        id = id,
+                                        name = name,
+                                        songs = songs,
+                                        createdAt = createdAt,
+                                        isPublic = true,
+                                        creatorId = creatorId,
+                                        creatorName = creatorName
+                                    )
+                                )
+                            } catch (_: Exception) {}
+                        }
+                        _publicPlaylists.value = list.reversed()
+                    }
+                }
+
+                override fun onCancelled(error: DatabaseError) {
+                    android.util.Log.w("ISAI_PLAYLISTS", "Public playlists cancelled: ${error.message}")
+                }
+            })
+        } catch (e: Exception) {
+            android.util.Log.e("ISAI_PLAYLISTS", "Failed to listen to public playlists", e)
+        }
+    }
+
+    fun createPlaylist(name: String, isPublic: Boolean = false): UserPlaylist {
+        val creatorName = getCurrentUserName()
+        val creatorId = getCurrentUserId()
+        val pl = localStorage.createPlaylist(
+            name = name,
+            isPublic = isPublic,
+            creatorId = creatorId,
+            creatorName = creatorName
+        )
+        if (isPublic) {
+            syncPublicPlaylistToFirebase(pl)
+        }
+
+        // Auto-populate related songs matching the playlist name in background
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val songs = fetchRelatedSongsForPlaylistName(name, _preferredLanguages.value.firstOrNull() ?: "tamil")
+                if (songs.isNotEmpty()) {
+                    localStorage.addSongsToPlaylist(pl.id, songs)
+                    val updated = localStorage.playlists.value.find { it.id == pl.id }
+                    if (isPublic && updated != null) {
+                        syncPublicPlaylistToFirebase(updated)
+                    }
+                    withContext(Dispatchers.Main) {
+                        if (_playlistDetail.value?.id == pl.id) {
+                            _playlistDetail.value = _playlistDetail.value?.copy(
+                                songs = updated?.songs ?: songs,
+                                isLoading = false
+                            )
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+        return pl
     }
 
     fun addSongToPlaylist(playlistId: String, song: YouTubeSong) {
         localStorage.addSongToPlaylist(playlistId, song)
+        val pl = localStorage.playlists.value.find { it.id == playlistId }
+        if (pl != null && pl.isPublic) {
+            syncPublicPlaylistToFirebase(pl)
+        }
     }
 
     fun removeSongFromPlaylist(playlistId: String, videoId: String) {
         localStorage.removeSongFromPlaylist(playlistId, videoId)
+        val pl = localStorage.playlists.value.find { it.id == playlistId }
+        if (pl != null && pl.isPublic) {
+            syncPublicPlaylistToFirebase(pl)
+        }
     }
 
     fun deletePlaylist(playlistId: String) {
+        val pl = localStorage.playlists.value.find { it.id == playlistId }
+            ?: _publicPlaylists.value.find { it.id == playlistId }
+        if (pl != null && pl.isPublic) {
+            removePublicPlaylistFromFirebase(playlistId)
+        }
         localStorage.deletePlaylist(playlistId)
     }
 
@@ -2674,6 +3712,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setScreen(screen: AppScreen) {
+        if (_currentScreen.value != AppScreen.PLAYLIST_DETAIL && screen != AppScreen.PLAYLIST_DETAIL) {
+            previousScreen = _currentScreen.value
+        }
         _currentScreen.value = screen
     }
 

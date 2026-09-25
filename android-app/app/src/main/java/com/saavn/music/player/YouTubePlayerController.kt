@@ -390,13 +390,12 @@ class YouTubePlayerController(
 
     fun prepareForPlayback(song: YouTubeSong, queue: List<YouTubeSong>? = null) {
         _currentSong.value = song
-        val baseQueue = when {
+        val targetQueue = when {
             queue != null -> queue
-            _playbackQueue.value.any { RelevanceEngine.isSameSongOrDuplicate(it, song) } -> _playbackQueue.value
+            _playbackQueue.value.any { it.videoId == song.videoId } -> _playbackQueue.value
             _playbackQueue.value.isNotEmpty() -> _playbackQueue.value + song
             else -> listOf(song)
         }
-        val targetQueue = RelevanceEngine.deduplicateSongs(baseQueue)
         _playbackQueue.value = targetQueue
         val idx = targetQueue.indexOfFirst { it.videoId == song.videoId }
         _currentQueueIndex.value = if (idx >= 0) idx else 0
@@ -432,13 +431,12 @@ class YouTubePlayerController(
 
     fun playSong(song: YouTubeSong, queue: List<YouTubeSong>? = null, startPositionSec: Float = 0f, autoPlay: Boolean = true) {
         Log.i("ISAI_PLAYER", "[YouTubePlayerController] playSong: '${song.title}' (${song.videoId}) | startPos=${startPositionSec}s | audioUrl=${song.audioUrl}")
-        val baseQueue = when {
+        val targetQueue = when {
             queue != null -> queue
-            _playbackQueue.value.any { RelevanceEngine.isSameSongOrDuplicate(it, song) } -> _playbackQueue.value
+            _playbackQueue.value.any { it.videoId == song.videoId } -> _playbackQueue.value
             _playbackQueue.value.isNotEmpty() -> _playbackQueue.value + song
             else -> listOf(song)
         }
-        val targetQueue = RelevanceEngine.deduplicateSongs(baseQueue)
         _playbackQueue.value = targetQueue
         val idx = targetQueue.indexOfFirst { it.videoId == song.videoId }
         _currentQueueIndex.value = if (idx >= 0) idx else 0
@@ -451,8 +449,7 @@ class YouTubePlayerController(
         if (audioUrlToPlay.isNullOrBlank()) {
             val matchedCurated = com.saavn.music.data.repository.YouTubeMusicRepository.CURATED_TAMIL_SONGS.firstOrNull { curated ->
                 curated.videoId == song.videoId ||
-                curated.title.equals(song.title, ignoreCase = true) ||
-                RelevanceEngine.isSameSongOrDuplicate(curated, song)
+                curated.title.equals(song.title, ignoreCase = true)
             }
             audioUrlToPlay = matchedCurated?.audioUrl
         }
@@ -700,7 +697,7 @@ class YouTubePlayerController(
     }
 
     fun setPlaybackQueue(songs: List<YouTubeSong>, newIndex: Int = _currentQueueIndex.value) {
-        val deduped = RelevanceEngine.deduplicateSongs(songs)
+        val deduped = songs.distinctBy { it.videoId }
         _playbackQueue.value = deduped
         _currentQueueIndex.value = newIndex.coerceIn(0, (deduped.size - 1).coerceAtLeast(0))
         val validIds = deduped.map { it.videoId }.toSet()

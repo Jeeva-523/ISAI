@@ -52,7 +52,7 @@ export const PlaylistDetailPage: React.FC<PlaylistDetailPageProps> = ({
   const isPlaylistActive = currentSong && playlistSongs.some((s) => s.videoId === currentSong.videoId)
   const totalDurationMin = Math.round(playlistSongs.reduce((acc, s) => acc + (s.durationMs || 210000), 0) / 60000)
 
-  // Fetch Spotify-style smart recommendations for this playlist
+  // Fetch curated smart recommendations for this playlist
   const fetchRecommendations = async () => {
     setIsLoadingRecs(true)
     try {
@@ -121,7 +121,7 @@ export const PlaylistDetailPage: React.FC<PlaylistDetailPageProps> = ({
         <ArrowLeft size={16} /> Back
       </button>
 
-      {/* Spotify Hero Playlist Header with Dynamic Ambient Glow */}
+      {/* Hero Playlist Header with Dynamic Ambient Glow */}
       <div
         style={{
           display: 'flex',
@@ -177,7 +177,7 @@ export const PlaylistDetailPage: React.FC<PlaylistDetailPageProps> = ({
                 textTransform: 'uppercase'
               }}
             >
-              SPOTIFY MIX
+              ISAI MIX
             </span>
             <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>• Public Playlist</span>
           </div>
@@ -216,9 +216,9 @@ export const PlaylistDetailPage: React.FC<PlaylistDetailPageProps> = ({
             <span style={{ color: 'var(--text-muted)' }}>about {totalDurationMin} min</span>
           </div>
 
-          {/* Spotify Action Bar */}
+          {/* Playlist Action Bar */}
           <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-            {/* Big Spotify Green Circular Play Button */}
+            {/* Play Button */}
             <button
               onClick={handlePlayAll}
               style={{
@@ -308,7 +308,7 @@ export const PlaylistDetailPage: React.FC<PlaylistDetailPageProps> = ({
         </div>
       </div>
 
-      {/* Spotify Signature: Recommended Songs Section */}
+      {/* Recommended Songs Section */}
       <div
         style={{
           marginTop: '32px',

@@ -35,8 +35,8 @@ import type { Artist } from './components/ArtistCard'
 import type { UserProfile } from './components/LoginModal'
 import type { Song, UserPlaylist } from '@shared/models/song'
 
-// Curated fallback songs with direct 320kbps audio streams
-const INITIAL_CURATED_SONGS: Song[] = [
+// Curated fallback songs with direct 320kbps audio streams (available as shared export)
+export const INITIAL_CURATED_SONGS: Song[] = [
   {
     videoId: 'KUN5Uf9mObQ',
     title: 'Arabic Kuthu - Halamithi Habibo',
@@ -390,7 +390,7 @@ export function App() {
   const [user, setUser] = useState<UserProfile>(() => storageService.getUserProfile())
 
   // Music state
-  const [trendingSongs, setTrendingSongs] = useState<Song[]>(INITIAL_CURATED_SONGS)
+  const [trendingSongs, setTrendingSongs] = useState<Song[]>([])
   const [isTrendingLoading, setIsTrendingLoading] = useState(false)
   const [trendingError, setTrendingError] = useState<string | null>(null)
 
@@ -455,14 +455,26 @@ export function App() {
   const [isUpdateView, setIsUpdateView] = useState(() => {
     if (typeof window === 'undefined') return false
     const path = window.location.pathname
-    return path === '/update' || path.startsWith('/update') || window.location.search.includes('action=update')
+    const isAppReferrer = typeof document !== 'undefined' && document.referrer?.includes('com.saavn.music')
+    return (
+      path === '/update' ||
+      path.startsWith('/update') ||
+      window.location.search.includes('action=update') ||
+      isAppReferrer
+    )
   })
   useEffect(() => {
     const path = window.location.pathname
+    const isAppReferrer = typeof document !== 'undefined' && document.referrer?.includes('com.saavn.music')
     if (path === '/verify-email' || window.location.search.includes('mode=verifyEmail')) {
       setIsVerifyView(true)
     }
-    if (path === '/update' || path.startsWith('/update') || window.location.search.includes('action=update')) {
+    if (
+      path === '/update' ||
+      path.startsWith('/update') ||
+      window.location.search.includes('action=update') ||
+      isAppReferrer
+    ) {
       setIsUpdateView(true)
     }
 
@@ -531,7 +543,7 @@ export function App() {
         }
         const currentQ = playbackQueueRef.current || []
         const queueToUse = currentQ.length > 0 ? currentQ : [targetSong]
-        handlePlaySongRef.current?.(targetSong, queueToUse, true)
+        handlePlaySongRef.current?.(targetSong, queueToUse, false, true)
       }
     })
 
@@ -590,7 +602,7 @@ export function App() {
             viewCountFormatted: ''
           }
           const queueToUse = currentQ.length > 0 ? currentQ : [targetSong]
-          handlePlaySongRef.current?.(targetSong, queueToUse, true)
+          handlePlaySongRef.current?.(targetSong, queueToUse, false, true)
         }
       } else if (cmd.action === 'ADD_TO_QUEUE') {
         const targetSong: Song | null = cmd.song
@@ -746,11 +758,11 @@ export function App() {
         setTrendingSongs(data)
         IsaiConnectService.syncHomeSongs(data)
       } else {
-        setTrendingSongs(INITIAL_CURATED_SONGS)
+        setTrendingSongs([])
       }
     } catch (error: any) {
-      console.warn('[App] Failed to fetch trending music online, using curated offline list:', error)
-      setTrendingSongs(INITIAL_CURATED_SONGS)
+      console.warn('[App] Failed to fetch trending music online:', error)
+      setTrendingSongs([])
     } finally {
       setIsTrendingLoading(false)
     }
@@ -876,11 +888,19 @@ export function App() {
       const era = detectSongEra(seedSong)
       const eraPrefix = era ? `${era} ` : ''
 
-      const queries = [moodQuery]
+      const cleanTitle = (seedSong.title || '')
+        .replace(/\s*[|•].*$/, '')
+        .replaceAll(/\s*\(.*?(official|video|audio|lyrics|hd|4k|song|teaser|trailer|promo).*?\)/gi, '')
+        .replaceAll(/\s*\[.*?(official|video|audio|lyrics|hd|4k|song|teaser|trailer|promo).*?\]/gi, '')
+        .trim()
+
+      const queries: string[] = []
+      if (cleanTitle) {
+        queries.push(`${cleanTitle} ${primaryLang}`)
+      }
+      queries.push(moodQuery)
       if (artist) {
-        queries.push(
-          `${artist} ${primaryLang} ${eraPrefix}${seedMood === 'MELODY_ROMANCE' ? 'love melody' : 'hit'} songs`
-        )
+        queries.push(`${artist} ${primaryLang} hits`, `${artist} ${primaryLang} songs`)
       }
       if (seedMood === 'MELODY_ROMANCE') {
         queries.push(
@@ -907,8 +927,8 @@ export function App() {
       const fetchedArrays = await Promise.all(candidatePromises)
       const rawCandidates = fetchedArrays.flat()
 
-      // Pool also from existing curated lists if matching language
-      const allPool = deduplicateSongs([...rawCandidates, ...trendingSongs, ...INITIAL_CURATED_SONGS, ...favorites])
+      // Pool candidates dynamically from API results and favorites
+      const allPool = deduplicateSongs([...rawCandidates, ...trendingSongs, ...favorites])
 
       const activeLangs =
         user.preferredLanguages && user.preferredLanguages.length > 0
@@ -1048,8 +1068,8 @@ export function App() {
     }
   }
 
-  // Spotify-style Daily Mixes computed from trending songs and user's preferred languages
-  const spotifyDailyMixes = useMemo(() => {
+  // Daily Mixes computed from trending songs and user's preferred languages
+  const isaiDailyMixes = useMemo(() => {
     const primaryLang =
       user.preferredLanguages && user.preferredLanguages[0] ? user.preferredLanguages[0].toUpperCase() : 'TAMIL'
 
@@ -1117,15 +1137,24 @@ export function App() {
     isAdvancing: boolean = false,
     forceLocal: boolean = false
   ) => {
+    const isRemoteOnline = connectedDevices.some(
+      (d) => d.deviceId === remotePlaybackState?.currentDeviceId && IsaiConnectService.isDeviceOnline(d)
+    )
     const isRemoteActive = Boolean(
       !forceLocal &&
+      !isSeparatePlayback &&
       remotePlaybackState &&
+      remotePlaybackState.isPlaying &&
       remotePlaybackState.currentDeviceId &&
       remotePlaybackState.currentDeviceId !== myDeviceId &&
-      remotePlaybackState.currentTitle
+      remotePlaybackState.currentTitle &&
+      Date.now() - (remotePlaybackState.updatedAt || 0) < 30000 &&
+      isRemoteOnline
     )
 
-    if (isRemoteActive) {
+    // Only route to remote device if remote is actively playing AND advancing queue (Next/Prev track buttons)
+    // When a user explicitly clicks a song card in the web UI (!isAdvancing), user wants to listen on this web browser!
+    if (isRemoteActive && isAdvancing) {
       IsaiConnectService.sendCommand('PLAY_SONG', { song })
       const playingDevice = connectedDevices.find((d) => d.deviceId === remotePlaybackState?.currentDeviceId)
       const devName =
@@ -1133,6 +1162,19 @@ export function App() {
         (remotePlaybackState?.currentDeviceId.includes('android') ? 'Mobile Phone' : 'Remote Device')
       showToast(`Playing on ${devName} 📱`)
       return
+    }
+
+    // If a remote device was actively playing and user clicked a song on Web, pause remote and handoff active playback to Web
+    if (isRemoteActive && !isAdvancing) {
+      const prevDeviceId = remotePlaybackState?.currentDeviceId || ''
+      if (prevDeviceId && prevDeviceId !== myDeviceId) {
+        IsaiConnectService.sendCommand('PAUSE', { targetDeviceId: prevDeviceId })
+      }
+    }
+
+    // Claim active playback on Web
+    if (!storageService.isMultiDevicePlaybackSeparate()) {
+      IsaiConnectService.transferPlaybackToDevice(myDeviceId, song, 0)
     }
 
     setCurrentPlayingSong(song)
@@ -1184,11 +1226,17 @@ export function App() {
           .replaceAll(/\.{2,}$/g, '')
           .trim()
 
-        const results = await musicApi.searchSongs(cleanTitle || song.title)
+        let results = await musicApi.searchSongs(cleanTitle || song.title)
+        if (!results || results.length === 0 || !results[0].audioUrl) {
+          results = await musicApi.searchSongs(`${song.title} ${song.channelTitle || ''}`.trim())
+        }
         if (results && results.length > 0 && results[0].audioUrl) {
           const resolvedUrl = results[0].audioUrl
           const updated = { ...song, audioUrl: resolvedUrl }
           setCurrentPlayingSong(updated)
+          setPlaybackQueue((prev) =>
+            prev.map((s) => (s.videoId === song.videoId ? { ...s, audioUrl: resolvedUrl } : s))
+          )
         }
       } catch (error) {
         console.warn('[App] AudioUrl resolution error:', error)
@@ -1204,13 +1252,19 @@ export function App() {
   }
 
   const handleNextSong = () => {
+    const isRemoteOnline = connectedDevices.some(
+      (d) => d.deviceId === remotePlaybackState?.currentDeviceId && IsaiConnectService.isDeviceOnline(d)
+    )
     const isRemoteActive =
       !isSeparatePlayback &&
       Boolean(
         remotePlaybackState &&
+        remotePlaybackState.isPlaying &&
         remotePlaybackState.currentDeviceId &&
         remotePlaybackState.currentDeviceId !== myDeviceId &&
-        remotePlaybackState.currentTitle
+        remotePlaybackState.currentTitle &&
+        Date.now() - (remotePlaybackState.updatedAt || 0) < 30000 &&
+        isRemoteOnline
       )
     if (isRemoteActive) {
       IsaiConnectService.sendCommand('NEXT')
@@ -1218,8 +1272,7 @@ export function App() {
     }
 
     if (!currentPlayingSong) return
-    const activeQueue =
-      playbackQueue.length > 0 ? playbackQueue : trendingSongs.length > 0 ? trendingSongs : INITIAL_CURATED_SONGS
+    const activeQueue = playbackQueue.length > 0 ? playbackQueue : trendingSongs
     let curIdx = activeQueue.findIndex((s) => s.videoId === currentPlayingSong.videoId)
     if (curIdx === -1) curIdx = currentQueueIndex
 
@@ -1235,13 +1288,19 @@ export function App() {
   }
 
   const handlePrevSong = () => {
+    const isRemoteOnline = connectedDevices.some(
+      (d) => d.deviceId === remotePlaybackState?.currentDeviceId && IsaiConnectService.isDeviceOnline(d)
+    )
     const isRemoteActive =
       !isSeparatePlayback &&
       Boolean(
         remotePlaybackState &&
+        remotePlaybackState.isPlaying &&
         remotePlaybackState.currentDeviceId &&
         remotePlaybackState.currentDeviceId !== myDeviceId &&
-        remotePlaybackState.currentTitle
+        remotePlaybackState.currentTitle &&
+        Date.now() - (remotePlaybackState.updatedAt || 0) < 30000 &&
+        isRemoteOnline
       )
     if (isRemoteActive) {
       IsaiConnectService.sendCommand('PREV')
@@ -1249,8 +1308,7 @@ export function App() {
     }
 
     if (!currentPlayingSong) return
-    const activeQueue =
-      playbackQueue.length > 0 ? playbackQueue : trendingSongs.length > 0 ? trendingSongs : INITIAL_CURATED_SONGS
+    const activeQueue = playbackQueue.length > 0 ? playbackQueue : trendingSongs
     let curIdx = activeQueue.findIndex((s) => s.videoId === currentPlayingSong.videoId)
     if (curIdx === -1) curIdx = currentQueueIndex
 
@@ -1263,12 +1321,20 @@ export function App() {
 
   // Add to Queue Handler: Inserts after existing manually queued tracks and before automatic recommendations
   const handleAddToQueue = (song: Song) => {
-    const isRemoteActive = Boolean(
-      remotePlaybackState &&
-      remotePlaybackState.currentDeviceId &&
-      remotePlaybackState.currentDeviceId !== myDeviceId &&
-      remotePlaybackState.currentTitle
+    const isRemoteOnline = connectedDevices.some(
+      (d) => d.deviceId === remotePlaybackState?.currentDeviceId && IsaiConnectService.isDeviceOnline(d)
     )
+    const isRemoteActive =
+      !isSeparatePlayback &&
+      Boolean(
+        remotePlaybackState &&
+        remotePlaybackState.isPlaying &&
+        remotePlaybackState.currentDeviceId &&
+        remotePlaybackState.currentDeviceId !== myDeviceId &&
+        remotePlaybackState.currentTitle &&
+        Date.now() - (remotePlaybackState.updatedAt || 0) < 30000 &&
+        isRemoteOnline
+      )
 
     const manualSong: Song = { ...song, isManual: true }
 
@@ -1326,12 +1392,20 @@ export function App() {
 
   // Play Next in Queue Handler: Inserts chosen song immediately after the current track
   const handlePlayNext = (song: Song) => {
-    const isRemoteActive = Boolean(
-      remotePlaybackState &&
-      remotePlaybackState.currentDeviceId &&
-      remotePlaybackState.currentDeviceId !== myDeviceId &&
-      remotePlaybackState.currentTitle
+    const isRemoteOnline = connectedDevices.some(
+      (d) => d.deviceId === remotePlaybackState?.currentDeviceId && IsaiConnectService.isDeviceOnline(d)
     )
+    const isRemoteActive =
+      !isSeparatePlayback &&
+      Boolean(
+        remotePlaybackState &&
+        remotePlaybackState.isPlaying &&
+        remotePlaybackState.currentDeviceId &&
+        remotePlaybackState.currentDeviceId !== myDeviceId &&
+        remotePlaybackState.currentTitle &&
+        Date.now() - (remotePlaybackState.updatedAt || 0) < 30000 &&
+        isRemoteOnline
+      )
 
     const manualSong: Song = { ...song, isManual: true }
 
@@ -1554,7 +1628,7 @@ export function App() {
           onSelectArtist={handleSelectArtist}
           currentSong={currentPlayingSong}
           isPlaying={!!currentPlayingSong}
-          dailyMixes={spotifyDailyMixes}
+          dailyMixes={isaiDailyMixes}
           onSelectPlaylistDetail={handleSelectPlaylistDetail}
           userProfile={user}
           selectedLanguage={
@@ -1690,7 +1764,7 @@ export function App() {
       {/* Toast Notification */}
       <Toast toast={toast} onClose={handleCloseToast} />
 
-      {/* Persistent Web Audio Player with Spotify Connect */}
+      {/* Persistent Web Audio Player with ISAI Connect */}
       <WebPlayer
         song={currentPlayingSong}
         remoteState={remotePlaybackState}
@@ -1757,7 +1831,7 @@ export function App() {
           showToast('Queue cleared 🗑️')
         }}
         userId={user.email || 'user_guest'}
-        onTransferPlayback={(s) => handlePlaySong(s, [], true)}
+        onTransferPlayback={(s) => handlePlaySong(s, [], false, true)}
       />
 
       {showLanguageModal && (

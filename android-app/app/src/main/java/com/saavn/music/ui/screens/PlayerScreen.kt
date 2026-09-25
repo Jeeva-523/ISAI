@@ -1132,29 +1132,36 @@ fun PlayerScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     var previousVol by remember { mutableIntStateOf(80) }
+                    var isDraggingVolume by remember { mutableStateOf(false) }
+                    var dragVolume by remember { mutableFloatStateOf(volume.toFloat()) }
+                    val currentDisplayVolume = if (isDraggingVolume) dragVolume.toInt() else volume
+
                     IconButton(
                         onClick = {
                             if (isListenTogetherListener) {
                                 android.widget.Toast.makeText(context, "👑 Sound/Volume is controlled by Host ($roomHostName)", android.widget.Toast.LENGTH_SHORT).show()
                                 return@IconButton
                             }
-                            if (volume > 0) {
-                                previousVol = volume
+                            if (currentDisplayVolume > 0) {
+                                previousVol = currentDisplayVolume
+                                dragVolume = 0f
                                 viewModel.setVolume(0)
                             } else {
-                                viewModel.setVolume(previousVol.coerceAtLeast(40))
+                                val restored = previousVol.coerceAtLeast(40)
+                                dragVolume = restored.toFloat()
+                                viewModel.setVolume(restored)
                             }
                         },
                         modifier = Modifier.size(28.dp)
                     ) {
                         Icon(
                             imageVector = when {
-                                volume == 0 -> Icons.AutoMirrored.Filled.VolumeOff
-                                volume < 50 -> Icons.AutoMirrored.Filled.VolumeDown
+                                currentDisplayVolume == 0 -> Icons.AutoMirrored.Filled.VolumeOff
+                                currentDisplayVolume < 50 -> Icons.AutoMirrored.Filled.VolumeDown
                                 else -> Icons.AutoMirrored.Filled.VolumeUp
                             },
                             contentDescription = "Volume Toggle",
-                            tint = if (isListenTogetherListener) TextMuted else if (volume > 0) NeonCyan else TextMuted,
+                            tint = if (isListenTogetherListener) TextMuted else if (currentDisplayVolume > 0) NeonCyan else TextMuted,
                             modifier = Modifier.size(18.dp)
                         )
                     }
@@ -1162,13 +1169,18 @@ fun PlayerScreen(
                     Spacer(modifier = Modifier.width(4.dp))
 
                     Slider(
-                        value = volume.toFloat(),
-                        onValueChange = {
+                        value = if (isDraggingVolume) dragVolume else volume.toFloat(),
+                        onValueChange = { newVol ->
                             if (isListenTogetherListener) {
                                 android.widget.Toast.makeText(context, "👑 Sound/Volume is controlled by Host ($roomHostName)", android.widget.Toast.LENGTH_SHORT).show()
                             } else {
-                                viewModel.setVolume(it.toInt())
+                                isDraggingVolume = true
+                                dragVolume = newVol
+                                viewModel.setVolume(newVol.toInt())
                             }
+                        },
+                        onValueChangeFinished = {
+                            isDraggingVolume = false
                         },
                         enabled = !isListenTogetherListener,
                         valueRange = 0f..100f,
@@ -1191,7 +1203,7 @@ fun PlayerScreen(
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     ) {
                         Text(
-                            text = if (isListenTogetherListener) "👑 $volume%" else "$volume%",
+                            text = if (isListenTogetherListener) "👑 $currentDisplayVolume%" else "$currentDisplayVolume%",
                             color = if (isListenTogetherListener) Color(0xFF4ADE80) else NeonCyan,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold

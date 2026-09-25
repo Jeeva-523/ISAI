@@ -53,6 +53,7 @@ import com.saavn.music.ui.components.MiniPlayer
 import com.saavn.music.ui.screens.HomeScreen
 import com.saavn.music.ui.screens.LibraryScreen
 import com.saavn.music.ui.screens.PlayerScreen
+import com.saavn.music.ui.screens.PlaylistDetailScreen
 import com.saavn.music.ui.screens.ProfileScreen
 import com.saavn.music.ui.screens.SearchScreen
 import com.saavn.music.ui.theme.DarkBackground
@@ -135,9 +136,35 @@ class MainActivity : ComponentActivity(), com.razorpay.PaymentResultWithDataList
         mainViewModel.handlePaymentError(errorCode, response, paymentData)
     }
 
+    private val volumeChangeReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
+            if (intent?.action == "android.media.VOLUME_CHANGED_ACTION") {
+                mainViewModel.syncWithSystemVolume()
+            }
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         mainViewModel.syncWithSystemVolume()
+        try {
+            val filter = android.content.IntentFilter("android.media.VOLUME_CHANGED_ACTION")
+            androidx.core.content.ContextCompat.registerReceiver(
+                this,
+                volumeChangeReceiver,
+                filter,
+                androidx.core.content.ContextCompat.RECEIVER_EXPORTED
+            )
+        } catch (e: Exception) {
+            android.util.Log.w("MainActivity", "Failed to register volume receiver: ${e.message}")
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        try {
+            unregisterReceiver(volumeChangeReceiver)
+        } catch (_: Exception) {}
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
@@ -326,6 +353,7 @@ fun IsaiApp(viewModel: MainViewModel = viewModel()) {
     BackHandler(enabled = showFullPlayer || currentScreen != AppScreen.HOME) {
         when {
             showFullPlayer -> viewModel.closeFullPlayer()
+            currentScreen == AppScreen.PLAYLIST_DETAIL -> viewModel.closePlaylistDetail()
             currentScreen != AppScreen.HOME -> viewModel.setScreen(AppScreen.HOME)
         }
     }
@@ -343,6 +371,7 @@ fun IsaiApp(viewModel: MainViewModel = viewModel()) {
                 AppScreen.SEARCH -> SearchScreen(viewModel = viewModel)
                 AppScreen.LIBRARY -> LibraryScreen(viewModel = viewModel)
                 AppScreen.PROFILE -> ProfileScreen(viewModel = viewModel)
+                AppScreen.PLAYLIST_DETAIL -> PlaylistDetailScreen(viewModel = viewModel)
             }
         }
 

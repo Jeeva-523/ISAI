@@ -91,3 +91,17 @@ data class LyricsResponse(
     @SerializedName("snippet") val snippet: String? = null,
     @SerializedName("lyrics_copyright") val lyricsCopyright: String? = null
 )
+
+data class SearchPlaylistItem(
+    val id: String,
+    val title: String,
+    val subtitle: String,
+    val coverUrl: String,
+    val language: String = "",
+    val searchQuery: String = "",
+    val songCount: Int = 0,
+    val isUserPlaylist: Boolean = false,
+    val creatorName: String? = null,
+    val isPublic: Boolean = false,
+    val userPlaylist: com.saavn.music.data.local.UserPlaylist? = null
+)

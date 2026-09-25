@@ -373,7 +373,7 @@ class YouTubeMusicRepository {
                             thumbnailUrl = "https://img.youtube.com/vi/$videoId/hqdefault.jpg",
                             durationFormatted = durationStr,
                             durationMs = 225000L,
-                            viewCountFormatted = "YouTube Music"
+                            viewCountFormatted = ""
                         )
                     )
                 }

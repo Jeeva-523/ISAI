@@ -8,6 +8,10 @@ import com.saavn.music.data.model.YouTubeSong
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import java.util.UUID
 
 import com.saavn.music.data.model.UserProfile
@@ -15,9 +19,12 @@ import com.saavn.music.ui.theme.AppThemeMode
 
 data class UserPlaylist(
     val id: String = UUID.randomUUID().toString(),
-    val name: String,
+    val name: String = "",
     val songs: List<YouTubeSong> = emptyList(),
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    val isPublic: Boolean = false,
+    val creatorId: String = "",
+    val creatorName: String = ""
 )
 
 data class LastPlaybackSession(
@@ -31,6 +38,7 @@ data class LastPlaybackSession(
 
 class LocalMusicStorage(context: Context) {
 
+    private val ioScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val prefs: SharedPreferences =
         context.getSharedPreferences("isai_local_store", Context.MODE_PRIVATE)
     private val gson = Gson()
@@ -203,12 +211,16 @@ class LocalMusicStorage(context: Context) {
             current.add(0, song)
         }
         _favorites.value = current
-        prefs.edit().putString(KEY_FAVORITES, gson.toJson(current)).apply()
+        ioScope.launch {
+            prefs.edit().putString(KEY_FAVORITES, gson.toJson(current)).apply()
+        }
     }
 
     fun setFavorites(songs: List<YouTubeSong>) {
         _favorites.value = songs
-        prefs.edit().putString(KEY_FAVORITES, gson.toJson(songs)).apply()
+        ioScope.launch {
+            prefs.edit().putString(KEY_FAVORITES, gson.toJson(songs)).apply()
+        }
     }
 
     // --- Recently Played (Strictly latest 20) & Play Count Tracking ---
@@ -219,7 +231,6 @@ class LocalMusicStorage(context: Context) {
         val counts = _songPlayCounts.value.toMutableMap()
         counts[vid] = (counts[vid] ?: 0) + 1
         _songPlayCounts.value = counts
-        prefs.edit().putString(KEY_SONG_PLAY_COUNTS, gson.toJson(counts)).apply()
 
         val cleanArtist = song.channelTitle
             .replace(" - Topic", "")
@@ -228,11 +239,18 @@ class LocalMusicStorage(context: Context) {
             .split(",").first()
             .split("&").first()
             .trim()
-        if (cleanArtist.isNotBlank() && cleanArtist != "Tamil Artist" && cleanArtist != "Tamil Music") {
-            val artCounts = _artistPlayCounts.value.toMutableMap()
-            artCounts[cleanArtist] = (artCounts[cleanArtist] ?: 0) + 1
-            _artistPlayCounts.value = artCounts
-            prefs.edit().putString(KEY_ARTIST_PLAY_COUNTS, gson.toJson(artCounts)).apply()
+        val artCounts = if (cleanArtist.isNotBlank() && cleanArtist != "Tamil Artist" && cleanArtist != "Tamil Music") {
+            val map = _artistPlayCounts.value.toMutableMap()
+            map[cleanArtist] = (map[cleanArtist] ?: 0) + 1
+            _artistPlayCounts.value = map
+            map
+        } else null
+
+        ioScope.launch {
+            prefs.edit().putString(KEY_SONG_PLAY_COUNTS, gson.toJson(counts)).apply()
+            if (artCounts != null) {
+                prefs.edit().putString(KEY_ARTIST_PLAY_COUNTS, gson.toJson(artCounts)).apply()
+            }
         }
     }
 
@@ -243,22 +261,38 @@ class LocalMusicStorage(context: Context) {
         current.add(0, song)
         val trimmed = if (current.size > 20) current.take(20) else current
         _recentlyPlayed.value = trimmed
-        prefs.edit().putString(KEY_RECENTLY_PLAYED, gson.toJson(trimmed)).apply()
+        ioScope.launch {
+            prefs.edit().putString(KEY_RECENTLY_PLAYED, gson.toJson(trimmed)).apply()
+        }
     }
 
     fun setRecentlyPlayed(songs: List<YouTubeSong>) {
         val trimmed = if (songs.size > 20) songs.take(20) else songs
         _recentlyPlayed.value = trimmed
-        prefs.edit().putString(KEY_RECENTLY_PLAYED, gson.toJson(trimmed)).apply()
+        ioScope.launch {
+            prefs.edit().putString(KEY_RECENTLY_PLAYED, gson.toJson(trimmed)).apply()
+        }
     }
 
     // --- Playlists ---
-    fun createPlaylist(name: String): UserPlaylist {
-        val newPlaylist = UserPlaylist(name = name)
+    fun createPlaylist(
+        name: String,
+        isPublic: Boolean = false,
+        creatorId: String = "",
+        creatorName: String = ""
+    ): UserPlaylist {
+        val newPlaylist = UserPlaylist(
+            name = name,
+            isPublic = isPublic,
+            creatorId = creatorId,
+            creatorName = creatorName
+        )
         val current = _playlists.value.toMutableList()
         current.add(0, newPlaylist)
         _playlists.value = current
-        prefs.edit().putString(KEY_PLAYLISTS, gson.toJson(current)).apply()
+        ioScope.launch {
+            prefs.edit().putString(KEY_PLAYLISTS, gson.toJson(current)).apply()
+        }
         return newPlaylist
     }
 
@@ -271,7 +305,34 @@ class LocalMusicStorage(context: Context) {
             } else pl
         }
         _playlists.value = current
-        prefs.edit().putString(KEY_PLAYLISTS, gson.toJson(current)).apply()
+        ioScope.launch {
+            prefs.edit().putString(KEY_PLAYLISTS, gson.toJson(current)).apply()
+        }
+    }
+
+    fun addSongsToPlaylist(playlistId: String, newSongs: List<YouTubeSong>) {
+        val current = _playlists.value.map { pl ->
+            if (pl.id == playlistId) {
+                val merged = (pl.songs + newSongs).distinctBy { it.videoId }
+                pl.copy(songs = merged)
+            } else pl
+        }
+        _playlists.value = current
+        ioScope.launch {
+            prefs.edit().putString(KEY_PLAYLISTS, gson.toJson(current)).apply()
+        }
+    }
+
+    fun setPlaylistSongs(playlistId: String, songs: List<YouTubeSong>) {
+        val current = _playlists.value.map { pl ->
+            if (pl.id == playlistId) {
+                pl.copy(songs = com.saavn.music.util.RelevanceEngine.deduplicateSongs(songs))
+            } else pl
+        }
+        _playlists.value = current
+        ioScope.launch {
+            prefs.edit().putString(KEY_PLAYLISTS, gson.toJson(current)).apply()
+        }
     }
 
     fun removeSongFromPlaylist(playlistId: String, videoId: String) {
@@ -281,13 +342,17 @@ class LocalMusicStorage(context: Context) {
             } else pl
         }
         _playlists.value = current
-        prefs.edit().putString(KEY_PLAYLISTS, gson.toJson(current)).apply()
+        ioScope.launch {
+            prefs.edit().putString(KEY_PLAYLISTS, gson.toJson(current)).apply()
+        }
     }
 
     fun deletePlaylist(playlistId: String) {
         val current = _playlists.value.filterNot { it.id == playlistId }
         _playlists.value = current
-        prefs.edit().putString(KEY_PLAYLISTS, gson.toJson(current)).apply()
+        ioScope.launch {
+            prefs.edit().putString(KEY_PLAYLISTS, gson.toJson(current)).apply()
+        }
     }
 
     // --- Playback Session Persistence ---
@@ -307,7 +372,9 @@ class LocalMusicStorage(context: Context) {
             timestamp = System.currentTimeMillis()
         )
         _lastPlaybackSession.value = session
-        prefs.edit().putString(KEY_LAST_PLAYBACK_SESSION, gson.toJson(session)).apply()
+        ioScope.launch {
+            prefs.edit().putString(KEY_LAST_PLAYBACK_SESSION, gson.toJson(session)).apply()
+        }
     }
 
     companion object {

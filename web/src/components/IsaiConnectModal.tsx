@@ -203,7 +203,7 @@ export const IsaiConnectModal: React.FC<IsaiConnectModalProps> = ({
               <div style={{ fontSize: '11.5px', color: isSeparateMode ? '#10B981' : '#9CA3AF', marginTop: '2px' }}>
                 {isSeparateMode
                   ? 'Active: Web and Phone play different songs simultaneously'
-                  : 'Sync Mode: Single device handoff (Spotify Connect)'}
+                  : 'Sync Mode: Single device handoff (ISAI Connect)'}
               </div>
             </div>
           </div>

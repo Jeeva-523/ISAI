@@ -525,7 +525,7 @@ fun ProfileScreen(
                         subtitle = if (isSeparatePlayback)
                             "Separate: Play on 2+ devices simultaneously 🎧"
                         else
-                            "Sync Mode: Single device (Spotify Connect) ⚡",
+                            "Sync Mode: Single device (ISAI Connect) ⚡",
                         checked = isSeparatePlayback,
                         onCheckedChange = { enabled ->
                             viewModel.setMultiDevicePlaybackSeparate(enabled)

@@ -179,7 +179,7 @@ fun IsaiConnectBottomSheet(
                                 text = if (isSeparatePlayback)
                                     "Active: Play separately on 2+ devices without pause"
                                 else
-                                    "Sync Mode: Single device handoff (Spotify Connect)",
+                                    "Sync Mode: Single device handoff (ISAI Connect)",
                                 style = MaterialTheme.typography.bodySmall.copy(
                                     color = if (isSeparatePlayback) Color(0xFF10B981) else TextSecondary,
                                     fontSize = 11.5.sp

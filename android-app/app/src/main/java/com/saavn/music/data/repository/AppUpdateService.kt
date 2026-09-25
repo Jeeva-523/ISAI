@@ -342,10 +342,9 @@ class AppUpdateService private constructor(private val context: Context) {
      * Fallback: Opens the download link or Play Store / browser.
      */
     fun openUpdateUrl(context: Context, downloadUrl: String) {
-        val targetUrl = if (downloadUrl.isNotBlank() && downloadUrl != "https://isaihub.web.app") {
-            downloadUrl
-        } else {
-            "https://isaihub.web.app/update"
+        val targetUrl = when {
+            downloadUrl.isNotBlank() && downloadUrl != "https://isaihub.web.app" -> downloadUrl
+            else -> "https://isaihub.web.app/update"
         }
 
         try {
@@ -386,10 +385,9 @@ class AppUpdateService private constructor(private val context: Context) {
                 notificationManager.createNotificationChannel(channel)
             }
 
-            val targetUrl = if (updateInfo.downloadUrl.isNotBlank() && updateInfo.downloadUrl != "https://isaihub.web.app") {
-                updateInfo.downloadUrl
-            } else {
-                "https://isaihub.web.app/update"
+            val targetUrl = when {
+                updateInfo.downloadUrl.isNotBlank() && updateInfo.downloadUrl != "https://isaihub.web.app" -> updateInfo.downloadUrl
+                else -> "https://isaihub.web.app/update"
             }
             val intent = Intent(Intent.ACTION_VIEW, Uri.parse(targetUrl)).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP

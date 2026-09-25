@@ -23,8 +23,8 @@ android {
         applicationId = "com.company.isai"
         minSdk = 26
         targetSdk = 34
-        versionCode = 10
-        versionName = "1.3.6"
+        versionCode = 12
+        versionName = "1.3.8"
 
         buildConfigField("String", "YOUTUBE_API_KEY", "\"$youtubeApiKey\"")
 

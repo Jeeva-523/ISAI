@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -24,6 +26,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Warning
@@ -36,16 +40,24 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import com.saavn.music.data.model.SearchPlaylistItem
+import com.saavn.music.data.local.UserPlaylist
 import com.saavn.music.ui.AppScreen
 import com.saavn.music.ui.MainViewModel
 import com.saavn.music.ui.components.SongListNativeAdItem
@@ -73,6 +85,8 @@ fun SearchScreen(
 ) {
     val query by viewModel.searchQuery.collectAsState()
     val results by viewModel.searchResults.collectAsState()
+    val searchPlaylists by viewModel.searchPlaylists.collectAsState()
+    var selectedResultTab by remember { mutableIntStateOf(0) }
     val favorites by viewModel.favorites.collectAsState()
     val isSearching by viewModel.isSearching.collectAsState()
     val searchError by viewModel.searchError.collectAsState()
@@ -264,7 +278,89 @@ fun SearchScreen(
             Spacer(modifier = Modifier.width(14.dp))
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(4.dp))
+
+        // Songs vs Playlists Segmented Tab Switcher (Visible when searching)
+        if (query.isNotBlank() && !isSearching) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // Songs Tab
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(if (selectedResultTab == 0) NeonCyan else DarkSurfaceGlass)
+                        .border(1.dp, if (selectedResultTab == 0) NeonCyan else GlassBorderSubtle, RoundedCornerShape(20.dp))
+                        .clickable { selectedResultTab = 0 }
+                        .padding(horizontal = 16.dp, vertical = 7.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "🎵 Songs",
+                            color = if (selectedResultTab == 0) DarkBackground else TextPrimary,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        if (results.isNotEmpty()) {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Box(
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .background(if (selectedResultTab == 0) DarkBackground.copy(alpha = 0.25f) else NeonCyan.copy(alpha = 0.2f))
+                                    .padding(horizontal = 6.dp, vertical = 1.dp)
+                            ) {
+                                Text(
+                                    text = "${results.size}",
+                                    color = if (selectedResultTab == 0) DarkBackground else NeonCyan,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.ExtraBold
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Playlists Tab
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(if (selectedResultTab == 1) NeonCyan else DarkSurfaceGlass)
+                        .border(1.dp, if (selectedResultTab == 1) NeonCyan else GlassBorderSubtle, RoundedCornerShape(20.dp))
+                        .clickable { selectedResultTab = 1 }
+                        .padding(horizontal = 16.dp, vertical = 7.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "📂 Playlists",
+                            color = if (selectedResultTab == 1) DarkBackground else TextPrimary,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        if (searchPlaylists.isNotEmpty()) {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Box(
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .background(if (selectedResultTab == 1) DarkBackground.copy(alpha = 0.25f) else NeonCyan.copy(alpha = 0.2f))
+                                    .padding(horizontal = 6.dp, vertical = 1.dp)
+                            ) {
+                                Text(
+                                    text = "${searchPlaylists.size}",
+                                    color = if (selectedResultTab == 1) DarkBackground else NeonCyan,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.ExtraBold
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(4.dp))
 
         // Content
         if (isSearching) {
@@ -281,7 +377,7 @@ fun SearchScreen(
                 ) {
                     CircularProgressIndicator(color = NeonCyan, strokeWidth = 3.dp)
                     Text(
-                        text = "Discovering songs...",
+                        text = "Discovering songs & playlists...",
                         color = TextPrimary,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold
@@ -293,7 +389,7 @@ fun SearchScreen(
                     )
                 }
             }
-        } else if (searchError != null) {
+        } else if (searchError != null && results.isEmpty() && searchPlaylists.isEmpty()) {
             // 2. Error Handling
             Box(
                 modifier = Modifier
@@ -350,93 +446,248 @@ fun SearchScreen(
                     }
                 }
             }
-        } else if (query.isNotBlank() && results.isEmpty()) {
-            // 3. Empty Search Results
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(top = 60.dp),
-                contentAlignment = Alignment.TopCenter
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.padding(horizontal = 32.dp)
-                ) {
-                    Text(
-                        text = "🔍",
-                        fontSize = 44.sp
-                    )
-                    Text(
-                        text = "No Songs Found",
-                        color = TextPrimary,
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "We couldn't find any songs matching \"$query\". Check spelling or try searching another song title, artist, or album.",
-                        color = TextMuted,
-                        fontSize = 13.sp,
-                        textAlign = TextAlign.Center,
-                        lineHeight = 18.sp
-                    )
-                }
-            }
-        } else if (results.isNotEmpty()) {
-            // 4. Search Results Song List
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = 120.dp)
-            ) {
-                item {
-                    Column(modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp)) {
-                        Text(
-                            text = "Songs Discovered (${results.size})",
-                            color = TextPrimary,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "ISAI HD Music • Tap to play directly",
-                            color = TextMuted,
-                            fontSize = 11.sp
-                        )
-                    }
-                }
-
-                itemsIndexed(results) { index, song ->
-                        val isThisPlaying = (effectivePlayingId == song.videoId)
-                        val isFav = favorites.any { it.videoId.trim() == song.videoId.trim() }
-                        YouTubeSongRowItem(
-                            index = index + 1,
-                            song = song,
-                            isCurrent = isThisPlaying,
-                            isPlaying = isThisPlaying && effectiveIsPlaying,
-                            onClick = { viewModel.playSong(song, null) },
-                            onPlayPauseClick = {
-                                if (isThisPlaying) {
-                                    viewModel.togglePlayPause()
-                                } else {
-                                    viewModel.playSong(song, null)
-                                }
-                            },
-                            isFav = isFav,
-                            onToggleFav = { viewModel.toggleFavorite(song) },
-                            onAddToPlaylist = { viewModel.openAddToPlaylistDialog(song) },
-                            onAddToQueue = { viewModel.addToQueue(song) },
-                            onPlayNext = { viewModel.playNextInQueue(song) }
-                        )
-
-                        // AdMob Native Ad after every 5 songs (FREE users only, collapse on fail)
-                        if ((index + 1) % 5 == 0) {
-                            SongListNativeAdItem(
-                                userProfile = userProfile,
-                                slotIndex = (index + 1) / 5,
-                                modifier = Modifier.padding(vertical = 4.dp)
+        } else if (query.isNotBlank()) {
+            if (selectedResultTab == 0) {
+                // ── 3. SONGS TAB (with Related Playlists quick carousel at top) ──
+                if (results.isEmpty() && searchPlaylists.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(top = 60.dp),
+                        contentAlignment = Alignment.TopCenter
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            modifier = Modifier.padding(horizontal = 32.dp)
+                        ) {
+                            Text(text = "🔍", fontSize = 44.sp)
+                            Text(
+                                text = "No Songs Found",
+                                color = TextPrimary,
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "We couldn't find any songs matching \"$query\". Check spelling or try searching another keyword.",
+                                color = TextMuted,
+                                fontSize = 13.sp,
+                                textAlign = TextAlign.Center,
+                                lineHeight = 18.sp
                             )
                         }
                     }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(bottom = 120.dp)
+                    ) {
+                        // Horizontal Related Playlists Carousel
+                        if (searchPlaylists.isNotEmpty()) {
+                            item {
+                                Column(modifier = Modifier.padding(top = 6.dp, bottom = 4.dp)) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 18.dp, vertical = 4.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "📂 Related Playlists (${searchPlaylists.size})",
+                                            color = TextPrimary,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            text = "View All →",
+                                            color = NeonCyan,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .clickable { selectedResultTab = 1 }
+                                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.height(6.dp))
+
+                                    LazyRow(
+                                        contentPadding = PaddingValues(horizontal = 16.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        items(searchPlaylists.take(6), key = { it.id }) { plItem ->
+                                            SearchPlaylistChip(
+                                                item = plItem,
+                                                onClick = {
+                                                    if (plItem.isUserPlaylist && plItem.userPlaylist != null) {
+                                                        viewModel.openCustomPlaylist(plItem.userPlaylist)
+                                                    } else {
+                                                        viewModel.openFeaturedPlaylist(
+                                                            id = plItem.id,
+                                                            title = plItem.title,
+                                                            subtitle = plItem.subtitle,
+                                                            language = plItem.language,
+                                                            coverUrl = plItem.coverUrl,
+                                                            searchQuery = plItem.searchQuery
+                                                        )
+                                                    }
+                                                }
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                }
+                            }
+                        }
+
+                        item {
+                            Column(modifier = Modifier.padding(horizontal = 18.dp, vertical = 6.dp)) {
+                                Text(
+                                    text = "Songs Discovered (${results.size})",
+                                    color = TextPrimary,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "ISAI HD Music • Tap to play directly",
+                                    color = TextMuted,
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+
+                        if (results.isEmpty()) {
+                            item {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(32.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "No individual songs found, but check out related playlists above or in the Playlists tab!",
+                                        color = TextMuted,
+                                        fontSize = 13.sp,
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
+                            }
+                        } else {
+                            itemsIndexed(results) { index, song ->
+                                val isThisPlaying = (effectivePlayingId == song.videoId)
+                                val isFav = favorites.any { it.videoId.trim() == song.videoId.trim() }
+                                YouTubeSongRowItem(
+                                    index = index + 1,
+                                    song = song,
+                                    isCurrent = isThisPlaying,
+                                    isPlaying = isThisPlaying && effectiveIsPlaying,
+                                    onClick = { viewModel.playSong(song, null) },
+                                    onPlayPauseClick = {
+                                        if (isThisPlaying) {
+                                            viewModel.togglePlayPause()
+                                        } else {
+                                            viewModel.playSong(song, null)
+                                        }
+                                    },
+                                    isFav = isFav,
+                                    onToggleFav = { viewModel.toggleFavorite(song) },
+                                    onAddToPlaylist = { viewModel.openAddToPlaylistDialog(song) },
+                                    onAddToQueue = { viewModel.addToQueue(song) },
+                                    onPlayNext = { viewModel.playNextInQueue(song) }
+                                )
+
+                                // AdMob Native Ad after every 5 songs (FREE users only, collapse on fail)
+                                if ((index + 1) % 5 == 0) {
+                                    SongListNativeAdItem(
+                                        userProfile = userProfile,
+                                        slotIndex = (index + 1) / 5,
+                                        modifier = Modifier.padding(vertical = 4.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
+            } else {
+                // ── 4. PLAYLISTS TAB ──
+                if (searchPlaylists.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(top = 60.dp),
+                        contentAlignment = Alignment.TopCenter
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            modifier = Modifier.padding(horizontal = 32.dp)
+                        ) {
+                            Text(text = "📂", fontSize = 44.sp)
+                            Text(
+                                text = "No Playlists Found",
+                                color = TextPrimary,
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "We couldn't find any playlists matching \"$query\". Check spelling or try searching another keyword.",
+                                color = TextMuted,
+                                fontSize = 13.sp,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        item {
+                            Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                                Text(
+                                    text = "Playlists & Mixes (${searchPlaylists.size})",
+                                    color = TextPrimary,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "Curated collections, community & smart mixes for \"$query\"",
+                                    color = TextMuted,
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+
+                        items(searchPlaylists, key = { it.id }) { plItem ->
+                            SearchPlaylistCard(
+                                item = plItem,
+                                onClick = {
+                                    if (plItem.isUserPlaylist && plItem.userPlaylist != null) {
+                                        viewModel.openCustomPlaylist(plItem.userPlaylist)
+                                    } else {
+                                        viewModel.openFeaturedPlaylist(
+                                            id = plItem.id,
+                                            title = plItem.title,
+                                            subtitle = plItem.subtitle,
+                                            language = plItem.language,
+                                            coverUrl = plItem.coverUrl,
+                                            searchQuery = plItem.searchQuery
+                                        )
+                                    }
+                                }
+                            )
+                        }
+
+                        item {
+                            Spacer(modifier = Modifier.height(100.dp))
+                        }
+                    }
+                }
+            }
         } else {
             // Browse Categories Grid
             LazyColumn(
@@ -496,6 +747,239 @@ fun SearchScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun SearchPlaylistChip(
+    item: SearchPlaylistItem,
+    onClick: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .width(140.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(DarkSurfaceGlass)
+            .border(1.dp, GlassBorderSubtle, RoundedCornerShape(14.dp))
+            .clickable { onClick() }
+            .padding(8.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(105.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(
+                    Brush.linearGradient(
+                        colors = listOf(NeonCyan.copy(alpha = 0.35f), NeonPurple.copy(alpha = 0.35f))
+                    )
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            if (item.coverUrl.isNotBlank()) {
+                AsyncImage(
+                    model = item.coverUrl,
+                    contentDescription = item.title,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Default.PlaylistPlay,
+                    contentDescription = null,
+                    tint = NeonCyan,
+                    modifier = Modifier.size(36.dp)
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(6.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(DarkBackground.copy(alpha = 0.85f))
+                    .padding(horizontal = 6.dp, vertical = 2.dp)
+            ) {
+                Text(
+                    text = when {
+                        item.isUserPlaylist && item.isPublic -> "🌐 Public"
+                        item.isUserPlaylist -> "🔒 Playlist"
+                        else -> "✨ Mix"
+                    },
+                    color = if (item.isUserPlaylist) NeonCyan else Color.White,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Text(
+            text = item.title,
+            color = TextPrimary,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+
+        Spacer(modifier = Modifier.height(2.dp))
+
+        Text(
+            text = if (item.creatorName != null) "by ${item.creatorName}" else item.subtitle,
+            color = TextMuted,
+            fontSize = 10.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+fun SearchPlaylistCard(
+    item: SearchPlaylistItem,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(DarkSurfaceGlass)
+            .border(1.dp, GlassBorderSubtle, RoundedCornerShape(16.dp))
+            .clickable { onClick() }
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(68.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(
+                    Brush.linearGradient(
+                        colors = listOf(NeonCyan.copy(alpha = 0.3f), NeonPurple.copy(alpha = 0.3f))
+                    )
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            if (item.coverUrl.isNotBlank()) {
+                AsyncImage(
+                    model = item.coverUrl,
+                    contentDescription = item.title,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Default.PlaylistPlay,
+                    contentDescription = null,
+                    tint = NeonCyan,
+                    modifier = Modifier.size(32.dp)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.width(14.dp))
+
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(
+                    text = item.title,
+                    color = TextPrimary,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(
+                            if (item.isUserPlaylist && item.isPublic) NeonCyan.copy(alpha = 0.2f)
+                            else if (item.isUserPlaylist) NeonPurple.copy(alpha = 0.2f)
+                            else DarkSurfaceVariant
+                        )
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = when {
+                            item.isUserPlaylist && item.isPublic -> "🌐 Public"
+                            item.isUserPlaylist -> "🔒 Private"
+                            else -> "✨ Curated"
+                        },
+                        color = if (item.isUserPlaylist) NeonCyan else Color.White.copy(alpha = 0.8f),
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+
+            Text(
+                text = item.subtitle,
+                color = TextMuted,
+                fontSize = 11.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (item.creatorName != null) {
+                    Text(
+                        text = "Created by ${item.creatorName}",
+                        color = NeonCyan.copy(alpha = 0.9f),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                if (item.songCount > 0) {
+                    Text(
+                        text = "• ${item.songCount} songs",
+                        color = TextMuted,
+                        fontSize = 10.sp
+                    )
+                } else if (item.language.isNotBlank()) {
+                    Text(
+                        text = "• ${item.language}",
+                        color = TextMuted,
+                        fontSize = 10.sp
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(
+                    Brush.horizontalGradient(
+                        colors = listOf(NeonCyan, NeonPurple)
+                    )
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.PlayArrow,
+                contentDescription = "Play Playlist",
+                tint = DarkBackground,
+                modifier = Modifier.size(22.dp)
+            )
         }
     }
 }

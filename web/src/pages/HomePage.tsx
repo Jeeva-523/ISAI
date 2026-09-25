@@ -1,13 +1,13 @@
+import { musicApi } from '@shared/api/music-api'
 import { storageService } from '@shared/services/storageService'
 import { deduplicateSongs } from '@shared/utils/formatters'
 import { isSongInLanguage } from '@shared/utils/relevance'
 import { ChevronLeft, ChevronRight, Globe, Heart, Play, Search } from 'lucide-react'
-import React, { useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { ErrorBanner } from '../components/ErrorBanner'
-import { SkeletonSongCard } from '../components/SkeletonLoader'
 import { FeaturedPlaylistCard } from '../components/FeaturedPlaylistCard'
+import { SkeletonSongCard } from '../components/SkeletonLoader'
 import { FEATURED_PLAYLISTS, type FeaturedPlaylist } from '../data/featuredPlaylists'
-import { musicApi } from '@shared/api/music-api'
 import type { Artist } from '../components/ArtistCard'
 import type { UserProfile } from '../components/LoginModal'
 import type { Song } from '@shared/models/song'
@@ -207,9 +207,6 @@ export const HomePage: React.FC<HomePageProps> = ({
   mostPlayedSongs: propMostPlayed,
   onSelectPlaylistDetail
 }) => {
-  const [showLangDropdown, setShowLangDropdown] = useState(false)
-  const [playlistFilterLang, setPlaylistFilterLang] = useState<string>('All')
-
   // Language Resolution
   const rawLanguage = propLanguage || userProfile?.preferredLanguages?.[0] || 'Tamil'
   const activeLanguage =
@@ -217,15 +214,80 @@ export const HomePage: React.FC<HomePageProps> = ({
       ? 'Tamil'
       : rawLanguage.charAt(0).toUpperCase() + rawLanguage.slice(1)
   const rawName = userProfile?.name?.trim()
-  const userName = (rawName && !rawName.toLowerCase().startsWith('jeeva ⚡') && rawName.toLowerCase() !== 'jeeva ⚡')
-    ? rawName
-    : 'Listener'
+  const userName =
+    rawName && !rawName.toLowerCase().startsWith('jeeva ⚡') && rawName.toLowerCase() !== 'jeeva ⚡'
+      ? rawName
+      : 'Listener'
+
+  const [showLangDropdown, setShowLangDropdown] = useState(false)
 
   // Ref for horizontal scrolling
   const historyRowRef = useRef<HTMLDivElement>(null)
   const picksRowRef = useRef<HTMLDivElement>(null)
   const newReleasesRowRef = useRef<HTMLDivElement>(null)
   const playlistRowRef = useRef<HTMLDivElement>(null)
+
+  const loadPlaylistSongs = async (playlist: FeaturedPlaylist): Promise<Song[]> => {
+    // If playlist is marked as fixed songs (e.g. Kadhal Vibes), return ONLY those fixed songs!
+    if (playlist.isFixedSongs && playlist.initialSongs && playlist.initialSongs.length > 0) {
+      return playlist.initialSongs
+    }
+    const initial = playlist.initialSongs && playlist.initialSongs.length > 0 ? playlist.initialSongs : []
+
+    // 1. Trending Hits (January 2026 - Present & future releases auto-updating)
+    let autoTrendingPool: Song[] = []
+    if (playlist.isAutoTrending) {
+      const jan2026Ts = new Date('2026-01-01T00:00:00Z').getTime()
+      autoTrendingPool = (trendingSongs || []).filter((s) => {
+        const langMatch = isSongInLanguage(s, [playlist.language.toLowerCase()])
+        if (!langMatch) return false
+        const ts =
+          (s as any).releaseTimestamp ||
+          ((s as any).publishedAt ? new Date((s as any).publishedAt).getTime() : 0)
+        const dateStr = `${s.releaseDate || ''} ${s.album || ''} ${s.title || ''} ${s.year || ''}`
+        const yearNum = Number.parseInt(String(s.year || '0'), 10)
+        return ts >= jan2026Ts || yearNum >= 2026 || dateStr.includes('2026')
+      })
+    }
+
+    // 2. Fetch parallel subqueries to guarantee 50+ songs
+    const queries = [playlist.query, ...(playlist.subqueries || [])]
+    const settled = await Promise.allSettled(queries.map((q) => musicApi.searchSongs(q, 30)))
+
+    const searchPool: Song[] = []
+    for (const res of settled) {
+      if (res.status === 'fulfilled' && Array.isArray(res.value)) {
+        searchPool.push(...res.value)
+      }
+    }
+
+    // 3. Merge & Deduplicate
+    let combined = deduplicateSongs([...autoTrendingPool, ...initial, ...searchPool])
+    const targetLangs = [playlist.language.toLowerCase()]
+    combined = combined.filter((s) => isSongInLanguage(s, targetLangs))
+
+    // 4. Guarantee MINIMUM 50 songs
+    if (combined.length < 50) {
+      try {
+        const fallbackQueries = [
+          `${playlist.language} ${playlist.category} super hits 50`,
+          `${playlist.language} ${playlist.title.replaceAll(/[^\w\s]/g, '')} songs`
+        ]
+        const extraSettled = await Promise.allSettled(fallbackQueries.map((q) => musicApi.searchSongs(q, 30)))
+        for (const res of extraSettled) {
+          if (res.status === 'fulfilled' && Array.isArray(res.value)) {
+            const valid = res.value.filter((s) => isSongInLanguage(s, targetLangs))
+            combined = deduplicateSongs([...combined, ...valid])
+            if (combined.length >= 50) break
+          }
+        }
+      } catch (error_) {
+        console.warn('[FeaturedPlaylist] Fallback search error:', error_)
+      }
+    }
+
+    return combined
+  }
 
   const handlePlaylistClick = async (playlist: FeaturedPlaylist) => {
     const initial = playlist.initialSongs && playlist.initialSongs.length > 0 ? playlist.initialSongs : []
@@ -240,19 +302,12 @@ export const HomePage: React.FC<HomePageProps> = ({
     }
 
     try {
-      const fetched = await musicApi.searchSongs(playlist.query)
-      if (fetched && fetched.length > 0 && onSelectPlaylistDetail) {
-        const merged = deduplicateSongs([...initial, ...fetched])
-        onSelectPlaylistDetail(
-          playlist.title,
-          playlist.description,
-          merged,
-          playlist.coverUrl,
-          playlist.gradient
-        )
+      const fullSongs = await loadPlaylistSongs(playlist)
+      if (fullSongs && fullSongs.length > 0 && onSelectPlaylistDetail) {
+        onSelectPlaylistDetail(playlist.title, playlist.description, fullSongs, playlist.coverUrl, playlist.gradient)
       }
-    } catch (e) {
-      console.warn('[FeaturedPlaylist] Could not fetch more songs:', e)
+    } catch (error_) {
+      console.warn('[FeaturedPlaylist] Could not fetch more songs:', error_)
     }
   }
 
@@ -260,16 +315,15 @@ export const HomePage: React.FC<HomePageProps> = ({
     const initial = playlist.initialSongs && playlist.initialSongs.length > 0 ? playlist.initialSongs : []
     if (initial.length > 0 && onPlaySong) {
       onPlaySong(initial[0], initial)
-      return
     }
 
     try {
-      const fetched = await musicApi.searchSongs(playlist.query)
-      if (fetched && fetched.length > 0 && onPlaySong) {
-        onPlaySong(fetched[0], fetched)
+      const fullSongs = await loadPlaylistSongs(playlist)
+      if (fullSongs && fullSongs.length > 0 && onPlaySong) {
+        onPlaySong(fullSongs[0], fullSongs)
       }
-    } catch (e) {
-      console.warn('[FeaturedPlaylist] Play error:', e)
+    } catch (error_) {
+      console.warn('[FeaturedPlaylist] Play error:', error_)
     }
   }
 
@@ -291,16 +345,51 @@ export const HomePage: React.FC<HomePageProps> = ({
       : activeLanguage.toLowerCase().trim()
   ]
 
-  // Section 4: Picks For You (Authoritative / Personalized pool - Strictly in active language, min 30-35 songs)
-  const validPicks = (propPicks || []).filter((s) => isSongInLanguage(s, activeLangs))
+  // Section 4: Picks For You (Personalized recommendations based on user listening history)
+  const [dynamicRecs, setDynamicRecs] = useState<Song[]>([])
+  const [recReason, setRecReason] = useState<string>('')
+
+  useEffect(() => {
+    if (actualHistory.length > 0) {
+      const latestSong = actualHistory[0]
+      const cleanArtist = (latestSong.channelTitle || '').split(',')[0].split('&')[0].trim()
+      const cleanTitle = (latestSong.title || '')
+        .replaceAll(/\(.*?\)/g, '')
+        .replaceAll(/\[.*?\]/g, '')
+        .trim()
+      setRecReason(`Because you listened to ${cleanTitle.slice(0, 24)}`)
+
+      const q =
+        cleanArtist && cleanArtist !== 'Tamil Artist'
+          ? `${cleanArtist} ${activeLanguage} hit songs`
+          : `${cleanTitle} ${activeLanguage}`
+
+      musicApi
+        .searchSongs(q, 30)
+        .then((songs) => {
+          if (songs && songs.length > 0) {
+            const filtered = songs.filter((s) => isSongInLanguage(s, activeLangs))
+            setDynamicRecs(filtered)
+          }
+        })
+        .catch(() => {})
+    }
+  }, [actualHistory.length > 0 ? actualHistory[0].videoId : '', activeLanguage])
+
+  const validPicks = (dynamicRecs.length > 0 ? dynamicRecs : propPicks || []).filter((s) =>
+    isSongInLanguage(s, activeLangs)
+  )
   const validTrending = deduplicated.filter((s) => isSongInLanguage(s, activeLangs))
   const rawPicks = deduplicateSongs([...validPicks, ...validTrending])
   const picksSongs = (rawPicks.length >= 5 ? rawPicks : deduplicated).slice(0, 35)
 
-  // Featured Spotify-Style Playlists (Language-Based)
-  const displayedPlaylists = playlistFilterLang === 'All'
-    ? FEATURED_PLAYLISTS
-    : FEATURED_PLAYLISTS.filter((p) => p.language.toLowerCase() === playlistFilterLang.toLowerCase())
+  // Featured Curated Playlists (Language-Based)
+  const langPlaylists = FEATURED_PLAYLISTS.filter(
+    (p) =>
+      p.language.toLowerCase() === activeLanguage.toLowerCase() ||
+      activeLangs.includes(p.language.toLowerCase())
+  )
+  const displayedPlaylists = langPlaylists.length > 0 ? langPlaylists : FEATURED_PLAYLISTS
 
   // Section 5: New Releases (Strictly in active language, min 30-35 songs)
   const validPropNew = (propNewReleases || []).filter((s) => isSongInLanguage(s, activeLangs))
@@ -312,11 +401,7 @@ export const HomePage: React.FC<HomePageProps> = ({
     const pubDate = new Date(pub).getTime()
     return !Number.isNaN(pubDate) && nowMs - pubDate <= thirtyDaysMs
   })
-  const rawNewReleases = deduplicateSongs([
-    ...validPropNew,
-    ...verifiedNewReleases,
-    ...validTrending.slice(5)
-  ])
+  const rawNewReleases = deduplicateSongs([...validPropNew, ...verifiedNewReleases, ...validTrending.slice(5)])
   const displayNewReleases = (rawNewReleases.length >= 5 ? rawNewReleases : deduplicated.slice(5)).slice(0, 35)
 
   // Section 6: Mood Cards
@@ -507,6 +592,47 @@ export const HomePage: React.FC<HomePageProps> = ({
         </div>
       </div>
 
+      {/* Android App Update Notice Banner for mobile visitors */}
+      {typeof navigator !== 'undefined' && /android/i.test(navigator.userAgent) && (
+        <a
+          href="/update"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '14px 18px',
+            borderRadius: '16px',
+            background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(236, 72, 153, 0.2))',
+            border: '1.5px solid rgba(139, 92, 246, 0.45)',
+            textDecoration: 'none',
+            color: '#FFFFFF',
+            boxShadow: '0 8px 24px rgba(139, 92, 246, 0.2)',
+            transition: 'all 0.2s ease'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <span style={{ fontSize: '24px' }}>🚀</span>
+            <div>
+              <div style={{ fontSize: '14px', fontWeight: 800, color: '#DDD6FE' }}>ISAI Android App v1.3.6 Update</div>
+              <div style={{ fontSize: '12px', color: '#9CA3AF' }}>Tap here to install the update directly</div>
+            </div>
+          </div>
+          <span
+            style={{
+              padding: '8px 16px',
+              borderRadius: '12px',
+              background: 'linear-gradient(135deg, #8B5CF6, #EC4899)',
+              color: '#FFFFFF',
+              fontSize: '13px',
+              fontWeight: 700,
+              whiteSpace: 'nowrap'
+            }}
+          >
+            Update Now ➔
+          </span>
+        </a>
+      )}
+
       {/* 2. Full Width Search Bar */}
       <div
         onClick={onOpenSearch}
@@ -570,7 +696,7 @@ export const HomePage: React.FC<HomePageProps> = ({
               return (
                 <div
                   key={song.videoId}
-                  onClick={() => onPlaySong?.(song, actualHistory)}
+                  onClick={() => onPlaySong?.(song)}
                   style={{
                     minWidth: '120px',
                     maxWidth: '120px',
@@ -637,7 +763,7 @@ export const HomePage: React.FC<HomePageProps> = ({
         </div>
       )}
 
-      {/* Spotify-Style Featured Playlists 🎧 (Language-Based) */}
+      {/* Featured Playlists 🎧 */}
       <div>
         <div
           style={{
@@ -663,42 +789,17 @@ export const HomePage: React.FC<HomePageProps> = ({
               Featured Playlists 🎧
             </h2>
             <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-              Spotify-style curated playlists in your favorite languages
+              Curated playlists in your favorite languages
             </span>
           </div>
 
-          {/* Language Filter Pills */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-            {['All', ...SUPPORTED_LANGUAGES].map((lang) => {
-              const isSelected = playlistFilterLang.toLowerCase() === lang.toLowerCase()
-              return (
-                <button
-                  key={lang}
-                  onClick={() => setPlaylistFilterLang(lang)}
-                  style={{
-                    padding: '5px 13px',
-                    borderRadius: '20px',
-                    background: isSelected ? 'var(--isai-lime)' : 'rgba(255, 255, 255, 0.08)',
-                    color: isSelected ? '#000000' : '#E5E7EB',
-                    border: isSelected ? '1px solid var(--isai-lime)' : '1px solid rgba(255, 255, 255, 0.12)',
-                    fontSize: '12px',
-                    fontWeight: isSelected ? 800 : 600,
-                    cursor: 'pointer',
-                    transition: 'all 0.2s ease'
-                  }}
-                >
-                  {lang}
-                </button>
-              )
-            })}
-            <div style={{ display: 'flex', gap: '6px', marginLeft: '6px' }}>
-              <button className="control-btn" onClick={() => scrollRow(playlistRowRef, 'left')}>
-                <ChevronLeft size={18} />
-              </button>
-              <button className="control-btn" onClick={() => scrollRow(playlistRowRef, 'right')}>
-                <ChevronRight size={18} />
-              </button>
-            </div>
+          <div style={{ display: 'flex', gap: '6px' }}>
+            <button className="control-btn" onClick={() => scrollRow(playlistRowRef, 'left')}>
+              <ChevronLeft size={18} />
+            </button>
+            <button className="control-btn" onClick={() => scrollRow(playlistRowRef, 'right')}>
+              <ChevronRight size={18} />
+            </button>
           </div>
         </div>
 
@@ -723,7 +824,7 @@ export const HomePage: React.FC<HomePageProps> = ({
         </div>
       </div>
 
-      {/* 4. Picks For You ✨ (YouTube Music Style Cards) */}
+      {/* 4. Picks For You ✨ */}
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
           <div>
@@ -741,7 +842,7 @@ export const HomePage: React.FC<HomePageProps> = ({
             </h2>
             <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
               {actualHistory.length > 0
-                ? `Personalized for your ${activeLanguage} taste`
+                ? recReason || `Personalized for your ${activeLanguage} taste`
                 : `Popular in ${activeLanguage}`}
             </span>
           </div>
@@ -765,7 +866,7 @@ export const HomePage: React.FC<HomePageProps> = ({
             return (
               <div
                 key={song.videoId}
-                onClick={() => onPlaySong?.(song, deduplicated)}
+                onClick={() => onPlaySong?.(song)}
                 style={{
                   minWidth: '150px',
                   maxWidth: '150px',
@@ -900,7 +1001,7 @@ export const HomePage: React.FC<HomePageProps> = ({
             return (
               <div
                 key={song.videoId}
-                onClick={() => onPlaySong?.(song, displayNewReleases)}
+                onClick={() => onPlaySong?.(song)}
                 style={{
                   minWidth: '150px',
                   maxWidth: '150px',
@@ -1137,7 +1238,7 @@ export const HomePage: React.FC<HomePageProps> = ({
             return (
               <div
                 key={`${song.videoId}_mp_${idx}`}
-                onClick={() => onPlaySong?.(song, mostPlayedList)}
+                onClick={() => onPlaySong?.(song)}
                 style={{
                   display: 'flex',
                   alignItems: 'center',

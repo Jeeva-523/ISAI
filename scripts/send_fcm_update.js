@@ -22,7 +22,7 @@ async function sendUpdateNotification() {
       latestVersionCode: 9,
       updateTitle: 'New Update Available! 🚀',
       updateMessage: 'A new version of ISAI is ready. Tap to update directly!',
-      downloadUrl: 'https://isaihub.web.app/update'
+      downloadUrl: 'https://isaihub.web.app/isai.apk'
     };
   }
 
@@ -61,7 +61,7 @@ async function sendUpdateNotification() {
 
   const title = versionConfig.updateTitle || `New Update Available! 🚀`;
   const body = `ISAI v${versionConfig.latestVersionName} is ready. Tap to update directly!`;
-  const downloadUrl = versionConfig.downloadUrl || 'https://isaihub.web.app/update';
+  const downloadUrl = versionConfig.downloadUrl || 'https://isaihub.web.app/isai.apk';
 
   const payload = {
     message: {

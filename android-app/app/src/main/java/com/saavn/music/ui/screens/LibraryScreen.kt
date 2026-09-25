@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Refresh
@@ -88,11 +89,13 @@ fun LibraryScreen(
 
     val favorites by viewModel.favorites.collectAsState()
     val playlists by viewModel.playlists.collectAsState()
+    val publicPlaylists by viewModel.publicPlaylists.collectAsState()
     val recentlyPlayed by viewModel.recentlyPlayed.collectAsState()
     val localDeviceSongs by viewModel.localStorage.localDeviceSongs.collectAsState()
     val userProfile by viewModel.userProfile.collectAsState()
 
     var showCreatePlaylistDialog by remember { mutableStateOf(false) }
+    var playlistSubTab by remember { mutableIntStateOf(0) }
     var selectedPlaylistForView by remember { mutableStateOf<UserPlaylist?>(null) }
 
     Column(
@@ -387,29 +390,88 @@ fun LibraryScreen(
                             }
                         }
                     }
-                } else if (playlists.isEmpty()) {
-                    EmptyLibraryView(
-                        icon = Icons.Default.PlaylistPlay,
-                        title = "No Custom Playlists",
-                        subtitle = "Tap the + button above to create your first custom playlist!"
-                    )
                 } else {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 6.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        items(playlists) { pl ->
-                            PlaylistItemCard(
-                                playlist = pl,
-                                onClick = { selectedPlaylistForView = pl },
-                                onDelete = { viewModel.deletePlaylist(pl.id) },
-                                onPlayAll = {
-                                    if (pl.songs.isNotEmpty()) {
-                                        viewModel.playSong(pl.songs.first(), pl.songs)
-                                    }
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        // Sub-Tab Switcher: My Playlists vs Community Playlists
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 20.dp, vertical = 6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            // My Playlists Pill
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(20.dp))
+                                    .background(if (playlistSubTab == 0) NeonCyan.copy(alpha = 0.2f) else DarkSurfaceGlass)
+                                    .border(1.dp, if (playlistSubTab == 0) NeonCyan else GlassBorderSubtle, RoundedCornerShape(20.dp))
+                                    .clickable { playlistSubTab = 0 }
+                                    .padding(horizontal = 14.dp, vertical = 7.dp)
+                            ) {
+                                Text(
+                                    text = "📁 My Playlists (${playlists.size})",
+                                    color = if (playlistSubTab == 0) NeonCyan else TextSecondary,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+
+                            // Community Playlists Pill
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(20.dp))
+                                    .background(if (playlistSubTab == 1) NeonCyan.copy(alpha = 0.2f) else DarkSurfaceGlass)
+                                    .border(1.dp, if (playlistSubTab == 1) NeonCyan else GlassBorderSubtle, RoundedCornerShape(20.dp))
+                                    .clickable { playlistSubTab = 1 }
+                                    .padding(horizontal = 14.dp, vertical = 7.dp)
+                            ) {
+                                Text(
+                                    text = "🌐 Community (${publicPlaylists.size})",
+                                    color = if (playlistSubTab == 1) NeonCyan else TextSecondary,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+
+                        val activeList = if (playlistSubTab == 0) playlists else publicPlaylists
+                        val currentUid = viewModel.getCurrentUserId()
+
+                        if (activeList.isEmpty()) {
+                            if (playlistSubTab == 0) {
+                                EmptyLibraryView(
+                                    icon = Icons.Default.PlaylistPlay,
+                                    title = "No Custom Playlists",
+                                    subtitle = "Tap the + button above to create your first custom playlist!"
+                                )
+                            } else {
+                                EmptyLibraryView(
+                                    icon = Icons.Default.Language,
+                                    title = "No Community Playlists Yet",
+                                    subtitle = "Create a public playlist to share your favourite tracks with all ISAI users!"
+                                )
+                            }
+                        } else {
+                            LazyColumn(
+                                modifier = Modifier.fillMaxSize(),
+                                contentPadding = PaddingValues(horizontal = 18.dp, vertical = 6.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                items(activeList) { pl ->
+                                    val canDelete = (playlistSubTab == 0) || (pl.creatorId.isNotBlank() && pl.creatorId == currentUid)
+                                    PlaylistItemCard(
+                                        playlist = pl,
+                                        isCommunity = (playlistSubTab == 1),
+                                        onClick = { viewModel.openCustomPlaylist(pl) },
+                                        onDelete = if (canDelete) { { viewModel.deletePlaylist(pl.id) } } else null,
+                                        onPlayAll = {
+                                            if (pl.songs.isNotEmpty()) {
+                                                viewModel.playSong(pl.songs.first(), pl.songs)
+                                            }
+                                        }
+                                    )
                                 }
-                            )
+                            }
                         }
                     }
                 }
@@ -518,31 +580,122 @@ fun LibraryScreen(
     // --- Create Playlist Dialog ---
     if (showCreatePlaylistDialog) {
         var playlistName by remember { mutableStateOf("") }
+        var isPublic by remember { mutableStateOf(false) }
+
         AlertDialog(
             onDismissRequest = { showCreatePlaylistDialog = false },
             title = {
                 Text(text = "✨ Create Playlist", color = TextPrimary, fontWeight = FontWeight.ExtraBold)
             },
             text = {
-                OutlinedTextField(
-                    value = playlistName,
-                    onValueChange = { playlistName = it },
-                    label = { Text("Playlist Name") },
-                    placeholder = { Text("e.g. AR Rahman Mass Beats") },
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = NeonCyan,
-                        unfocusedBorderColor = DarkBorder,
-                        focusedTextColor = TextPrimary,
-                        unfocusedTextColor = TextPrimary
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    OutlinedTextField(
+                        value = playlistName,
+                        onValueChange = { playlistName = it },
+                        label = { Text("Playlist Name") },
+                        placeholder = { Text("e.g. AR Rahman Mass Beats") },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = NeonCyan,
+                            unfocusedBorderColor = DarkBorder,
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary
+                        ),
+                        modifier = Modifier.fillMaxWidth()
                     )
-                )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Text(
+                        text = "Privacy Setting:",
+                        color = TextSecondary,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // Private Option
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(if (!isPublic) NeonCyan.copy(alpha = 0.15f) else DarkSurfaceGlass)
+                                .border(
+                                    1.5.dp,
+                                    if (!isPublic) NeonCyan else GlassBorderSubtle,
+                                    RoundedCornerShape(12.dp)
+                                )
+                                .clickable { isPublic = false }
+                                .padding(10.dp)
+                        ) {
+                            Column {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(text = "🔒", fontSize = 15.sp)
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "Private",
+                                        color = if (!isPublic) NeonCyan else TextPrimary,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "Only you can see this playlist",
+                                    color = TextMuted,
+                                    fontSize = 10.sp,
+                                    lineHeight = 13.sp
+                                )
+                            }
+                        }
+
+                        // Public Option
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(if (isPublic) NeonCyan.copy(alpha = 0.15f) else DarkSurfaceGlass)
+                                .border(
+                                    1.5.dp,
+                                    if (isPublic) NeonCyan else GlassBorderSubtle,
+                                    RoundedCornerShape(12.dp)
+                                )
+                                .clickable { isPublic = true }
+                                .padding(10.dp)
+                        ) {
+                            Column {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(text = "🌐", fontSize = 15.sp)
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "Public",
+                                        color = if (isPublic) NeonCyan else TextPrimary,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "Visible to all ISAI app users",
+                                    color = TextMuted,
+                                    fontSize = 10.sp,
+                                    lineHeight = 13.sp
+                                )
+                            }
+                        }
+                    }
+                }
             },
             confirmButton = {
                 Button(
                     onClick = {
                         if (playlistName.isNotBlank()) {
-                            viewModel.createPlaylist(playlistName.trim())
+                            viewModel.createPlaylist(playlistName.trim(), isPublic = isPublic)
                             showCreatePlaylistDialog = false
                         }
                     },
@@ -596,8 +749,9 @@ private fun StatCard(
 @Composable
 fun PlaylistItemCard(
     playlist: UserPlaylist,
+    isCommunity: Boolean = false,
     onClick: () -> Unit,
-    onDelete: () -> Unit,
+    onDelete: (() -> Unit)? = null,
     onPlayAll: () -> Unit
 ) {
     Box(
@@ -633,17 +787,36 @@ fun PlaylistItemCard(
                 Spacer(modifier = Modifier.width(14.dp))
 
                 Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = playlist.name,
+                            color = TextPrimary,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(5.dp))
+                                .background(if (playlist.isPublic) NeonCyan.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.08f))
+                                .border(0.8.dp, if (playlist.isPublic) NeonCyan.copy(alpha = 0.5f) else Color.White.copy(alpha = 0.2f), RoundedCornerShape(5.dp))
+                                .padding(horizontal = 6.dp, vertical = 1.5.dp)
+                        ) {
+                            Text(
+                                text = if (playlist.isPublic) "🌐 Public" else "🔒 Private",
+                                color = if (playlist.isPublic) NeonCyan else TextMuted,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(3.dp))
+                    val creatorText = if (playlist.creatorName.isNotBlank()) "by ${playlist.creatorName} • " else ""
                     Text(
-                        text = playlist.name,
-                        color = TextPrimary,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = "${playlist.songs.size} tracks",
+                        text = "$creatorText${playlist.songs.size} tracks",
                         color = TextSecondary,
                         fontSize = 12.sp
                     )
@@ -664,13 +837,15 @@ fun PlaylistItemCard(
                     Spacer(modifier = Modifier.width(4.dp))
                 }
 
-                IconButton(onClick = onDelete, modifier = Modifier.size(36.dp)) {
-                    Icon(
-                        imageVector = Icons.Default.Delete,
-                        contentDescription = "Delete Playlist",
-                        tint = TextMuted,
-                        modifier = Modifier.size(18.dp)
-                    )
+                if (onDelete != null) {
+                    IconButton(onClick = onDelete, modifier = Modifier.size(36.dp)) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "Delete Playlist",
+                            tint = TextMuted,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
             }
         }

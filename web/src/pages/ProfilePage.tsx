@@ -535,7 +535,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
               <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px', fontWeight: 500 }}>
                 {isSeparatePlayback
                   ? 'Separate: Play on 2+ devices simultaneously 🎧'
-                  : 'Sync Mode: Single device (Spotify Connect) ⚡'}
+                  : 'Sync Mode: Single device (ISAI Connect) ⚡'}
               </div>
             </div>
           </div>

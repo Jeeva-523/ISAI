@@ -77,7 +77,7 @@
             "price": "0",
             "priceCurrency": "INR"
           },
-          "downloadUrl": "https://isaihub.web.app/update"
+          "downloadUrl": "https://isaihub.web.app/isai.apk"
         }
       ]
     }
@@ -86,7 +86,19 @@
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Immediate Android Redirection to Update Page (Only for Android root visits not explicitly requesting web player) -->
+    <script>
+      (function() {
+        try {
+          var isAndroid = /android/i.test(navigator.userAgent || '');
+          var path = window.location.pathname || '';
+          var search = window.location.search || '';
+          if (isAndroid && (path === '/' || path === '') && !search.includes('web=true')) {
+            window.location.replace('/update');
+          }
+        } catch (_) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

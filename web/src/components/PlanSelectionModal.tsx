@@ -31,7 +31,7 @@ export const PlanSelectionModal: React.FC<PlanSelectionModalProps> = ({
 
   const premiumFeatures = [
     { emoji: '🎧', text: 'High Quality Audio (320kbps Lossless)' },
-    { emoji: '📱', text: '2–3 Devices Sync (Spotify Connect Style)' },
+    { emoji: '📱', text: '2–3 Devices Sync (ISAI Connect)' },
     { emoji: '🎶', text: 'Listen Together / Music Room' },
     { emoji: '🔀', text: 'Advanced Queue Control & Reordering' },
     { emoji: '🎚️', text: 'Seamless Audio Crossfade' },
